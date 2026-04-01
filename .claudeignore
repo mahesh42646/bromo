@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+bromo-mobile/node_modules/
+bromo-web/node_modules/
+bromo-api/node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+bromo-web/.next/
+bromo-api/dist/
+
+# iOS / Android native build artifacts
+android/
+ios/
+bromo-mobile/android/
+bromo-mobile/ios/
+
+# Lock files (use package.json for context)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bromo-mobile/package-lock.json
+bromo-web/package-lock.json
+bromo-api/package-lock.json
+
+# Uploads / media
+bromo-api/uploads/
+
+# Logs & caches
+*.log
+.cache/
+.expo/
+.turbo/
+coverage/
+__mocks__/
+__tests__/
+
+# Config noise
+.DS_Store
+*.pem
+.env
+.env.*
+Gemfile
+Gemfile.lock
+
+# PDF / docs
+*.pdf
