@@ -15,6 +15,7 @@ import {
   registerUser,
   googleAuth as googleAuthApi,
   setUsername as setUsernameApi,
+  getEmailByUsername,
 } from '../api/authApi';
 
 const K_ONBOARD = '@bromo/onboarding_done';
@@ -37,8 +38,8 @@ export type AuthState = {
 
 export type AuthActions = {
   completeOnboarding: () => Promise<void>;
-  registerWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
-  loginWithEmail: (email: string, password: string) => Promise<void>;
+  registerWithEmail: (email: string, password: string, displayName: string, phone?: string) => Promise<void>;
+  loginWithEmail: (identifier: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   sendVerificationEmail: () => Promise<void>;
   checkEmailVerified: () => Promise<boolean>;
@@ -112,13 +113,13 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   }, []);
 
   const registerWithEmail = useCallback(
-    async (email: string, password: string, displayName: string) => {
+    async (email: string, password: string, displayName: string, phone?: string) => {
       const credential = await auth().createUserWithEmailAndPassword(email, password);
       await credential.user.updateProfile({displayName});
       await credential.user.sendEmailVerification();
 
       try {
-        const result = await registerUser(displayName);
+        const result = await registerUser(displayName, phone);
         setDbUser(result.user);
       } catch {
         // Will be created on next /me check
@@ -127,7 +128,12 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     [],
   );
 
-  const loginWithEmail = useCallback(async (email: string, password: string) => {
+  const loginWithEmail = useCallback(async (identifier: string, password: string) => {
+    let email = identifier;
+    if (!identifier.includes('@')) {
+      const result = await getEmailByUsername(identifier);
+      email = result.email;
+    }
     await auth().signInWithEmailAndPassword(email, password);
   }, []);
 
@@ -182,9 +188,31 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   }, []);
 
   const setUsernameAction = useCallback(async (username: string) => {
-    const result = await setUsernameApi(username);
-    if ('user' in result) {
-      setDbUser(result.user);
+    try {
+      const result = await setUsernameApi(username);
+      if ('user' in result) {
+        setDbUser(result.user);
+      }
+      return;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      // Existing Firebase accounts may not have a DB user yet.
+      // Create one from Firebase profile, then retry username set once.
+      if (!msg.toLowerCase().includes('not registered')) {
+        throw err;
+      }
+    }
+
+    const fallbackName =
+      auth().currentUser?.displayName?.trim() ||
+      auth().currentUser?.email?.split('@')[0] ||
+      'User';
+    const reg = await registerUser(fallbackName);
+    setDbUser(reg.user);
+
+    const retried = await setUsernameApi(username);
+    if ('user' in retried) {
+      setDbUser(retried.user);
     }
   }, []);
 

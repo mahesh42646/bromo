@@ -19,7 +19,6 @@ import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import Svg, {
-  Circle,
   Defs,
   LinearGradient,
   Path,
@@ -27,7 +26,7 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
-import {ChevronLeft, CheckCircle2, Eye, EyeOff, Mail, XCircle, AtSign} from 'lucide-react-native';
+import {ChevronLeft, CheckCircle2, Eye, EyeOff, Mail, XCircle} from 'lucide-react-native';
 import {useAuth} from '../../../context/AuthContext';
 import {useTheme} from '../../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
@@ -38,7 +37,7 @@ import {resetToApp} from '../../../navigation/rootNavigation';
 type Nav<T extends keyof AuthStackParamList> = NativeStackNavigationProp<AuthStackParamList, T>;
 
 const ss = StyleSheet.create({
-  fill: StyleSheet.absoluteFillObject,
+  fill: {position: 'absolute', top: 0, left: 0, right: 0, bottom: 0},
   center: {alignItems: 'center', justifyContent: 'center'},
   row: {flexDirection: 'row', alignItems: 'center'},
 });
@@ -102,34 +101,36 @@ function GradCTA({
   disabled?: boolean;
   style?: ViewStyle;
 }) {
+  const {palette} = useTheme();
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
       style={({pressed}) => [
         {
-          height: 54,
-          borderRadius: 27,
+          width: '100%',
+          height: 50,
+          borderRadius: 10,
           overflow: 'hidden',
-          opacity: disabled || loading ? 0.45 : pressed ? 0.84 : 1,
-          transform: [{scale: pressed ? 0.975 : 1}],
+          opacity: disabled || loading ? 0.4 : pressed ? 0.88 : 1,
+          transform: [{scale: pressed ? 0.98 : 1}],
         },
         style,
       ]}>
       <Svg style={ss.fill} width="100%" height="100%">
         <Defs>
           <LinearGradient id="cta_g" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor="#e94560" stopOpacity="1" />
-            <Stop offset="1" stopColor="#ff7a95" stopOpacity="1" />
+            <Stop offset="0" stopColor={palette.primary} stopOpacity="1" />
+            <Stop offset="1" stopColor={palette.primary} stopOpacity="0.75" />
           </LinearGradient>
         </Defs>
         <Rect width="100%" height="100%" fill="url(#cta_g)" />
       </Svg>
       <View style={[ss.fill, ss.center]}>
         {loading ? (
-          <ActivityIndicator size="small" color="#fff" />
+          <ActivityIndicator size="small" color={palette.primaryForeground} />
         ) : (
-          <Text style={{color: '#fff', fontWeight: '800', fontSize: 15, letterSpacing: 0.3}}>
+          <Text style={{color: palette.primaryForeground, fontWeight: '700', fontSize: 14, letterSpacing: 0.2}}>
             {label}
           </Text>
         )}
@@ -160,21 +161,23 @@ function OutlineCTA({
       disabled={disabled || loading}
       style={({pressed}) => [
         {
-          height: 54,
-          borderRadius: 27,
-          borderWidth: 1.5,
-          borderColor: `${palette.primary}70`,
+          width: '100%',
+          height: 50,
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: palette.borderHeavy,
           alignItems: 'center' as const,
           justifyContent: 'center' as const,
-          opacity: disabled || loading ? 0.45 : pressed ? 0.8 : 1,
-          transform: [{scale: pressed ? 0.975 : 1}],
+          backgroundColor: palette.glassFaint,
+          opacity: disabled || loading ? 0.4 : pressed ? 0.8 : 1,
+          transform: [{scale: pressed ? 0.98 : 1}],
         },
         style,
       ]}>
       {loading ? (
-        <ActivityIndicator size="small" color={palette.primary} />
+        <ActivityIndicator size="small" color={palette.foreground} />
       ) : (
-        <Text style={{color: palette.primary, fontWeight: '700', fontSize: 14, letterSpacing: 0.2}}>
+        <Text style={{color: palette.foregroundMuted, fontWeight: '600', fontSize: 14}}>
           {label}
         </Text>
       )}
@@ -199,26 +202,38 @@ function GoogleCTA({
       onPress={onPress}
       disabled={disabled || loading}
       style={({pressed}) => ({
-        height: 54,
-        borderRadius: 27,
+        width: '100%',
+        height: 50,
+        borderRadius: 10,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderColor: palette.borderMid,
+        backgroundColor: palette.glass,
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
-        gap: 10,
-        opacity: disabled || loading ? 0.45 : pressed ? 0.8 : 1,
-        transform: [{scale: pressed ? 0.975 : 1}],
+        gap: 12,
+        opacity: disabled || loading ? 0.4 : pressed ? 0.8 : 1,
+        transform: [{scale: pressed ? 0.98 : 1}],
       })}>
       {loading ? (
         <ActivityIndicator size="small" color={palette.foreground} />
       ) : (
-        <GoogleG size={19} />
+        <>
+          <View style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: '#fff',   // Google brand requirement — always white
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <GoogleG size={18} />
+          </View>
+          <Text style={{color: palette.foregroundMuted, fontWeight: '600', fontSize: 14}}>
+            Continue with Google
+          </Text>
+        </>
       )}
-      <Text style={{color: 'rgba(255,255,255,0.85)', fontWeight: '600', fontSize: 14}}>
-        Continue with Google
-      </Text>
     </Pressable>
   );
 }
@@ -250,28 +265,26 @@ function Field({
   suffix?: React.ReactNode;
   error?: string;
 }) {
-  const {palette} = useTheme();
+  const {palette, isDark} = useTheme();
   const [focused, setFocused] = useState(false);
   const [show, setShow] = useState(false);
 
   return (
-    <View style={{marginBottom: error ? 2 : 10}}>
+    <View style={{marginBottom: error ? 4 : 12}}>
       <View
         style={{
-          height: 54,
-          borderRadius: 27,
-          borderWidth: 1.5,
+          height: 52,
+          borderRadius: 12,
+          borderWidth: 1,
           borderColor: error
             ? palette.destructive
             : focused
-            ? `${palette.primary}90`
-            : 'rgba(255,255,255,0.1)',
-          backgroundColor: focused
-            ? 'rgba(255,255,255,0.06)'
-            : 'rgba(255,255,255,0.04)',
+            ? palette.primary
+            : palette.borderMid,
+          backgroundColor: focused ? palette.glassMid : palette.input,
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 20,
+          paddingHorizontal: 16,
         }}>
         {prefix}
         <TextInput
@@ -280,26 +293,27 @@ function Field({
           secureTextEntry={secure && !show}
           keyboardType={keyboard}
           placeholder={placeholder}
-          placeholderTextColor="rgba(255,255,255,0.28)"
+          placeholderTextColor={palette.placeholder}
           autoCapitalize={autoCapitalize ?? 'none'}
           autoCorrect={false}
           autoFocus={autoFocus}
           editable={editable !== false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          keyboardAppearance={isDark ? 'dark' : 'light'}
           style={{
             flex: 1,
-            color: '#FFFFFF',
+            color: palette.foreground,
             fontSize: 15,
             paddingVertical: 0,
           }}
         />
         {secure && (
-          <Pressable onPress={() => setShow(p => !p)} hitSlop={12}>
+          <Pressable onPress={() => setShow(p => !p)} hitSlop={12} style={{paddingLeft: 8}}>
             {show ? (
-              <EyeOff size={17} color="rgba(255,255,255,0.35)" />
+              <EyeOff size={16} color={palette.placeholder} />
             ) : (
-              <Eye size={17} color="rgba(255,255,255,0.35)" />
+              <Eye size={16} color={palette.placeholder} />
             )}
           </Pressable>
         )}
@@ -310,10 +324,10 @@ function Field({
           style={{
             color: palette.destructive,
             fontSize: 12,
-            marginTop: 5,
-            marginLeft: 20,
-            fontWeight: '600',
-            marginBottom: 4,
+            marginTop: 6,
+            marginLeft: 4,
+            fontWeight: '500',
+            marginBottom: 2,
           }}>
           {error}
         </Text>
@@ -325,20 +339,21 @@ function Field({
 // ── OR divider ────────────────────────────────────────────────────
 
 function OrDivider() {
+  const {palette} = useTheme();
   return (
-    <View style={[ss.row, {marginVertical: 16}]}>
-      <View style={{flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.07)'}} />
+    <View style={[ss.row, {marginVertical: 20}]}>
+      <View style={{flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.borderFaint}} />
       <Text
         style={{
-          color: 'rgba(255,255,255,0.22)',
-          paddingHorizontal: 14,
-          fontSize: 11,
-          fontWeight: '700',
-          letterSpacing: 1.5,
+          color: palette.foregroundFaint,
+          paddingHorizontal: 16,
+          fontSize: 12,
+          fontWeight: '500',
+          letterSpacing: 1,
         }}>
-        OR
+        or
       </Text>
-      <View style={{flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.07)'}} />
+      <View style={{flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.borderFaint}} />
     </View>
   );
 }
@@ -351,15 +366,18 @@ function Err({msg}: {msg: string}) {
   return (
     <View
       style={{
-        backgroundColor: `${palette.destructive}14`,
+        backgroundColor: `${palette.destructive}18`,
         borderWidth: 1,
-        borderColor: `${palette.destructive}40`,
-        borderRadius: 14,
-        paddingHorizontal: 16,
-        paddingVertical: 11,
-        marginBottom: 18,
+        borderColor: `${palette.destructive}35`,
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        marginBottom: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
       }}>
-      <Text style={{color: palette.destructive, fontSize: 13, fontWeight: '600', textAlign: 'center'}}>
+      <Text style={{color: palette.destructive, fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 18}}>
         {msg}
       </Text>
     </View>
@@ -370,11 +388,11 @@ function Err({msg}: {msg: string}) {
 
 function Chrome({children, showBack}: {children: React.ReactNode; showBack?: boolean}) {
   const navigation = useNavigation();
-  const {palette} = useTheme();
+  const {palette, isDark} = useTheme();
 
   return (
     <ThemedSafeScreen>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <ScreenGlow />
       <KeyboardAvoidingView
         style={{flex: 1}}
@@ -391,7 +409,7 @@ function Chrome({children, showBack}: {children: React.ReactNode; showBack?: boo
               width: 40,
               height: 40,
               borderRadius: 20,
-              backgroundColor: 'rgba(255,255,255,0.06)',
+              backgroundColor: palette.glass,
               alignItems: 'center',
               justifyContent: 'center',
             }}>
@@ -412,22 +430,31 @@ function Chrome({children, showBack}: {children: React.ReactNode; showBack?: boo
 
 // ── Shared auth-state navigation (post-sign-in routing) ───────────
 
-function usePostAuthNav(email?: string) {
+function usePostAuthNav(email?: string, pendingUsername?: string) {
   const navigation = useNavigation<Nav<'Login'>>();
   const {firebaseUser, dbUser, needsEmailVerification, needsUsername, needsRegistration} = useAuth();
+  const didLogin = useRef(false);
+
+  const markLoggedIn = useCallback(() => { didLogin.current = true; }, []);
 
   useEffect(() => {
-    if (!firebaseUser) return;
+    if (!firebaseUser || !didLogin.current) return;
     if (needsEmailVerification) {
-      navigation.navigate('EmailVerification', {email: firebaseUser.email ?? email ?? ''});
+      navigation.navigate('EmailVerification', {
+        email: firebaseUser.email ?? email ?? '',
+        pendingUsername,
+      });
     } else if (needsUsername || needsRegistration) {
       navigation.navigate('UsernameSetup', {
         displayName: dbUser?.displayName ?? firebaseUser.displayName ?? '',
+        pendingUsername,
       });
     } else if (dbUser?.onboardingComplete) {
       resetToApp();
     }
-  }, [firebaseUser, needsEmailVerification, needsUsername, needsRegistration, dbUser, navigation, email]);
+  }, [firebaseUser, needsEmailVerification, needsUsername, needsRegistration, dbUser, navigation, email, pendingUsername]);
+
+  return markLoggedIn;
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────
@@ -436,27 +463,30 @@ export function LoginScreen() {
   const navigation = useNavigation<Nav<'Login'>>();
   const {loginWithEmail, loginWithGoogle} = useAuth();
   const {palette, contract} = useTheme();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [gLoading, setGLoading] = useState(false);
   const [error, setError] = useState('');
 
-  usePostAuthNav(email);
+  const markLoggedIn = usePostAuthNav(identifier);
 
   const handleLogin = async () => {
-    const e = email.trim().toLowerCase();
-    if (!e || !password) {setError('Email and password are required'); return;}
+    const id = identifier.trim().toLowerCase();
+    if (!id || !password) {setError('Username/email and password are required'); return;}
     setError('');
     setLoading(true);
     try {
-      await loginWithEmail(e, password);
+      await loginWithEmail(id, password);
+      markLoggedIn();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed';
       if (msg.includes('user-not-found') || msg.includes('wrong-password') || msg.includes('invalid-credential')) {
-        setError('Incorrect email or password');
+        setError('Incorrect username/email or password');
       } else if (msg.includes('too-many-requests')) {
         setError('Too many attempts — try again later');
+      } else if (msg.includes('No account found')) {
+        setError('No account found with this username');
       } else {
         setError(msg);
       }
@@ -470,6 +500,7 @@ export function LoginScreen() {
     setGLoading(true);
     try {
       await loginWithGoogle();
+      markLoggedIn();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (!msg.includes('canceled') && !msg.includes('cancelled')) setError(msg || 'Google sign-in failed');
@@ -480,86 +511,167 @@ export function LoginScreen() {
 
   return (
     <Chrome>
-      {/* Logo area */}
-      <View style={{alignItems: 'center', paddingTop: 72, paddingBottom: 44}}>
+      {/* Logo */}
+      <View style={{alignItems: 'center', paddingTop: 64, paddingBottom: 40}}>
         {contract.branding.logoUrl ? (
           <Image
             source={{uri: contract.branding.logoUrl}}
-            style={{width: 80, height: 80, borderRadius: 22, marginBottom: 12}}
+            style={{width: 72, height: 72, borderRadius: 20, marginBottom: 16}}
             resizeMode="contain"
           />
         ) : (
-          <>
-            <Text
-              style={{
-                color: '#FFFFFF',
-                fontSize: 50,
-                fontWeight: '900',
-                fontStyle: 'italic',
-                letterSpacing: -2.5,
-                lineHeight: 50,
-              }}>
+          <View style={{alignItems: 'center', gap: 6}}>
+            <Text style={{
+              color: palette.foreground,
+              fontSize: 44,
+              fontWeight: '900',
+              fontStyle: 'italic',
+              letterSpacing: -2,
+              lineHeight: 48,
+            }}>
               {contract.branding.appTitle?.toLowerCase() || 'bromo'}
-              <Text style={{color: palette.primary, fontSize: 28, fontStyle: 'normal'}}>°</Text>
+              <Text style={{color: palette.primary, fontSize: 24, fontStyle: 'normal'}}>°</Text>
             </Text>
-            <Text
-              style={{
-                color: 'rgba(255,255,255,0.25)',
-                fontSize: 11,
-                letterSpacing: 3.5,
-                fontWeight: '700',
-                marginTop: 8,
-              }}>
+            <Text style={{
+              color: palette.foregroundFaint,
+              fontSize: 9,
+              letterSpacing: 4,
+              fontWeight: '700',
+            }}>
               EXPLORE · EARN · REDEEM
             </Text>
-          </>
+          </View>
         )}
       </View>
 
       {/* Form */}
-      <View style={{paddingHorizontal: 24}}>
+      <View style={{paddingHorizontal: 28}}>
         <Err msg={error} />
-        <Field value={email} onChange={setEmail} keyboard="email-address" placeholder="Email address" />
+        <Field
+          value={identifier}
+          onChange={setIdentifier}
+          keyboard="email-address"
+          placeholder="Username, email or phone"
+          autoCapitalize="none"
+        />
         <Field value={password} onChange={setPassword} secure placeholder="Password" />
 
         <Pressable
           onPress={() => navigation.navigate('ForgotPassword')}
-          style={{alignSelf: 'flex-end', marginBottom: 20, marginTop: 6}}>
-          <Text style={{color: palette.primary, fontSize: 13, fontWeight: '700'}}>Forgot password?</Text>
+          style={{alignSelf: 'flex-end', marginBottom: 22, marginTop: 2}}>
+          <Text style={{color: palette.primary, fontSize: 13, fontWeight: '600'}}>
+            Forgot password?
+          </Text>
         </Pressable>
 
-        <GradCTA label="Log In" onPress={handleLogin} loading={loading} disabled={loading || gLoading} />
+        <GradCTA label="Log in" onPress={handleLogin} loading={loading} disabled={loading || gLoading} />
+
         <OrDivider />
+
         <GoogleCTA onPress={handleGoogle} loading={gLoading} disabled={loading || gLoading} />
       </View>
 
-      {/* Footer */}
-      <View style={[ss.row, {justifyContent: 'center', marginTop: 32, paddingBottom: 8}]}>
-        <Text style={{color: 'rgba(255,255,255,0.35)', fontSize: 13}}>Don't have an account? </Text>
-        <Pressable onPress={() => navigation.navigate('Register')}>
-          <Text style={{color: palette.primary, fontSize: 13, fontWeight: '800'}}>Sign up</Text>
-        </Pressable>
+      {/* Signup footer */}
+      <View style={{flex: 1, justifyContent: 'flex-end', paddingBottom: 24, marginTop: 24}}>
+        <View style={{
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: palette.hairline,
+          paddingTop: 18,
+        }}>
+          <View style={[ss.row, {justifyContent: 'center', gap: 4}]}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 14}}>Don't have an account?</Text>
+            <Pressable onPress={() => navigation.navigate('Register')} hitSlop={8}>
+              <Text style={{color: palette.primary, fontSize: 14, fontWeight: '700'}}>Sign up</Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
     </Chrome>
   );
 }
 
-// ── REGISTER ──────────────────────────────────────────────────────
+// ── REGISTER (2-step wizard) ──────────────────────────────────────
+
+function validateRegisterUsername(u: string): string | null {
+  if (u.length < 4) return 'At least 4 characters required';
+  if (u.length > 30) return 'Max 30 characters';
+  if (!/^[a-z0-9._]+$/.test(u)) return 'Only letters, numbers, . and _';
+  if (u.startsWith('.') || u.endsWith('.')) return 'Cannot start or end with a period';
+  if (/\.\./.test(u)) return 'No consecutive periods';
+  if (/^\d+$/.test(u)) return 'Cannot be only numbers';
+  return null;
+}
 
 export function RegisterScreen() {
   const navigation = useNavigation<Nav<'Register'>>();
   const {registerWithEmail, loginWithGoogle} = useAuth();
   const {palette} = useTheme();
+  const [step, setStep] = useState<1 | 2>(1);
+
+  // Step 1 — username
+  const [handle, setHandle] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [checkFailed, setCheckFailed] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Step 2 — details
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [gLoading, setGLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Handle Google sign-in navigation from Register screen
-  usePostAuthNav(email);
+  const markLoggedIn = usePostAuthNav(email, handle);
+
+  const onHandleChange = (raw: string) => {
+    const cleaned = raw.toLowerCase().replace(/[^a-z0-9._]/g, '');
+    setHandle(cleaned);
+    setAvailable(null);
+    setCheckFailed(false);
+    setUsernameError('');
+    setSuggestions([]);
+    if (debounce.current) clearTimeout(debounce.current);
+    const err = validateRegisterUsername(cleaned);
+    if (err) {setUsernameError(err); return;}
+    setChecking(true);
+    debounce.current = setTimeout(async () => {
+      try {
+        const res = await checkUsernameApi(cleaned);
+        setAvailable(res.available);
+        if (!res.available) {
+          setUsernameError(res.error ?? 'Username already taken');
+          setSuggestions(res.suggestions ?? []);
+        }
+      } catch {
+        setCheckFailed(true);
+      } finally {
+        setChecking(false);
+      }
+    }, 400);
+  };
+
+  const localErr = validateRegisterUsername(handle);
+  const canProceed = !!handle && !localErr && !checking && available !== false && (available === true || checkFailed);
+
+  const statusIcon = (() => {
+    if (checking) return <ActivityIndicator size="small" color={palette.foregroundFaint} />;
+    if (available === true) return <CheckCircle2 size={20} color={palette.success} />;
+    if (available === false) return <XCircle size={20} color={palette.destructive} />;
+    return null;
+  })();
+
+  const helperText = (() => {
+    if (!handle) return 'Use 4-30 chars: letters, numbers, "." and "_"';
+    if (checking) return 'Checking availability...';
+    if (available === true) return 'Username is available!';
+    return null;
+  })();
 
   const pwStrength = (() => {
     if (!password) return {label: '', color: '', pct: 0};
@@ -569,10 +681,10 @@ export function RegisterScreen() {
     if (/[A-Z]/.test(password)) s++;
     if (/\d/.test(password)) s++;
     if (/[^A-Za-z0-9]/.test(password)) s++;
-    if (s <= 1) return {label: 'Weak', color: palette.destructive, pct: 25};
-    if (s <= 2) return {label: 'Fair', color: '#f59e0b', pct: 50};
-    if (s <= 3) return {label: 'Good', color: '#3b82f6', pct: 75};
-    return {label: 'Strong', color: '#22c55e', pct: 100};
+    if (s <= 1) return {label: 'Weak',   color: palette.destructive, pct: 25};
+    if (s <= 2) return {label: 'Fair',   color: palette.warning,     pct: 50};
+    if (s <= 3) return {label: 'Good',   color: palette.info,        pct: 75};
+    return       {label: 'Strong', color: palette.success,     pct: 100};
   })();
 
   const handleRegister = async () => {
@@ -585,8 +697,8 @@ export function RegisterScreen() {
     setError('');
     setLoading(true);
     try {
-      await registerWithEmail(e, password, n);
-      navigation.navigate('EmailVerification', {email: e});
+      await registerWithEmail(e, password, n, phone.trim() || undefined);
+      navigation.navigate('EmailVerification', {email: e, pendingUsername: handle});
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Registration failed';
       if (msg.includes('email-already-in-use')) setError('An account with this email already exists');
@@ -603,6 +715,7 @@ export function RegisterScreen() {
     setGLoading(true);
     try {
       await loginWithGoogle();
+      markLoggedIn();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (!msg.includes('canceled') && !msg.includes('cancelled')) setError(msg || 'Google sign-in failed');
@@ -611,38 +724,169 @@ export function RegisterScreen() {
     }
   };
 
-  return (
-    <Chrome showBack>
-      {/* Header */}
-      <View style={{paddingTop: 68, paddingBottom: 28, paddingHorizontal: 24}}>
-        <Text
-          style={{
-            color: '#FFFFFF',
-            fontSize: 32,
-            fontWeight: '800',
-            letterSpacing: -1,
-            marginBottom: 4,
-          }}>
-          Create account
-        </Text>
-        <Text style={{color: 'rgba(255,255,255,0.35)', fontSize: 14}}>
-          Sign up with email and verify to continue
-        </Text>
-      </View>
+  // ── STEP 1: Pick username ───────────────────────────────────────
+  if (step === 1) {
+    return (
+      <Chrome showBack>
+        <View style={{paddingHorizontal: 28, paddingTop: 56}}>
+          <View style={[ss.row, {gap: 4, marginBottom: 32}]}>
+            {[1, 2].map(n => (
+              <View key={n} style={{
+                height: 3,
+                flex: 1,
+                borderRadius: 2,
+                backgroundColor: n <= step ? palette.primary : palette.borderFaint,
+              }} />
+            ))}
+          </View>
 
-      {/* Form */}
-      <View style={{paddingHorizontal: 24}}>
+          <Text style={{color: palette.foregroundSubtle, fontSize: 12, fontWeight: '600', letterSpacing: 1, marginBottom: 6}}>
+            STEP 1 OF 2
+          </Text>
+          <Text style={{color: palette.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginBottom: 6}}>
+            Choose a username
+          </Text>
+          <Text style={{color: palette.foregroundSubtle, fontSize: 14, lineHeight: 20, marginBottom: 28}}>
+            Pick a unique handle — you can change it later.
+          </Text>
+
+          <Field
+            value={handle}
+            onChange={onHandleChange}
+            placeholder="username"
+            prefix={
+              <Text style={{color: palette.foregroundSubtle, fontSize: 15, marginRight: 2, fontWeight: '500'}}>@</Text>
+            }
+            suffix={statusIcon}
+            error={available === false ? usernameError : undefined}
+            autoFocus
+          />
+
+          {helperText ? (
+            <Text style={{
+              color: available === true ? palette.success : palette.placeholder,
+              fontSize: 12,
+              marginTop: -8,
+              marginBottom: 12,
+              fontWeight: '500',
+            }}>
+              {helperText}
+            </Text>
+          ) : null}
+
+          {checkFailed ? (
+            <Text style={{color: palette.warning, fontSize: 12, marginTop: -8, marginBottom: 14, fontWeight: '500'}}>
+              Could not check availability — tap Continue to try anyway
+            </Text>
+          ) : null}
+
+          {suggestions.length > 0 && (
+            <View style={{marginBottom: 20}}>
+              <Text style={{color: palette.foregroundFaint, fontSize: 11, fontWeight: '600', letterSpacing: 1, marginBottom: 10}}>
+                SUGGESTIONS
+              </Text>
+              <View style={[ss.row, {flexWrap: 'wrap', gap: 8}]}>
+                {suggestions.map(s => (
+                  <Pressable
+                    key={s}
+                    onPress={() => onHandleChange(s)}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 7,
+                      borderWidth: 1,
+                      borderColor: palette.borderMid,
+                      borderRadius: 8,
+                      backgroundColor: palette.glassFaint,
+                    }}>
+                    <Text style={{color: palette.foregroundMuted, fontWeight: '600', fontSize: 13}}>@{s}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <GradCTA
+            label="Continue"
+            onPress={() => setStep(2)}
+            disabled={!canProceed}
+            style={{marginTop: 8}}
+          />
+        </View>
+
+        <View style={{flex: 1, justifyContent: 'flex-end', paddingBottom: 24, marginTop: 24}}>
+          <View style={{
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: palette.hairline,
+            paddingTop: 18,
+          }}>
+            <View style={[ss.row, {justifyContent: 'center', gap: 4}]}>
+              <Text style={{color: palette.foregroundSubtle, fontSize: 14}}>Already have an account?</Text>
+              <Pressable onPress={() => navigation.navigate('Login')} hitSlop={8}>
+                <Text style={{color: palette.primary, fontSize: 14, fontWeight: '700'}}>Log in</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Chrome>
+    );
+  }
+
+  // ── STEP 2: Account details ─────────────────────────────────────
+  return (
+    <Chrome>
+      <Pressable
+        onPress={() => setStep(1)}
+        hitSlop={12}
+        style={{
+          position: 'absolute',
+          top: 8,
+          left: 14,
+          zIndex: 10,
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: palette.glass,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+        <ChevronLeft size={22} color={palette.foreground} />
+      </Pressable>
+
+      <View style={{paddingTop: 56, paddingHorizontal: 28}}>
+        <View style={[ss.row, {gap: 4, marginBottom: 28}]}>
+          {[1, 2].map(n => (
+            <View key={n} style={{
+              height: 3,
+              flex: 1,
+              borderRadius: 2,
+              backgroundColor: n <= step ? palette.primary : palette.borderFaint,
+            }} />
+          ))}
+        </View>
+
+        <Text style={{color: palette.foregroundSubtle, fontSize: 12, fontWeight: '600', letterSpacing: 1, marginBottom: 6}}>
+          STEP 2 OF 2
+        </Text>
+        <Text style={{color: palette.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginBottom: 4}}>
+          Create your account
+        </Text>
+        <Text style={{color: palette.foregroundSubtle, fontSize: 14, marginBottom: 24}}>
+          Signing up as{' '}
+          <Text style={{color: palette.primary, fontWeight: '700'}}>@{handle}</Text>
+        </Text>
+
         <Err msg={error} />
         <Field value={name} onChange={setName} autoCapitalize="words" placeholder="Full name" />
         <Field value={email} onChange={setEmail} keyboard="email-address" placeholder="Email address" />
-        <Field value={password} onChange={setPassword} secure placeholder="Password (min 6 characters)" />
+        <Field value={phone} onChange={setPhone} keyboard="default" placeholder="Phone number (optional)" />
+        <Field value={password} onChange={setPassword} secure placeholder="Password" />
 
         {password.length > 0 && (
-          <View style={[ss.row, {gap: 10, marginBottom: 10, marginTop: -2}]}>
-            <View style={{flex: 1, height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden'}}>
+          <View style={[ss.row, {gap: 8, marginTop: -8, marginBottom: 12}]}>
+            <View style={{flex: 1, height: 3, backgroundColor: palette.glassMid, borderRadius: 2, overflow: 'hidden'}}>
               <View style={{width: `${pwStrength.pct}%`, height: '100%', backgroundColor: pwStrength.color, borderRadius: 2}} />
             </View>
-            <Text style={{color: pwStrength.color, fontSize: 11.5, fontWeight: '700', width: 48}}>
+            <Text style={{color: pwStrength.color, fontSize: 11, fontWeight: '700', width: 44}}>
               {pwStrength.label}
             </Text>
           </View>
@@ -657,7 +901,7 @@ export function RegisterScreen() {
         />
 
         <GradCTA
-          label="Sign Up"
+          label="Create account"
           onPress={handleRegister}
           loading={loading}
           disabled={loading || gLoading}
@@ -667,12 +911,19 @@ export function RegisterScreen() {
         <GoogleCTA onPress={handleGoogle} loading={gLoading} disabled={loading || gLoading} />
       </View>
 
-      {/* Footer */}
-      <View style={[ss.row, {justifyContent: 'center', marginTop: 28, paddingBottom: 8}]}>
-        <Text style={{color: 'rgba(255,255,255,0.35)', fontSize: 13}}>Already have an account? </Text>
-        <Pressable onPress={() => navigation.goBack()}>
-          <Text style={{color: palette.primary, fontSize: 13, fontWeight: '800'}}>Log in</Text>
-        </Pressable>
+      <View style={{flex: 1, justifyContent: 'flex-end', paddingBottom: 24, marginTop: 24}}>
+        <View style={{
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: palette.hairline,
+          paddingTop: 18,
+        }}>
+          <View style={[ss.row, {justifyContent: 'center', gap: 4}]}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 14}}>Already have an account?</Text>
+            <Pressable onPress={() => navigation.navigate('Login')} hitSlop={8}>
+              <Text style={{color: palette.primary, fontSize: 14, fontWeight: '700'}}>Log in</Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
     </Chrome>
   );
@@ -686,6 +937,7 @@ export function EmailVerificationScreen() {
   const {palette} = useTheme();
   const navigation = useNavigation<Nav<'EmailVerification'>>();
   const emailAddr = route.params.email;
+  const pendingUsername = route.params.pendingUsername;
   const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -721,7 +973,10 @@ export function EmailVerificationScreen() {
       if (verified) {
         if (needsRegistration) await refreshDbUser();
         if (needsUsername || !dbUser?.onboardingComplete) {
-          navigation.navigate('UsernameSetup', {displayName: dbUser?.displayName ?? ''});
+          navigation.navigate('UsernameSetup', {
+            displayName: dbUser?.displayName ?? '',
+            pendingUsername,
+          });
         } else {
           resetToApp();
         }
@@ -735,7 +990,6 @@ export function EmailVerificationScreen() {
   return (
     <Chrome showBack>
       <View style={{paddingTop: 60, paddingHorizontal: 24}}>
-        {/* Icon */}
         <View style={{alignItems: 'center', marginBottom: 36}}>
           <View style={{
             width: 96,
@@ -750,12 +1004,12 @@ export function EmailVerificationScreen() {
           }}>
             <Mail size={40} color={palette.primary} />
           </View>
-          <Text style={{color: '#FFFFFF', fontSize: 26, fontWeight: '800', letterSpacing: -0.6, marginBottom: 10}}>
+          <Text style={{color: palette.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.6, marginBottom: 10}}>
             Verify your email
           </Text>
-          <Text style={{color: 'rgba(255,255,255,0.38)', textAlign: 'center', lineHeight: 21, fontSize: 14}}>
+          <Text style={{color: palette.foregroundSubtle, textAlign: 'center', lineHeight: 21, fontSize: 14}}>
             We sent a link to{'\n'}
-            <Text style={{color: 'rgba(255,255,255,0.75)', fontWeight: '700'}}>{emailAddr}</Text>
+            <Text style={{color: palette.foregroundMuted, fontWeight: '700'}}>{emailAddr}</Text>
           </Text>
         </View>
 
@@ -775,7 +1029,7 @@ export function EmailVerificationScreen() {
 
         <View style={{alignItems: 'center'}}>
           {cooldown > 0 ? (
-            <Text style={{color: 'rgba(255,255,255,0.28)', fontSize: 13}}>Resend in {cooldown}s</Text>
+            <Text style={{color: palette.foregroundFaint, fontSize: 13}}>Resend in {cooldown}s</Text>
           ) : (
             <Pressable onPress={handleResend} disabled={resending}>
               <Text style={{color: palette.primary, fontSize: 13, fontWeight: '700'}}>
@@ -816,21 +1070,21 @@ export function ForgotPasswordScreen() {
             width: 96,
             height: 96,
             borderRadius: 32,
-            backgroundColor: '#22c55e12',
+            backgroundColor: `${palette.success}18`,
             borderWidth: 1,
-            borderColor: '#22c55e30',
+            borderColor: `${palette.success}30`,
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: 22,
           }}>
-            <CheckCircle2 size={42} color="#22c55e" />
+            <CheckCircle2 size={42} color={palette.success} />
           </View>
-          <Text style={{color: '#FFFFFF', fontSize: 26, fontWeight: '800', letterSpacing: -0.6, marginBottom: 10}}>
+          <Text style={{color: palette.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.6, marginBottom: 10}}>
             Check your inbox
           </Text>
-          <Text style={{color: 'rgba(255,255,255,0.38)', textAlign: 'center', lineHeight: 21, fontSize: 14, marginBottom: 40}}>
+          <Text style={{color: palette.foregroundSubtle, textAlign: 'center', lineHeight: 21, fontSize: 14, marginBottom: 40}}>
             If an account exists for{' '}
-            <Text style={{color: 'rgba(255,255,255,0.7)', fontWeight: '700'}}>{email.trim()}</Text>
+            <Text style={{color: palette.foregroundMuted, fontWeight: '700'}}>{email.trim()}</Text>
             {', you\'ll receive a reset link.'}
           </Text>
           <GradCTA
@@ -846,10 +1100,10 @@ export function ForgotPasswordScreen() {
   return (
     <Chrome showBack>
       <View style={{paddingTop: 68, paddingHorizontal: 24}}>
-        <Text style={{color: '#FFFFFF', fontSize: 32, fontWeight: '800', letterSpacing: -1, marginBottom: 6}}>
+        <Text style={{color: palette.foreground, fontSize: 32, fontWeight: '800', letterSpacing: -1, marginBottom: 6}}>
           Reset password
         </Text>
-        <Text style={{color: 'rgba(255,255,255,0.35)', fontSize: 14, lineHeight: 21, marginBottom: 28}}>
+        <Text style={{color: palette.foregroundSubtle, fontSize: 14, lineHeight: 21, marginBottom: 28}}>
           Enter your email and we'll send a reset link.
         </Text>
         <Field value={email} onChange={setEmail} keyboard="email-address" placeholder="Email address" autoFocus />
@@ -873,17 +1127,27 @@ function validateLocal(u: string): string | null {
 
 export function UsernameSetupScreen() {
   const route = useRoute<RouteProp<AuthStackParamList, 'UsernameSetup'>>();
-  const {setUsername} = useAuth();
+  const {setUsername, logout} = useAuth();
   const {palette} = useTheme();
+  const navigation = useNavigation<Nav<'UsernameSetup'>>();
   const displayName = route.params.displayName;
-  const [handle, setHandle] = useState('');
+  const pendingUsername = route.params.pendingUsername ?? '';
+  const [handle, setHandle] = useState(pendingUsername);
   const [checking, setChecking] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [checkFailed, setCheckFailed] = useState(false);
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (pendingUsername) {
+      onChange(pendingUsername);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onChange = (raw: string) => {
     const cleaned = raw.toLowerCase().replace(/[^a-z0-9._]/g, '');
@@ -906,8 +1170,7 @@ export function UsernameSetupScreen() {
         } else {
           setSuggestions([]);
         }
-      } catch (e: unknown) {
-        // Network/timeout failure — let user try submitting anyway; server validates
+      } catch {
         setCheckFailed(true);
         setAvailable(null);
         setError('Could not verify availability — tap Continue to try anyway');
@@ -917,7 +1180,13 @@ export function UsernameSetupScreen() {
     }, 400);
   };
 
-  const canSubmit = !saving && !checking && !!handle && available !== false &&
+  const localValidationError = validateLocal(handle);
+  const canSubmit =
+    !saving &&
+    !checking &&
+    !!handle &&
+    !localValidationError &&
+    available !== false &&
     (available === true || checkFailed);
 
   const handleSave = async () => {
@@ -939,65 +1208,78 @@ export function UsernameSetupScreen() {
     }
   };
 
+  const handleLoginExisting = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+    }
+    navigation.navigate('Login');
+  };
+
   const statusIcon = (() => {
-    if (checking) return <ActivityIndicator size="small" color="rgba(255,255,255,0.35)" />;
-    if (available === true) return <CheckCircle2 size={20} color="#22c55e" />;
+    if (checking) return <ActivityIndicator size="small" color={palette.foregroundFaint} />;
+    if (available === true) return <CheckCircle2 size={20} color={palette.success} />;
     if (available === false) return <XCircle size={20} color={palette.destructive} />;
     return null;
   })();
 
   const softError = checkFailed ? error : undefined;
   const hardError = !checkFailed ? error : undefined;
+  const helperText = (() => {
+    if (!handle) return 'Use 4-30 chars: letters, numbers, "." and "_"';
+    if (checking) return 'Checking availability...';
+    if (available === true) return 'Username is available';
+    return null;
+  })();
 
   return (
     <Chrome>
-      <View style={{paddingTop: 72, paddingHorizontal: 24}}>
-        {/* Icon */}
-        <View style={{alignItems: 'center', marginBottom: 32}}>
-          <View style={{
-            width: 88,
-            height: 88,
-            borderRadius: 28,
-            backgroundColor: `${palette.primary}12`,
-            borderWidth: 1,
-            borderColor: `${palette.primary}30`,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 18,
-          }}>
-            <AtSign size={36} color={palette.primary} />
-          </View>
-          <Text style={{color: '#FFFFFF', fontSize: 28, fontWeight: '800', letterSpacing: -0.8, marginBottom: 6}}>
-            Pick a username
-          </Text>
-          <Text style={{color: 'rgba(255,255,255,0.35)', textAlign: 'center', fontSize: 14, lineHeight: 20}}>
-            {displayName ? `Welcome, ${displayName.split(' ')[0]}! ` : ''}
-            You can always change this later.
-          </Text>
-        </View>
+      <View style={{paddingTop: 64, paddingHorizontal: 28}}>
+        <Text style={{color: palette.foregroundSubtle, fontSize: 12, fontWeight: '600', letterSpacing: 1, marginBottom: 8}}>
+          {displayName ? `WELCOME, ${displayName.split(' ')[0].toUpperCase()}` : 'ALMOST THERE'}
+        </Text>
+        <Text style={{color: palette.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginBottom: 6}}>
+          Pick your username
+        </Text>
+        <Text style={{color: palette.foregroundSubtle, fontSize: 14, lineHeight: 20, marginBottom: 28}}>
+          Your unique handle on {'\u2060'}bromo°. You can always change it later.
+        </Text>
 
         <Field
           value={handle}
           onChange={onChange}
-          placeholder="your_username"
+          placeholder="username"
           prefix={
-            <Text style={{color: 'rgba(255,255,255,0.35)', fontSize: 16, marginRight: 4, fontWeight: '500'}}>
-              @
-            </Text>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 15, marginRight: 2, fontWeight: '500'}}>@</Text>
           }
           suffix={statusIcon}
           error={hardError}
-          autoFocus
+          autoFocus={!pendingUsername}
         />
+
+        {helperText ? (
+          <Text style={{
+            color: available === true ? palette.success : palette.placeholder,
+            fontSize: 12,
+            marginTop: -8,
+            marginBottom: 12,
+            fontWeight: '500',
+          }}>
+            {helperText}
+          </Text>
+        ) : null}
+
         {softError ? (
-          <Text style={{color: '#f59e0b', fontSize: 12, marginTop: -10, marginBottom: 14, paddingHorizontal: 4}}>
+          <Text style={{color: palette.warning, fontSize: 12, marginTop: -8, marginBottom: 14, fontWeight: '500'}}>
             {softError}
           </Text>
         ) : null}
 
         {suggestions.length > 0 && (
-          <View style={{marginBottom: 16}}>
-            <Text style={{color: 'rgba(255,255,255,0.25)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginBottom: 10}}>
+          <View style={{marginBottom: 20}}>
+            <Text style={{color: palette.foregroundFaint, fontSize: 11, fontWeight: '600', letterSpacing: 1, marginBottom: 10}}>
               SUGGESTIONS
             </Text>
             <View style={[ss.row, {flexWrap: 'wrap', gap: 8}]}>
@@ -1006,14 +1288,14 @@ export function UsernameSetupScreen() {
                   key={s}
                   onPress={() => onChange(s)}
                   style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
                     borderWidth: 1,
-                    borderColor: `${palette.primary}45`,
-                    borderRadius: 20,
-                    backgroundColor: `${palette.primary}08`,
+                    borderColor: palette.borderMid,
+                    borderRadius: 8,
+                    backgroundColor: palette.glassFaint,
                   }}>
-                  <Text style={{color: palette.primary, fontWeight: '700', fontSize: 13}}>@{s}</Text>
+                  <Text style={{color: palette.foregroundMuted, fontWeight: '600', fontSize: 13}}>@{s}</Text>
                 </Pressable>
               ))}
             </View>
@@ -1025,8 +1307,15 @@ export function UsernameSetupScreen() {
           onPress={handleSave}
           loading={saving}
           disabled={!canSubmit}
-          style={{marginTop: 4}}
+          style={{marginTop: 8, marginBottom: 12}}
         />
+        <OutlineCTA
+          label={loggingOut ? 'Signing out...' : 'Log in to existing account'}
+          onPress={handleLoginExisting}
+          loading={loggingOut}
+          disabled={saving || loggingOut}
+        />
+        <View style={{height: 24}} />
       </View>
     </Chrome>
   );

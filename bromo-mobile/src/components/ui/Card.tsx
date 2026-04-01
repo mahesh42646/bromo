@@ -7,21 +7,17 @@ type Props = ViewProps & {
 };
 
 export function Card({style, elevated = false, ...props}: Props) {
-  const {palette, contract, isDark} = useTheme();
+  const {palette, contract} = useTheme();
   const {borderRadiusScale, surfaceStyle} = contract.brandGuidelines;
 
   const radius = borderRadiusScale === 'bold' ? 20 : borderRadiusScale === 'balanced' ? 14 : 8;
 
   const bg =
     surfaceStyle === 'glass'
-      ? isDark
-        ? 'rgba(255,255,255,0.04)'
-        : 'rgba(0,0,0,0.03)'
+      ? palette.glass
       : surfaceStyle === 'elevated'
-        ? isDark
-          ? '#111'
-          : '#f9f9f9'
-        : palette.muted;
+        ? palette.surfaceHigh
+        : palette.surface;
 
   return (
     <View

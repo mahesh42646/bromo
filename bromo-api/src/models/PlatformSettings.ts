@@ -1,19 +1,51 @@
 import mongoose, { Schema } from "mongoose";
 
 export type ThemeMode = "light" | "dark" | "system";
+export type AccentShade = "dark" | "medium" | "light";
 
+// 24 curated accent IDs — must match ACCENT_COLORS in platform-theme.ts
+export const VALID_ACCENT_IDS = [
+  "bromoRed","crimson","orange","amber","yellow","lime","green","emerald",
+  "teal","cyan","sky","blue","indigo","violet","purple","fuchsia","pink",
+  "rose","coral","gold","copper","slate","lavender","jade",
+] as const;
+export type AccentColorId = (typeof VALID_ACCENT_IDS)[number];
+
+// Full resolved palette (server computes this before sending to clients)
 export type ThemePalette = {
   background: string;
   foreground: string;
-  muted: string;
-  mutedForeground: string;
+  foregroundMuted: string;
+  foregroundSubtle: string;
+  foregroundFaint: string;
+  placeholder: string;
+  surface: string;
+  surfaceHigh: string;
+  card: string;
+  glass: string;
+  glassMid: string;
+  glassFaint: string;
   border: string;
+  hairline: string;
+  borderFaint: string;
+  borderMid: string;
+  borderHeavy: string;
   input: string;
+  inputFocused: string;
   ring: string;
   primary: string;
   primaryForeground: string;
+  overlay: string;
+  success: string;
+  successForeground: string;
+  warning: string;
+  warningForeground: string;
+  info: string;
+  infoForeground: string;
   destructive: string;
   destructiveForeground: string;
+  muted: string;
+  mutedForeground: string;
 };
 
 export interface PlatformSettingsDoc {
@@ -30,6 +62,9 @@ export interface PlatformSettingsDoc {
     fontFamily: string;
     useGoogleFont: boolean;
     googleFontFamily?: string;
+    accentColorId: AccentColorId;
+    accentShade: AccentShade;
+    // Resolved palettes (computed server-side, stored for fast reads)
     light: ThemePalette;
     dark: ThemePalette;
   };
@@ -81,17 +116,39 @@ export interface PlatformSettingsDoc {
 
 const paletteSchema = new Schema<ThemePalette>(
   {
-    background: { type: String, default: "#ffffff" },
-    foreground: { type: String, default: "#0a0a0a" },
-    muted: { type: String, default: "#f4f4f5" },
-    mutedForeground: { type: String, default: "#71717a" },
-    border: { type: String, default: "#e4e4e7" },
-    input: { type: String, default: "#e4e4e7" },
-    ring: { type: String, default: "#7c3aed" },
-    primary: { type: String, default: "#7c3aed" },
-    primaryForeground: { type: String, default: "#fafafa" },
-    destructive: { type: String, default: "#dc2626" },
-    destructiveForeground: { type: String, default: "#fafafa" },
+    background:           { type: String, default: "#ffffff" },
+    foreground:           { type: String, default: "#000000" },
+    foregroundMuted:      { type: String, default: "rgba(0,0,0,0.55)" },
+    foregroundSubtle:     { type: String, default: "rgba(0,0,0,0.38)" },
+    foregroundFaint:      { type: String, default: "rgba(0,0,0,0.25)" },
+    placeholder:          { type: String, default: "rgba(0,0,0,0.35)" },
+    surface:              { type: String, default: "#f5f5f5" },
+    surfaceHigh:          { type: String, default: "#ebebeb" },
+    card:                 { type: String, default: "#fafafa" },
+    glass:                { type: String, default: "rgba(0,0,0,0.04)" },
+    glassMid:             { type: String, default: "rgba(0,0,0,0.06)" },
+    glassFaint:           { type: String, default: "rgba(0,0,0,0.02)" },
+    border:               { type: String, default: "#e0e0e0" },
+    hairline:             { type: String, default: "rgba(0,0,0,0.07)" },
+    borderFaint:          { type: String, default: "rgba(0,0,0,0.08)" },
+    borderMid:            { type: String, default: "rgba(0,0,0,0.10)" },
+    borderHeavy:          { type: String, default: "rgba(0,0,0,0.15)" },
+    input:                { type: String, default: "rgba(0,0,0,0.04)" },
+    inputFocused:         { type: String, default: "rgba(0,0,0,0.06)" },
+    ring:                 { type: String, default: "#c0304f" },
+    primary:              { type: String, default: "#c0304f" },
+    primaryForeground:    { type: String, default: "#ffffff" },
+    overlay:              { type: String, default: "rgba(0,0,0,0.50)" },
+    success:              { type: String, default: "#16a34a" },
+    successForeground:    { type: String, default: "#ffffff" },
+    warning:              { type: String, default: "#d97706" },
+    warningForeground:    { type: String, default: "#ffffff" },
+    info:                 { type: String, default: "#0284c7" },
+    infoForeground:       { type: String, default: "#ffffff" },
+    destructive:          { type: String, default: "#dc2626" },
+    destructiveForeground:{ type: String, default: "#ffffff" },
+    muted:                { type: String, default: "#f5f5f5" },
+    mutedForeground:      { type: String, default: "rgba(0,0,0,0.55)" },
   },
   { _id: false },
 );
@@ -115,21 +172,53 @@ const platformSettingsSchema = new Schema<PlatformSettingsDoc>(
       fontFamily: { type: String, required: true, default: "system-ui" },
       useGoogleFont: { type: Boolean, default: false },
       googleFontFamily: { type: String, default: "" },
+      accentColorId: {
+        type: String,
+        enum: [...VALID_ACCENT_IDS],
+        default: "bromoRed",
+      },
+      accentShade: {
+        type: String,
+        enum: ["dark", "medium", "light"],
+        default: "dark",
+      },
       light: { type: paletteSchema, default: () => ({}) },
       dark: {
         type: paletteSchema,
         default: () => ({
-          background: "#09090b",
-          foreground: "#fafafa",
-          muted: "#27272a",
-          mutedForeground: "#a1a1aa",
-          border: "#27272a",
-          input: "#27272a",
-          ring: "#a78bfa",
-          primary: "#a78bfa",
-          primaryForeground: "#18181b",
+          background: "#000000",
+          foreground: "#ffffff",
+          foregroundMuted: "rgba(255,255,255,0.55)",
+          foregroundSubtle: "rgba(255,255,255,0.38)",
+          foregroundFaint: "rgba(255,255,255,0.25)",
+          placeholder: "rgba(255,255,255,0.30)",
+          surface: "#111111",
+          surfaceHigh: "#1c1c1c",
+          card: "#161616",
+          glass: "rgba(255,255,255,0.06)",
+          glassMid: "rgba(255,255,255,0.08)",
+          glassFaint: "rgba(255,255,255,0.04)",
+          border: "#2a2a2a",
+          hairline: "rgba(255,255,255,0.08)",
+          borderFaint: "rgba(255,255,255,0.10)",
+          borderMid: "rgba(255,255,255,0.12)",
+          borderHeavy: "rgba(255,255,255,0.18)",
+          input: "rgba(255,255,255,0.06)",
+          inputFocused: "rgba(255,255,255,0.08)",
+          ring: "#ff4d6d",
+          primary: "#ff4d6d",
+          primaryForeground: "#ffffff",
+          overlay: "rgba(0,0,0,0.75)",
+          success: "#4ade80",
+          successForeground: "#000000",
+          warning: "#fbbf24",
+          warningForeground: "#000000",
+          info: "#60a5fa",
+          infoForeground: "#000000",
           destructive: "#f87171",
-          destructiveForeground: "#18181b",
+          destructiveForeground: "#000000",
+          muted: "#111111",
+          mutedForeground: "rgba(255,255,255,0.55)",
         }),
       },
     },

@@ -1,17 +1,40 @@
 export type ThemeMode = "light" | "dark" | "system";
+export type AccentShade = "dark" | "medium" | "light";
 
 export type ThemePalette = {
   background: string;
   foreground: string;
-  muted: string;
-  mutedForeground: string;
+  foregroundMuted: string;
+  foregroundSubtle: string;
+  foregroundFaint: string;
+  placeholder: string;
+  surface: string;
+  surfaceHigh: string;
+  card: string;
+  glass: string;
+  glassMid: string;
+  glassFaint: string;
   border: string;
+  hairline: string;
+  borderFaint: string;
+  borderMid: string;
+  borderHeavy: string;
   input: string;
+  inputFocused: string;
   ring: string;
   primary: string;
   primaryForeground: string;
+  overlay: string;
+  success: string;
+  successForeground: string;
+  warning: string;
+  warningForeground: string;
+  info: string;
+  infoForeground: string;
   destructive: string;
   destructiveForeground: string;
+  muted: string;
+  mutedForeground: string;
 };
 
 export type PlatformSettings = {
@@ -28,6 +51,8 @@ export type PlatformSettings = {
     fontFamily: string;
     useGoogleFont: boolean;
     googleFontFamily?: string;
+    accentColorId: string;
+    accentShade: AccentShade;
     light: ThemePalette;
     dark: ThemePalette;
   };

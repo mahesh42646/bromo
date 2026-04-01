@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
-    "ios": "react-native run-ios --udid 00008110-001455993E79801E",
-    "ios:sim": "react-native run-ios --simulator \"iPhone 17\"",
+    "ios": "react-native run-ios --simulator \"iPhone 17\"",
+    "ios:device": "react-native run-ios --device \"Mahesh’s iPhone\"",
     "lint": "eslint .",
-    "start": "react-native start",
+    "start": "react-native start --host 0.0.0.0",
     "test": "jest"
   },
   "dependencies": {

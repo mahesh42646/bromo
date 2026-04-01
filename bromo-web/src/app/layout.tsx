@@ -29,14 +29,47 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+function paletteVars(p: ReturnType<typeof fetchPublicPlatformSettings> extends Promise<infer T> ? T["theme"]["light"] : never): string {
+  return `
+    --background: ${p.background};
+    --foreground: ${p.foreground};
+    --foreground-muted: ${p.foregroundMuted};
+    --foreground-subtle: ${p.foregroundSubtle};
+    --foreground-faint: ${p.foregroundFaint};
+    --placeholder: ${p.placeholder};
+    --surface: ${p.surface};
+    --surface-high: ${p.surfaceHigh};
+    --card: ${p.card};
+    --glass: ${p.glass};
+    --glass-mid: ${p.glassMid};
+    --glass-faint: ${p.glassFaint};
+    --border: ${p.border};
+    --hairline: ${p.hairline};
+    --border-faint: ${p.borderFaint};
+    --border-mid: ${p.borderMid};
+    --border-heavy: ${p.borderHeavy};
+    --input: ${p.input};
+    --input-focused: ${p.inputFocused};
+    --ring: ${p.ring};
+    --primary: ${p.primary};
+    --primary-foreground: ${p.primaryForeground};
+    --overlay: ${p.overlay};
+    --success: ${p.success};
+    --success-foreground: ${p.successForeground};
+    --warning: ${p.warning};
+    --warning-foreground: ${p.warningForeground};
+    --info: ${p.info};
+    --info-foreground: ${p.infoForeground};
+    --destructive: ${p.destructive};
+    --destructive-foreground: ${p.destructiveForeground};
+    --muted: ${p.muted};
+    --muted-foreground: ${p.mutedForeground};`;
+}
+
 function buildCssVars(settings: Awaited<ReturnType<typeof fetchPublicPlatformSettings>>): string {
   const light = settings.theme.light;
   const dark = settings.theme.dark;
-  const radiusMap = {
-    soft: "0.5rem",
-    balanced: "0.75rem",
-    bold: "1rem",
-  } as const;
+  const radiusMap = {soft: "0.5rem", balanced: "0.75rem", bold: "1rem"} as const;
   const font = settings.theme.useGoogleFont
     ? (settings.theme.googleFontFamily || settings.theme.fontFamily)
     : settings.theme.fontFamily;
@@ -44,49 +77,16 @@ function buildCssVars(settings: Awaited<ReturnType<typeof fetchPublicPlatformSet
   return `
   :root,
   :root[data-theme="light"] {
-    --background: ${light.background};
-    --foreground: ${light.foreground};
-    --muted: ${light.muted};
-    --muted-foreground: ${light.mutedForeground};
-    --border: ${light.border};
-    --input: ${light.input};
-    --ring: ${light.ring};
-    --primary: ${light.primary};
-    --primary-foreground: ${light.primaryForeground};
-    --destructive: ${light.destructive};
-    --destructive-foreground: ${light.destructiveForeground};
+    ${paletteVars(light)}
     --font-platform: ${font};
     --radius-brand: ${radiusMap[settings.brandGuidelines.borderRadiusScale]};
-    --brand-surface-style: ${settings.brandGuidelines.surfaceStyle};
-    --brand-density: ${settings.brandGuidelines.contentDensity};
-    --brand-gradient-style: ${settings.brandGuidelines.gradientStyle};
   }
   :root[data-theme="dark"] {
-    --background: ${dark.background};
-    --foreground: ${dark.foreground};
-    --muted: ${dark.muted};
-    --muted-foreground: ${dark.mutedForeground};
-    --border: ${dark.border};
-    --input: ${dark.input};
-    --ring: ${dark.ring};
-    --primary: ${dark.primary};
-    --primary-foreground: ${dark.primaryForeground};
-    --destructive: ${dark.destructive};
-    --destructive-foreground: ${dark.destructiveForeground};
+    ${paletteVars(dark)}
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme]) {
-      --background: ${dark.background};
-      --foreground: ${dark.foreground};
-      --muted: ${dark.muted};
-      --muted-foreground: ${dark.mutedForeground};
-      --border: ${dark.border};
-      --input: ${dark.input};
-      --ring: ${dark.ring};
-      --primary: ${dark.primary};
-      --primary-foreground: ${dark.primaryForeground};
-      --destructive: ${dark.destructive};
-      --destructive-foreground: ${dark.destructiveForeground};
+      ${paletteVars(dark)}
     }
   }
   `;

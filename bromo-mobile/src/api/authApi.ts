@@ -49,10 +49,28 @@ export type DbUser = {
   onboardingComplete: boolean;
 };
 
-export async function registerUser(displayName: string): Promise<{user: DbUser; created: boolean}> {
+export async function getEmailByUsername(username: string): Promise<{email: string}> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8_000);
+  try {
+    const res = await fetch(
+      `${apiBase()}/user-auth/email-by-username/${encodeURIComponent(username)}`,
+      {signal: ctrl.signal},
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body as {message?: string}).message ?? 'Username not found');
+    }
+    return res.json() as Promise<{email: string}>;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function registerUser(displayName: string, phone?: string): Promise<{user: DbUser; created: boolean}> {
   const res = await authedFetch('/user-auth/register', {
     method: 'POST',
-    body: JSON.stringify({displayName}),
+    body: JSON.stringify({displayName, phone: phone ?? ''}),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

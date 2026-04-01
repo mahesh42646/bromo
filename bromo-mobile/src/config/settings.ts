@@ -1,4 +1,4 @@
-import bromoConfig from '../../../bromo-config.json';
+import bromoConfig from '../../bromo-config.json';
 
 const apiBaseUrl = String(bromoConfig.apiBaseUrl ?? '')
   .trim()

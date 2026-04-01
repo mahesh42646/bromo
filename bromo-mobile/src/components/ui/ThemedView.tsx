@@ -7,17 +7,14 @@ type Props = ViewProps & {
 };
 
 export function ThemedView({style, variant = 'background', ...props}: Props) {
-  const {palette, contract} = useTheme();
-  const {surfaceStyle} = contract.brandGuidelines;
+  const {palette} = useTheme();
 
   const bg =
     variant === 'background'
       ? palette.background
       : variant === 'surface'
-        ? palette.muted
-        : surfaceStyle === 'glass'
-          ? 'rgba(255,255,255,0.04)'
-          : palette.muted;
+        ? palette.surface
+        : palette.glassFaint;
 
   return <View style={[{backgroundColor: bg}, style]} {...props} />;
 }

@@ -1,52 +1,157 @@
 @import "tailwindcss";
 @import "../styles/theme.css";
 
+/* ── Light mode fallback (server-rendered overrides via <style> tag) ── */
 :root,
 :root[data-theme="light"] {
   --background: #ffffff;
-  --foreground: #0a0a0a;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #7c3aed;
-  --primary: #7c3aed;
-  --primary-foreground: #fafafa;
+  --foreground: #000000;
+  --foreground-muted: rgba(0,0,0,0.55);
+  --foreground-subtle: rgba(0,0,0,0.38);
+  --foreground-faint: rgba(0,0,0,0.25);
+  --placeholder: rgba(0,0,0,0.35);
+
+  --surface: #f5f5f5;
+  --surface-high: #ebebeb;
+  --card: #fafafa;
+
+  --glass: rgba(0,0,0,0.04);
+  --glass-mid: rgba(0,0,0,0.06);
+  --glass-faint: rgba(0,0,0,0.02);
+
+  --border: #e0e0e0;
+  --hairline: rgba(0,0,0,0.07);
+  --border-faint: rgba(0,0,0,0.08);
+  --border-mid: rgba(0,0,0,0.10);
+  --border-heavy: rgba(0,0,0,0.15);
+
+  --input: rgba(0,0,0,0.04);
+  --input-focused: rgba(0,0,0,0.06);
+
+  --ring: #c0304f;
+  --primary: #c0304f;
+  --primary-foreground: #ffffff;
+
+  --overlay: rgba(0,0,0,0.50);
+
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --info: #0284c7;
+  --info-foreground: #ffffff;
   --destructive: #dc2626;
-  --destructive-foreground: #fafafa;
+  --destructive-foreground: #ffffff;
+
+  /* Legacy aliases */
+  --muted: #f5f5f5;
+  --muted-foreground: rgba(0,0,0,0.55);
+}
+
+/* ── Dark mode ── */
+:root[data-theme="dark"] {
+  --background: #000000;
+  --foreground: #ffffff;
+  --foreground-muted: rgba(255,255,255,0.55);
+  --foreground-subtle: rgba(255,255,255,0.38);
+  --foreground-faint: rgba(255,255,255,0.25);
+  --placeholder: rgba(255,255,255,0.30);
+
+  --surface: #111111;
+  --surface-high: #1c1c1c;
+  --card: #161616;
+
+  --glass: rgba(255,255,255,0.06);
+  --glass-mid: rgba(255,255,255,0.08);
+  --glass-faint: rgba(255,255,255,0.04);
+
+  --border: #2a2a2a;
+  --hairline: rgba(255,255,255,0.08);
+  --border-faint: rgba(255,255,255,0.10);
+  --border-mid: rgba(255,255,255,0.12);
+  --border-heavy: rgba(255,255,255,0.18);
+
+  --input: rgba(255,255,255,0.06);
+  --input-focused: rgba(255,255,255,0.08);
+
+  --ring: #ff4d6d;
+  --primary: #ff4d6d;
+  --primary-foreground: #ffffff;
+
+  --overlay: rgba(0,0,0,0.75);
+
+  --success: #4ade80;
+  --success-foreground: #000000;
+  --warning: #fbbf24;
+  --warning-foreground: #000000;
+  --info: #60a5fa;
+  --info-foreground: #000000;
+  --destructive: #f87171;
+  --destructive-foreground: #000000;
+
+  --muted: #111111;
+  --muted-foreground: rgba(255,255,255,0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --background: #000000;
+    --foreground: #ffffff;
+    --foreground-muted: rgba(255,255,255,0.55);
+    --foreground-subtle: rgba(255,255,255,0.38);
+    --foreground-faint: rgba(255,255,255,0.25);
+    --placeholder: rgba(255,255,255,0.30);
+    --surface: #111111;
+    --surface-high: #1c1c1c;
+    --card: #161616;
+    --glass: rgba(255,255,255,0.06);
+    --glass-mid: rgba(255,255,255,0.08);
+    --glass-faint: rgba(255,255,255,0.04);
+    --border: #2a2a2a;
+    --hairline: rgba(255,255,255,0.08);
+    --border-faint: rgba(255,255,255,0.10);
+    --border-mid: rgba(255,255,255,0.12);
+    --border-heavy: rgba(255,255,255,0.18);
+    --input: rgba(255,255,255,0.06);
+    --input-focused: rgba(255,255,255,0.08);
+    --ring: #ff4d6d;
+    --primary: #ff4d6d;
+    --primary-foreground: #ffffff;
+    --overlay: rgba(0,0,0,0.75);
+    --success: #4ade80;
+    --success-foreground: #000000;
+    --warning: #fbbf24;
+    --warning-foreground: #000000;
+    --info: #60a5fa;
+    --info-foreground: #000000;
+    --destructive: #f87171;
+    --destructive-foreground: #000000;
+    --muted: #111111;
+    --muted-foreground: rgba(255,255,255,0.55);
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
+  --color-surface: var(--surface);
+  --color-surface-high: var(--surface-high);
+  --color-card: var(--card);
+  --color-glass: var(--glass);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]),
-  :root[data-theme="dark"] {
-    --background: #09090b;
-    --foreground: #fafafa;
-    --muted: #27272a;
-    --muted-foreground: #a1a1aa;
-    --border: #27272a;
-    --input: #27272a;
-    --ring: #a78bfa;
-    --primary: #a78bfa;
-    --primary-foreground: #18181b;
-    --destructive: #f87171;
-    --destructive-foreground: #18181b;
-  }
 }
 
 body {
@@ -67,14 +172,11 @@ body {
 }
 
 [data-brand-surface="glass"] .brand-surface {
-  background: color-mix(in oklab, var(--background) 86%, transparent);
+  background: var(--glass);
   backdrop-filter: blur(12px);
 }
 
 [data-brand-surface="elevated"] .brand-surface {
+  background: var(--surface-high);
   box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.35);
 }
-
-
-
-/* api theme data only */

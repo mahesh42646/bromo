@@ -1,440 +1,937 @@
 import React, {useState} from 'react';
 import {
+  Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {
-  BadgeCheck,
-  Camera,
-  ChevronLeft,
-  Coins,
-  AlignJustify,
   Grid3X3,
   Clapperboard,
   Bookmark,
-  Flame,
-  Zap,
-  Trophy,
-  TrendingUp,
   Play,
-  Flag,
+  BadgeCheck,
+  ChevronLeft,
+  AlignJustify,
+  Coins,
+  Camera,
+  Plus,
+  Link2,
+  Lock,
+  Globe,
+  X,
+  ChevronRight,
+  Zap,
+  BarChart2,
+  Bell,
+  Shield,
+  Sliders,
+  Film,
+  Activity,
+  Smartphone,
+  KeyRound,
+  Info,
+  UserPlus,
+  LogOut,
+  Share2,
+  PenSquare,
 } from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
-import {ThemedText} from '../components/ui/ThemedText';
-import {Card} from '../components/ui/Card';
-import {Badge} from '../components/ui/Badge';
-import {PrimaryButton} from '../components/ui/PrimaryButton';
+import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
+import {resetToAuth} from '../navigation/rootNavigation';
 
-const PROFILE = {
-  name: 'Siddharth Patil',
-  handle: 'siddharth_patil',
-  avatar: 'https://i.pravatar.cc/150?img=11',
-  bioLines: [
-    'Proud Indian · Entrepreneur',
-    'Mining H-Coins via Reels',
-    'Tech enthusiast & explorer',
-  ] as string[],
-  link: 'bromo.me/siddharth_pro',
-  posts: 124,
-  fans: '42.5K',
-  following: 840,
-  verified: true,
-  karma: '8.2',
-  streak: 12,
-  rank: 452,
-  coins: 450,
+// ─── Types ────────────────────────────────────────────────────────
+
+type SettingsItem = {
+  icon: React.ComponentType<{size: number; color: string}>;
+  label: string;
+  sublabel?: string;
+  accent?: string;
+  action: () => void;
+  showChevron?: boolean;
 };
 
-const POST_GRID = [
-  'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=300',
-  'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=300',
-  'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=300',
-  'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=300',
-  'https://images.unsplash.com/photo-1533107862482-0e6974b06ec4?w=300',
-  'https://images.unsplash.com/photo-1514525253361-bee8718a7439?w=300',
-  'https://images.unsplash.com/photo-1506461883276-594a12b11cf3?w=300',
-  'https://images.unsplash.com/photo-1555133539-4a34610018f1?w=300',
-  'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=300',
-];
+type SettingsGroup = {
+  title?: string;
+  items: SettingsItem[];
+};
 
-const AFFILIATE_PRODUCTS = [
-  {
-    id: '1',
-    name: 'Nike Air Max Elite',
-    image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200',
-    originalPrice: '₹2,499',
-    profit: '+₹250',
-    adCost: '50 H-Coins',
-  },
-  {
-    id: '2',
-    name: 'Smart Watch X',
-    image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200',
-    originalPrice: '₹4,999',
-    profit: '+₹800',
-    adCost: '120 H-Coins',
-  },
-];
+// ─── Styles ───────────────────────────────────────────────────────
 
 const GRID_TABS = [
-  {id: 'posts', icon: Grid3X3},
-  {id: 'reels', icon: Clapperboard},
-  {id: 'saved', icon: Bookmark},
+  {id: 'posts', icon: Grid3X3, label: 'Posts'},
+  {id: 'reels', icon: Clapperboard, label: 'Reels'},
+  {id: 'saved', icon: Bookmark, label: 'Saved'},
 ];
+
+const SAMPLE_POSTS = [
+  'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=400',
+  'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=400',
+  'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=400',
+  'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400',
+  'https://images.unsplash.com/photo-1533107862482-0e6974b06ec4?w=400',
+  'https://images.unsplash.com/photo-1514525253361-bee8718a7439?w=400',
+  'https://images.unsplash.com/photo-1506461883276-594a12b11cf3?w=400',
+  'https://images.unsplash.com/photo-1555133539-4a34610018f1?w=400',
+  'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400',
+];
+
+// ─── Settings Modal ───────────────────────────────────────────────
+
+function SettingsModal({
+  visible,
+  onClose,
+  groups,
+  username,
+  displayName,
+  avatar,
+  palette,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  groups: SettingsGroup[];
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  palette: ReturnType<typeof useTheme>['palette'];
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent={false}
+      animationType="slide"
+      onRequestClose={onClose}>
+      <View style={{flex: 1, backgroundColor: '#000'}}>
+        <StatusBar barStyle="light-content" />
+
+        {/* Header */}
+        <View style={styles.settingsHeader}>
+          <Pressable onPress={onClose} hitSlop={12} style={styles.settingsClose}>
+            <X size={22} color="#fff" />
+          </Pressable>
+          <Text style={styles.settingsTitle}>Settings and activity</Text>
+          <View style={{width: 40}} />
+        </View>
+
+        <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+          {/* Account block */}
+          <View style={styles.settingsAccountBlock}>
+            <View style={styles.settingsAvatar}>
+              {avatar ? (
+                <Image source={{uri: avatar}} style={styles.settingsAvatarImg} />
+              ) : (
+                <View style={[styles.settingsAvatarImg, {
+                  backgroundColor: `${palette.primary}20`,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }]}>
+                  <Text style={{color: palette.primary, fontSize: 22, fontWeight: '800'}}>
+                    {displayName.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View>
+              <Text style={styles.settingsAccountName}>{displayName}</Text>
+              <Text style={styles.settingsAccountHandle}>@{username || 'you'}</Text>
+            </View>
+          </View>
+
+          {/* Settings groups */}
+          {groups.map((group, gi) => (
+            <View key={gi}>
+              {group.title ? (
+                <Text style={styles.settingsGroupTitle}>{group.title}</Text>
+              ) : null}
+              <View style={styles.settingsGroupCard}>
+                {group.items.map((item, ii) => {
+                  const Icon = item.icon;
+                  const accentColor = item.accent ?? '#fff';
+                  return (
+                    <Pressable
+                      key={ii}
+                      onPress={item.action}
+                      style={({pressed}) => [
+                        styles.settingsRow,
+                        ii < group.items.length - 1 && styles.settingsRowBorder,
+                        {opacity: pressed ? 0.65 : 1},
+                      ]}>
+                      <View style={[styles.settingsIconBox, {backgroundColor: `${accentColor}14`}]}>
+                        <Icon size={18} color={accentColor} />
+                      </View>
+                      <View style={{flex: 1}}>
+                        <Text style={[styles.settingsRowLabel, {color: accentColor === '#fff' ? '#fff' : accentColor}]}>
+                          {item.label}
+                        </Text>
+                        {item.sublabel ? (
+                          <Text style={styles.settingsRowSub}>{item.sublabel}</Text>
+                        ) : null}
+                      </View>
+                      {item.showChevron !== false && (
+                        <ChevronRight size={16} color="rgba(255,255,255,0.2)" />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+
+          <View style={{height: 48}} />
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Profile Screen ───────────────────────────────────────────────
 
 export function ProfileScreen() {
   const navigation = useNavigation();
-  const {palette, contract, isDark} = useTheme();
+  const {palette, contract} = useTheme();
+  const {dbUser, logout} = useAuth();
   const [gridTab, setGridTab] = useState('posts');
-  const {borderRadiusScale} = contract.brandGuidelines;
-  const radius = borderRadiusScale === 'bold' ? 14 : 10;
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const displayName = dbUser?.displayName || 'User';
+  const username = dbUser?.username || '';
+  const email = dbUser?.email || '';
+  const avatar = dbUser?.profilePicture || null;
+  const bio = dbUser?.bio || '';
+  const isVerified = dbUser?.emailVerified && dbUser?.provider === 'google';
+
+  const appName = contract.branding.appTitle || 'bromo';
+
+  const handleLogout = () => {
+    setMenuOpen(false);
+    Alert.alert(
+      'Log out',
+      `Log out of @${username || 'your account'}?`,
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            resetToAuth();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleAddAccount = () => {
+    setMenuOpen(false);
+    Alert.alert(
+      'Add another account',
+      'You will be logged out of the current account. Continue?',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Continue',
+          onPress: async () => {
+            await logout();
+            resetToAuth();
+          },
+        },
+      ],
+    );
+  };
+
+  const nav = (screen: string, params?: object) => {
+    setMenuOpen(false);
+    parentNavigate(navigation, screen, params);
+  };
+
+  const settingsGroups: SettingsGroup[] = [
+    {
+      title: 'Creator tools',
+      items: [
+        {
+          icon: Zap,
+          label: 'Creator Dashboard',
+          sublabel: 'Stats, earnings, and tools',
+          accent: '#f59e0b',
+          action: () => nav('CreatorDashboard'),
+        },
+        {
+          icon: BarChart2,
+          label: 'Professional Dashboard',
+          sublabel: 'Insights and analytics',
+          accent: '#3b82f6',
+          action: () => nav('ContentInsights'),
+        },
+        {
+          icon: BadgeCheck,
+          label: 'Get Verification Badge',
+          sublabel: 'Apply for the verified checkmark',
+          accent: '#3b82f6',
+          action: () => nav('SettingsMain'),
+        },
+      ],
+    },
+    {
+      title: 'Settings',
+      items: [
+        {
+          icon: Bell,
+          label: 'Notification settings',
+          action: () => nav('NotificationSettings'),
+          accent: '#fff',
+        },
+        {
+          icon: Shield,
+          label: 'Account privacy',
+          sublabel: 'Public or private account',
+          action: () => nav('PrivacySettings'),
+          accent: '#fff',
+        },
+        {
+          icon: Sliders,
+          label: 'Content preferences',
+          action: () => nav('SettingsMain'),
+          accent: '#fff',
+        },
+        {
+          icon: Film,
+          label: 'Media quality',
+          sublabel: 'Upload and playback quality',
+          action: () => nav('SettingsMain'),
+          accent: '#fff',
+        },
+      ],
+    },
+    {
+      title: 'Account',
+      items: [
+        {
+          icon: Activity,
+          label: 'Your activity',
+          sublabel: 'Time spent, interactions',
+          action: () => nav('SettingsMain'),
+          accent: '#fff',
+        },
+        {
+          icon: Smartphone,
+          label: 'Devices and sessions',
+          action: () => nav('SecuritySettings'),
+          accent: '#fff',
+        },
+        {
+          icon: KeyRound,
+          label: 'Permissions',
+          sublabel: 'Camera, location, contacts',
+          action: () => nav('SecuritySettings'),
+          accent: '#fff',
+        },
+      ],
+    },
+    {
+      title: 'More info',
+      items: [
+        {
+          icon: Info,
+          label: `About ${appName}`,
+          sublabel: 'Version, terms, privacy policy',
+          action: () => nav('AboutApp'),
+          accent: '#fff',
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          icon: UserPlus,
+          label: 'Add account',
+          accent: palette.primary,
+          action: handleAddAccount,
+          showChevron: false,
+        },
+        {
+          icon: LogOut,
+          label: 'Log out',
+          accent: '#e94560',
+          action: handleLogout,
+          showChevron: false,
+        },
+      ],
+    },
+  ];
 
   return (
     <ThemedSafeScreen>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="light-content" />
 
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 14,
-          paddingVertical: 12,
-          backgroundColor: isDark ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)',
-          borderBottomWidth: 1,
-          borderBottomColor: palette.border,
-        }}>
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
-          <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-            <ChevronLeft size={20} color={palette.mutedForeground} />
-          </Pressable>
-          <ThemedText variant="primary" style={{fontSize: 14, fontStyle: 'italic', fontWeight: '900'}}>
-            @{PROFILE.handle}
-          </ThemedText>
-        </View>
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              backgroundColor: `${palette.primary}15`,
-              borderWidth: 1,
-              borderColor: `${palette.primary}30`,
-              borderRadius: 999,
-              paddingHorizontal: 10,
-              paddingVertical: 5,
-            }}>
-            <Coins size={12} color="#FFD700" />
-            <ThemedText variant="primary" style={{fontSize: 11, fontWeight: '900'}}>
-              {PROFILE.coins} H-Coins
-            </ThemedText>
+      <SettingsModal
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        groups={settingsGroups}
+        username={username}
+        displayName={displayName}
+        avatar={avatar}
+        palette={palette}
+      />
+
+      {/* ── Top header ── */}
+      <View style={styles.header}>
+        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
+          <ChevronLeft size={22} color="rgba(255,255,255,0.7)" />
+        </Pressable>
+
+        <Text style={styles.headerUsername} numberOfLines={1}>
+          {username || displayName}
+        </Text>
+
+        <View style={styles.headerRight}>
+          <View style={[styles.coinBadge, {borderColor: `${palette.primary}40`, backgroundColor: `${palette.primary}12`}]}>
+            <Coins size={11} color="#FFD700" />
+            <Text style={[styles.coinText, {color: palette.primary}]}>0</Text>
           </View>
-          <Pressable onPress={() => parentNavigate(navigation, 'SettingsMain')}>
-            <AlignJustify size={20} color={palette.foreground} />
+          <Pressable onPress={() => setMenuOpen(true)} hitSlop={12}>
+            <AlignJustify size={22} color="rgba(255,255,255,0.9)" />
           </Pressable>
         </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Profile Info */}
-        <View style={{padding: 16}}>
-          {/* Avatar + Stats */}
-          <View style={{flexDirection: 'row', alignItems: 'center', gap: 24}}>
-            {/* Avatar with gradient ring */}
-            <View
-              style={{
-                padding: 3,
-                borderRadius: 999,
-                borderWidth: 3,
-                borderColor: palette.primary,
-                shadowColor: palette.primary,
-                shadowOffset: {width: 0, height: 0},
-                shadowOpacity: 0.4,
-                shadowRadius: 8,
-                elevation: 6,
-              }}>
-              <Image
-                source={{uri: PROFILE.avatar}}
-                style={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: 40,
-                  borderWidth: 3,
-                  borderColor: palette.background,
-                }}
-              />
+
+        {/* ── Profile section ── */}
+        <View style={styles.profileSection}>
+
+          {/* Avatar row */}
+          <View style={styles.avatarRow}>
+            <View style={[styles.avatarRing, {borderColor: palette.primary}]}>
+              {avatar ? (
+                <Image source={{uri: avatar}} style={styles.avatarImg} />
+              ) : (
+                <View style={[styles.avatarImg, styles.avatarFallback, {backgroundColor: `${palette.primary}20`}]}>
+                  <Text style={[styles.avatarInitial, {color: palette.primary}]}>
+                    {displayName.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Stats */}
-            <View style={{flex: 1, flexDirection: 'row', justifyContent: 'space-around'}}>
+            <View style={styles.statsRow}>
               {[
-                {label: 'Posts', value: PROFILE.posts, onPress: () => parentNavigate(navigation, 'ManageContent')},
+                {label: 'Posts', value: 0, onPress: () => parentNavigate(navigation, 'ManageContent')},
                 {
-                  label: 'Fans',
-                  value: PROFILE.fans,
-                  onPress: () =>
-                    parentNavigate(navigation, 'FollowersFollowing', {
-                      userId: PROFILE.handle,
-                      tab: 'followers',
-                    }),
+                  label: 'Followers',
+                  value: 0,
+                  onPress: () => parentNavigate(navigation, 'FollowersFollowing', {userId: username, tab: 'followers'}),
                 },
                 {
-                  label: 'Vibing',
-                  value: PROFILE.following,
-                  onPress: () =>
-                    parentNavigate(navigation, 'FollowersFollowing', {
-                      userId: PROFILE.handle,
-                      tab: 'following',
-                    }),
+                  label: 'Following',
+                  value: 0,
+                  onPress: () => parentNavigate(navigation, 'FollowersFollowing', {userId: username, tab: 'following'}),
                 },
               ].map(stat => (
-                <Pressable key={stat.label} onPress={stat.onPress} style={{alignItems: 'center'}}>
-                  <ThemedText variant="heading" style={{fontSize: 18, lineHeight: 22}}>
-                    {stat.value}
-                  </ThemedText>
-                  <ThemedText variant="caption" style={{fontSize: 9, fontWeight: '700', letterSpacing: 0.5, marginTop: 2}}>
-                    {stat.label.toUpperCase()}
-                  </ThemedText>
+                <Pressable key={stat.label} onPress={stat.onPress} style={styles.statItem}>
+                  <Text style={styles.statValue}>{stat.value}</Text>
+                  <Text style={styles.statLabel}>{stat.label}</Text>
                 </Pressable>
               ))}
             </View>
           </View>
 
-          {/* Name + Bio */}
-          <View style={{marginTop: 14}}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-              <ThemedText variant="heading" style={{fontSize: 15}}>{PROFILE.name}</ThemedText>
-              {PROFILE.verified && (
-                <BadgeCheck size={16} color="#3b82f6" fill="#3b82f6" strokeWidth={2} />
+          {/* Name + bio */}
+          <View style={styles.bioSection}>
+            <View style={styles.nameRow}>
+              <Text style={styles.displayName}>{displayName}</Text>
+              {isVerified && (
+                <BadgeCheck size={16} color="#3b82f6" fill="#3b82f6" />
               )}
-              <View
-                style={{
-                  backgroundColor: '#8b5cf620',
-                  borderWidth: 1,
-                  borderColor: '#8b5cf640',
-                  borderRadius: 6,
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                }}>
-                <Text style={{color: '#8b5cf6', fontSize: 9, fontWeight: '900'}}>KARMA {PROFILE.karma}</Text>
-              </View>
             </View>
-            <View style={{marginTop: 10, gap: 8}}>
-              <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                <Flag size={14} color={palette.mutedForeground} />
-                <ThemedText variant="body" style={{flex: 1, lineHeight: 19}}>
-                  {PROFILE.bioLines[0]}
-                </ThemedText>
-              </View>
-              <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                <Coins size={14} color="#FFD700" />
-                <ThemedText variant="body" style={{flex: 1, lineHeight: 19}}>
-                  {PROFILE.bioLines[1]}
-                </ThemedText>
-              </View>
-              <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                <Camera size={14} color={palette.mutedForeground} />
-                <ThemedText variant="body" style={{flex: 1, lineHeight: 19}}>
-                  {PROFILE.bioLines[2]}
-                </ThemedText>
-              </View>
-            </View>
-            <ThemedText variant="primary" style={{marginTop: 4, fontSize: 12, fontStyle: 'italic'}}>
-              {PROFILE.link}
-            </ThemedText>
-          </View>
 
-          {/* Stat Pills */}
-          <View style={{flexDirection: 'row', gap: 10, marginTop: 14}}>
-            <Card style={{flex: 1, padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
-              <View>
-                <ThemedText variant="caption" style={{fontSize: 8, fontWeight: '900', letterSpacing: 0.5}}>DAILY STREAK</ThemedText>
-                <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2}}>
-                  <Flame size={14} color="#f59e0b" />
-                  <Text style={{color: '#f59e0b', fontSize: 12, fontWeight: '900'}}>
-                    {PROFILE.streak} Days
-                  </Text>
-                </View>
-              </View>
-              <Zap size={14} color="#f59e0b" />
-            </Card>
-            <Card style={{flex: 1, padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
-              <View>
-                <ThemedText variant="caption" style={{fontSize: 8, fontWeight: '900', letterSpacing: 0.5}}>GLOBAL RANK</ThemedText>
-                <Text style={{color: '#3b82f6', fontSize: 12, fontWeight: '900', marginTop: 2}}>
-                  #{PROFILE.rank}
-                </Text>
-              </View>
-              <Trophy size={14} color="#FFD700" />
-            </Card>
-          </View>
+            {email ? (
+              <Text style={styles.emailLine}>{email}</Text>
+            ) : null}
 
-          {/* Action Buttons */}
-          <View style={{flexDirection: 'row', gap: 10, marginTop: 14}}>
-            <PrimaryButton
-              label="Edit Profile"
-              variant="solid"
-              fullWidth
-              style={{flex: 1, borderRadius: radius}}
-              onPress={() => parentNavigate(navigation, 'EditProfile')}
-            />
-            <PrimaryButton
-              label="H-Coin Wallet"
-              variant="outline"
-              fullWidth
-              style={{flex: 1, borderRadius: radius}}
-              onPress={() => parentNavigate(navigation, 'PointsWallet')}
-            />
-          </View>
-        </View>
+            {bio ? (
+              <Text style={styles.bioText}>{bio}</Text>
+            ) : null}
 
-        {/* Affiliate Hub */}
-        <View style={{paddingHorizontal: 14, paddingBottom: 16}}>
-          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
-            <ThemedText variant="primary" style={{fontSize: 10, fontWeight: '900', letterSpacing: 2, fontStyle: 'italic'}}>
-              AFFILIATE HUB (PRIVATE)
-            </ThemedText>
+            {/* Link placeholder */}
             <Pressable
-              onPress={() => parentNavigate(navigation, 'MyAdsDashboard')}
-              style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
-              <TrendingUp size={10} color={palette.mutedForeground} />
-              <ThemedText variant="muted" style={{fontSize: 9, fontWeight: '700', textDecorationLine: 'underline'}}>
-                Ad Analytics
-              </ThemedText>
+              style={styles.linkRow}
+              onPress={() => parentNavigate(navigation, 'EditProfile')}>
+              <Link2 size={13} color={palette.primary} />
+              <Text style={[styles.linkText, {color: palette.primary}]}>
+                Add a link
+              </Text>
+            </Pressable>
+
+            {/* Category + privacy row */}
+            <View style={styles.metaRow}>
+              <View style={styles.metaBadge}>
+                <Globe size={11} color="rgba(255,255,255,0.4)" />
+                <Text style={styles.metaBadgeText}>Public</Text>
+              </View>
+              <View style={styles.metaBadge}>
+                <Text style={styles.metaBadgeText}>Creator</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Action buttons */}
+          <View style={styles.actionRow}>
+            <Pressable
+              style={styles.actionBtn}
+              onPress={() => parentNavigate(navigation, 'EditProfile')}>
+              <PenSquare size={15} color="#fff" />
+              <Text style={styles.actionBtnText}>Edit profile</Text>
+            </Pressable>
+            <Pressable
+              style={styles.actionBtn}
+              onPress={() => parentNavigate(navigation, 'ShareProfile')}>
+              <Share2 size={15} color="#fff" />
+              <Text style={styles.actionBtnText}>Share profile</Text>
             </Pressable>
           </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{gap: 12}}>
-            {AFFILIATE_PRODUCTS.map(product => (
-              <Card
-                key={product.id}
-                style={{
-                  width: 280,
-                  padding: 14,
-                }}>
-                <View style={{flexDirection: 'row', gap: 12}}>
-                  <Image
-                    source={{uri: product.image}}
-                    style={{
-                      width: 80,
-                      height: 80,
-                      borderRadius: borderRadiusScale === 'bold' ? 16 : 10,
-                      resizeMode: 'cover',
-                    }}
-                  />
-                  <View style={{flex: 1}}>
-                    <ThemedText variant="label" style={{fontSize: 12}}>{product.name}</ThemedText>
-                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4}}>
-                      <ThemedText variant="muted" style={{textDecorationLine: 'line-through', fontSize: 10}}>
-                        {product.originalPrice}
-                      </ThemedText>
-                      <Badge label={`Profit ${product.profit}`} variant="green" />
-                    </View>
-                    <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10}}>
-                      <Pressable
-                        onPress={() => parentNavigate(navigation, 'CreateAdStep1')}
-                        style={{
-                          backgroundColor: '#3b82f6',
-                          borderRadius: borderRadiusScale === 'bold' ? 10 : 6,
-                          paddingHorizontal: 14,
-                          paddingVertical: 7,
-                          shadowColor: '#3b82f6',
-                          shadowOffset: {width: 0, height: 3},
-                          shadowOpacity: 0.3,
-                          shadowRadius: 6,
-                          elevation: 4,
-                        }}>
-                        <Text style={{color: '#fff', fontSize: 10, fontWeight: '800'}}>RUN ADS</Text>
-                      </Pressable>
-                      <View style={{alignItems: 'flex-end'}}>
-                        <ThemedText variant="caption" style={{fontSize: 8, fontWeight: '900'}}>COST</ThemedText>
-                        <ThemedText variant="primary" style={{fontSize: 10, fontWeight: '900'}}>{product.adCost}</ThemedText>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              </Card>
-            ))}
-          </ScrollView>
         </View>
 
-        {/* Grid Tab Bar */}
-        <View
-          style={{
-            flexDirection: 'row',
-            borderTopWidth: 1,
-            borderBottomWidth: 1,
-            borderColor: palette.border,
-          }}>
+        {/* ── Tab bar ── */}
+        <View style={styles.tabBar}>
           {GRID_TABS.map(tab => {
             const Icon = tab.icon;
-            const isActive = gridTab === tab.id;
+            const active = gridTab === tab.id;
             return (
               <Pressable
                 key={tab.id}
                 onPress={() => setGridTab(tab.id)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 14,
-                  alignItems: 'center',
-                  borderBottomWidth: isActive ? 2 : 0,
-                  borderBottomColor: palette.primary,
-                }}>
-                <Icon size={20} color={isActive ? palette.primary : palette.mutedForeground} />
+                style={[styles.tabItem, active && styles.tabItemActive]}>
+                <Icon size={22} color={active ? '#fff' : 'rgba(255,255,255,0.35)'} />
               </Pressable>
             );
           })}
         </View>
 
-        {/* Post Grid */}
-        <View style={{flexDirection: 'row', flexWrap: 'wrap'}}>
-          {POST_GRID.map((uri, index) => (
+        {/* ── Content grid ── */}
+        <View style={styles.grid}>
+          {/* Add new content tile */}
+          <Pressable
+            onPress={() => parentNavigate(navigation, 'CreateFlow')}
+            style={styles.addTile}>
+            <View style={styles.addTileInner}>
+              <Plus size={28} color="rgba(255,255,255,0.5)" />
+              <Text style={styles.addTileText}>New</Text>
+            </View>
+          </Pressable>
+
+          {/* Sample post tiles */}
+          {SAMPLE_POSTS.map((uri, i) => (
             <Pressable
-              key={index}
+              key={i}
               onPress={() => {
                 if (gridTab === 'saved') {
                   parentNavigate(navigation, 'SavedPosts');
                   return;
                 }
-                parentNavigate(navigation, 'PostDetail', {postId: String(index + 1)});
+                parentNavigate(navigation, 'PostDetail', {postId: String(i + 1)});
               }}
-              style={{
-                width: '33.33%',
-                aspectRatio: 1,
-                padding: 1,
-              }}>
-              <Image
-                source={{uri}}
-                style={{width: '100%', height: '100%', resizeMode: 'cover'}}
-              />
+              style={styles.gridTile}>
+              <Image source={{uri}} style={styles.gridImg} />
               {gridTab === 'reels' && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: 6,
-                    right: 6,
-                  }}>
-                  <Play size={14} color="#fff" fill="#fff" />
+                <View style={styles.reelIcon}>
+                  <Play size={12} color="#fff" fill="#fff" />
                 </View>
               )}
             </Pressable>
           ))}
         </View>
 
-        <View style={{height: 20}} />
+        {SAMPLE_POSTS.length === 0 && (
+          <View style={styles.emptyState}>
+            <Camera size={40} color="rgba(255,255,255,0.15)" />
+            <Text style={styles.emptyText}>No posts yet</Text>
+            <Text style={styles.emptySubText}>Share your first moment</Text>
+          </View>
+        )}
+
+        <View style={{height: 32}} />
       </ScrollView>
+
+      {/* Floating lock/public indicator */}
+      <Pressable
+        style={[styles.privacyFab, {backgroundColor: `${palette.primary}18`, borderColor: `${palette.primary}30`}]}
+        onPress={() => parentNavigate(navigation, 'PrivacySettings')}>
+        <Lock size={12} color={palette.primary} />
+        <Text style={[styles.privacyFabText, {color: palette.primary}]}>Public</Text>
+      </Pressable>
     </ThemedSafeScreen>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
+  },
+  headerUsername: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 8,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  coinBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  coinText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  // Profile section
+  profileSection: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+    marginBottom: 14,
+  },
+  avatarRing: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    padding: 2,
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+  },
+  avatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontSize: 32,
+    fontWeight: '800',
+  },
+  statsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  statValue: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  statLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // Bio
+  bioSection: {
+    gap: 4,
+    marginBottom: 14,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  displayName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emailLine: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 13,
+  },
+  bioText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 2,
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+  },
+  linkText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+  },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 6,
+  },
+  metaBadgeText: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // Action buttons
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 36,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  actionBtnText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // Tab bar
+  tabBar: {
+    flexDirection: 'row',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.07)',
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  tabItemActive: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#fff',
+  },
+
+  // Grid
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  addTile: {
+    width: '33.33%',
+    aspectRatio: 1,
+    padding: 1,
+  },
+  addTileInner: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  addTileText: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  gridTile: {
+    width: '33.33%',
+    aspectRatio: 1,
+    padding: 1,
+  },
+  gridImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  reelIcon: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 8,
+  },
+  emptyText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emptySubText: {
+    color: 'rgba(255,255,255,0.25)',
+    fontSize: 13,
+  },
+
+  // Privacy FAB
+  privacyFab: {
+    position: 'absolute',
+    bottom: 20,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  privacyFabText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // Settings modal
+  settingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 56,
+    paddingBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  settingsClose: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  settingsAccountBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  settingsAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
+  },
+  settingsAvatarImg: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  settingsAccountName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  settingsAccountHandle: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  settingsGroupTitle: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingTop: 24,
+    paddingBottom: 8,
+  },
+  settingsGroupCard: {
+    marginHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 14,
+  },
+  settingsRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  settingsIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  settingsRowSub: {
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 12,
+    marginTop: 2,
+  },
+});

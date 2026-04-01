@@ -83,7 +83,7 @@ export type AppStackParamList = {
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
-  EmailVerification: {email: string};
+  EmailVerification: {email: string; pendingUsername?: string};
   ForgotPassword: undefined;
-  UsernameSetup: {displayName: string};
+  UsernameSetup: {displayName: string; pendingUsername?: string};
 };

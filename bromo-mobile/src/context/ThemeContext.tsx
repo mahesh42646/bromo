@@ -8,6 +8,8 @@ import React, {
 } from 'react';
 import {useColorScheme} from 'react-native';
 import {
+  FALLBACK_PALETTE_DARK,
+  FALLBACK_PALETTE_LIGHT,
   defaultThemeContract,
   fetchThemeContractFromUrls,
   type RuntimeThemeContract,
@@ -25,7 +27,7 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue>({
   contract: defaultThemeContract,
-  palette: defaultThemeContract.theme.dark,
+  palette: FALLBACK_PALETTE_DARK,
   isDark: true,
   toggleTheme: () => {},
   refresh: async () => {},
@@ -37,17 +39,20 @@ export function ThemeProvider({children}: {children: React.ReactNode}) {
   const [manualDark, setManualDark] = useState<boolean | null>(null);
 
   const refresh = useCallback(async () => {
-    // Order matters: explicit settings first, then common local fallbacks.
     const candidates = [
       settings.webThemeContractUrl,
       settings.apiBaseUrl,
-      'http://localhost:3001',
-      'http://127.0.0.1:3001',
-      'http://localhost:3000/api/public/theme-contract',
-      'http://127.0.0.1:3000/api/public/theme-contract',
+      'https://bromo.darkunde.in',
+      'https://bromo.darkunde.in:3001',
+      'https://bromo.darkunde.in:3000/api/public/theme-contract',
+      'https://bromo.darkunde.in/api/public/theme-contract',
     ];
-    const c = await fetchThemeContractFromUrls(candidates);
-    setContract(c);
+    try {
+      const c = await fetchThemeContractFromUrls(candidates);
+      setContract(c);
+    } catch {
+      // Keep current contract (which defaults to defaultThemeContract with fallback palettes)
+    }
   }, []);
 
   useEffect(() => {
@@ -69,7 +74,15 @@ export function ThemeProvider({children}: {children: React.ReactNode}) {
     return systemScheme === 'dark';
   }, [manualDark, contract.theme.defaultTheme, systemScheme]);
 
-  const palette = isDark ? contract.theme.dark : contract.theme.light;
+  // Use server-resolved palette if available, fall back to in-app constants
+  const palette = useMemo(() => {
+    const serverPalette = isDark ? contract.theme.dark : contract.theme.light;
+    // Validate that the palette has the required tokens
+    if (serverPalette?.background && serverPalette?.primary && serverPalette?.glass) {
+      return serverPalette;
+    }
+    return isDark ? FALLBACK_PALETTE_DARK : FALLBACK_PALETTE_LIGHT;
+  }, [isDark, contract.theme.dark, contract.theme.light]);
 
   const toggleTheme = useCallback(() => {
     setManualDark(prev => (prev === null ? !isDark : !prev));

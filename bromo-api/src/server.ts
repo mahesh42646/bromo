@@ -6,7 +6,7 @@ async function main() {
   await connectDb();
   const app = createApp();
   app.listen(env.port, () => {
-    console.log(`BROMO API listening on http://127.0.0.1:${env.port}`);
+    console.log(`BROMO API listening on https://bromo.darkunde.in:${env.port}`);
   });
 }
 

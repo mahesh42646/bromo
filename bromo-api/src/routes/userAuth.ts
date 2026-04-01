@@ -31,11 +31,13 @@ userAuthRouter.post(
 
       const displayName =
         (req.body.displayName as string | undefined)?.trim() || fb.email.split("@")[0];
+      const phone = (req.body.phone as string | undefined)?.trim() || "";
 
       const user = await User.create({
         firebaseUid: fb.uid,
         email: fb.email,
         displayName,
+        phone,
         emailVerified: fb.emailVerified,
         provider: "email",
       });
@@ -132,6 +134,22 @@ userAuthRouter.get(
     }
   },
 );
+
+// ── GET /email-by-username/:username ─────────────────────────────
+// Public — look up email from username for username-based login.
+userAuthRouter.get("/email-by-username/:username", async (req, res) => {
+  try {
+    const username = req.params.username.toLowerCase().trim();
+    const user = await User.findOne({ username }).select("email").lean();
+    if (!user) {
+      return res.status(404).json({ message: "No account found with this username" });
+    }
+    return res.json({ email: (user as { email: string }).email });
+  } catch (err: unknown) {
+    console.error("[userAuth] email-by-username error:", err);
+    return res.status(500).json({ message: "Lookup failed" });
+  }
+});
 
 // ── GET /check-username/:username ─────────────────────────────────
 // Public — real-time availability check.
