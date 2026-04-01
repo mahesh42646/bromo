@@ -79,7 +79,7 @@ router.post(
     }
 
     const publicBase =
-      process.env.PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+      process.env.PUBLIC_API_BASE_URL ?? "https://bromo.darkunde.in";
     const filePath = `/uploads/settings/${req.file.filename}`;
     const fileUrl = `${publicBase}${filePath}`;
 

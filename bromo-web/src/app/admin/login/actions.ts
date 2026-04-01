@@ -1,12 +1,22 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { ADMIN_TOKEN_COOKIE } from "@/lib/auth/cookie";
 import { settings } from "@/config/settings";
 
 const API_INTERNAL_URL = settings.apiInternalUrl;
 
 const SESSION_MAX_AGE = 60 * 60 * 8;
+
+async function shouldUseSecureCookie(): Promise<boolean> {
+  const h = await headers();
+  const host = (h.get("host") ?? "").toLowerCase();
+  const proto = (h.get("x-forwarded-proto") ?? "").toLowerCase();
+  const isLocalHost =
+    host.startsWith("localhost") || host.startsWith("127.0.0.1");
+  if (isLocalHost || proto === "http") return false;
+  return process.env.NODE_ENV === "production";
+}
 
 export type LoginState = {
   error: string | null;
@@ -42,7 +52,7 @@ export async function loginAction(
   jar.set(ADMIN_TOKEN_COOKIE, data.token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: await shouldUseSecureCookie(),
     path: "/",
     maxAge: SESSION_MAX_AGE,
   });

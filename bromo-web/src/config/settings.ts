@@ -1,4 +1,4 @@
-import bromoConfig from "../../../bromo-config.json";
+import bromoConfig from "../../bromo-config.json";
 
 const apiBaseUrl =
   (process.env.NEXT_PUBLIC_API_URL ?? String(bromoConfig.apiBaseUrl ?? "")).trim().replace(/\/+$/, "");
