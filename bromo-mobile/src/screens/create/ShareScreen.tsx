@@ -121,66 +121,66 @@ export function ShareScreen() {
   // Success screen
   if (phase === 'done') {
     return (
-      <ThemedSafeScreen style={styles.root}>
+      <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
         <View style={styles.doneContainer}>
           <Animated.View style={[styles.doneCircle, {backgroundColor: palette.primary, transform: [{scale: scaleAnim}]}]}>
-            <Check size={48} color="#fff" strokeWidth={3} />
+            <Check size={48} color={palette.accentForeground} strokeWidth={3} />
           </Animated.View>
-          <Animated.Text style={[styles.doneTitle, {opacity: fadeAnim}]}>
+          <Animated.Text style={[styles.doneTitle, {color: palette.foreground, opacity: fadeAnim}]}>
             {draft.mode === 'story' ? 'Story shared!' : draft.mode === 'reel' ? 'Reel posted!' : 'Posted!'}
           </Animated.Text>
-          <Animated.Text style={[styles.doneSubtitle, {opacity: fadeAnim}]}>
+          <Animated.Text style={[styles.doneSubtitle, {color: palette.foregroundMuted, opacity: fadeAnim}]}>
             Your content is now visible to{' '}
             {draft.visibility === 'public' ? 'everyone' : draft.visibility === 'followers' ? 'your followers' : draft.visibility === 'close_friends' ? 'close friends' : 'you only'}.
           </Animated.Text>
 
           {/* Summary */}
-          <Animated.View style={[styles.doneSummary, {opacity: fadeAnim}]}>
+          <Animated.View style={[styles.doneSummary, {backgroundColor: palette.surface, opacity: fadeAnim}]}>
             {draft.caption ? (
-              <Text style={styles.summaryText} numberOfLines={2}>{draft.caption}</Text>
+              <Text style={[styles.summaryText, {color: palette.foreground}]} numberOfLines={2}>{draft.caption}</Text>
             ) : null}
             {draft.hashtags.length > 0 && (
-              <Text style={styles.summaryTags}>{draft.hashtags.join(' ')}</Text>
+              <Text style={[styles.summaryTags, {color: palette.accent}]}>{draft.hashtags.join(' ')}</Text>
             )}
             {draft.location && (
               <View style={styles.summaryRow}>
-                <MapPin size={12} color="#888" />
-                <Text style={styles.summaryMeta}>{draft.location.name}</Text>
+                <MapPin size={12} color={palette.foregroundMuted} />
+                <Text style={[styles.summaryMeta, {color: palette.foregroundMuted}]}>{draft.location.name}</Text>
               </View>
             )}
             {draft.tagged.length > 0 && (
               <View style={styles.summaryRow}>
-                <Users size={12} color="#888" />
-                <Text style={styles.summaryMeta}>{draft.tagged.map(t => `@${t.username}`).join(', ')}</Text>
+                <Users size={12} color={palette.foregroundMuted} />
+                <Text style={[styles.summaryMeta, {color: palette.foregroundMuted}]}>{draft.tagged.map(t => `@${t.username}`).join(', ')}</Text>
               </View>
             )}
             {draft.products.length > 0 && (
               <View style={styles.summaryRow}>
-                <ShoppingBag size={12} color="#888" />
-                <Text style={styles.summaryMeta}>{draft.products.length} product(s) tagged</Text>
+                <ShoppingBag size={12} color={palette.foregroundMuted} />
+                <Text style={[styles.summaryMeta, {color: palette.foregroundMuted}]}>{draft.products.length} product(s) tagged</Text>
               </View>
             )}
             {draft.advanced.commentsOff && (
               <View style={styles.summaryRow}>
-                <MessageCircle size={12} color="#888" />
-                <Text style={styles.summaryMeta}>Comments turned off</Text>
+                <MessageCircle size={12} color={palette.foregroundMuted} />
+                <Text style={[styles.summaryMeta, {color: palette.foregroundMuted}]}>Comments turned off</Text>
               </View>
             )}
             {draft.advanced.hideLikeCount && (
               <View style={styles.summaryRow}>
-                <Eye size={12} color="#888" />
-                <Text style={styles.summaryMeta}>Like count hidden</Text>
+                <Eye size={12} color={palette.foregroundMuted} />
+                <Text style={[styles.summaryMeta, {color: palette.foregroundMuted}]}>Like count hidden</Text>
               </View>
             )}
           </Animated.View>
 
           <Animated.View style={[styles.doneActions, {opacity: fadeAnim}]}>
             <Pressable style={[styles.doneBtn, {backgroundColor: palette.primary}]} onPress={closeAll}>
-              <Text style={[styles.doneBtnTxt, {color: '#fff'}]}>Done</Text>
+              <Text style={[styles.doneBtnTxt, {color: palette.accentForeground}]}>Done</Text>
             </Pressable>
-            <Pressable style={styles.shareMoreBtn} onPress={closeAll}>
-              <Share2 size={16} color="#fff" />
-              <Text style={styles.shareMoreTxt}>Share to other apps</Text>
+            <Pressable style={[styles.shareMoreBtn, {borderColor: palette.border}]} onPress={closeAll}>
+              <Share2 size={16} color={palette.foreground} />
+              <Text style={[styles.shareMoreTxt, {color: palette.foreground}]}>Share to other apps</Text>
             </Pressable>
           </Animated.View>
         </View>
@@ -191,10 +191,10 @@ export function ShareScreen() {
   // Posting spinner
   if (phase === 'posting') {
     return (
-      <ThemedSafeScreen style={styles.root}>
+      <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
         <View style={styles.doneContainer}>
           <View style={[styles.postingCircle, {borderColor: palette.primary}]} />
-          <Text style={styles.postingText}>Sharing your {draft.mode}...</Text>
+          <Text style={[styles.postingText, {color: palette.foregroundMuted}]}>Sharing your {draft.mode}...</Text>
         </View>
       </ThemedSafeScreen>
     );
@@ -202,18 +202,18 @@ export function ShareScreen() {
 
   // Review phase
   return (
-    <ThemedSafeScreen style={styles.root}>
+    <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>Back</Text>
+          <Text style={[styles.back, {color: palette.accent}]}>Back</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Review & Share</Text>
+        <Text style={[styles.headerTitle, {color: palette.foreground}]}>Review & Share</Text>
         <View style={{width: 48}} />
       </View>
 
       <ScrollView>
         {/* Preview */}
-        <View style={[styles.preview, {height: W * 1.05}]}>
+        <View style={[styles.preview, {height: W * 1.05, backgroundColor: palette.surface}]}>
           {asset?.type === 'video' ? (
             <Video source={{uri: asset.uri}} style={styles.media} resizeMode="cover" repeat muted />
           ) : asset ? (
@@ -231,30 +231,37 @@ export function ShareScreen() {
             </View>
           ))}
           {draft.stickers.map(st => (
-            <View key={st.id} style={[styles.sticker, {left: st.x, top: st.y}]}>
-              <ShoppingBag size={10} color="#fff" />
-              <Text style={styles.stickerTxt}>{st.label}</Text>
+            <View key={st.id} style={[styles.sticker, {left: st.x, top: st.y, backgroundColor: palette.overlay}]}>
+              <ShoppingBag size={10} color={palette.foreground} />
+              <Text style={[styles.stickerTxt, {color: palette.foreground}]}>{st.label}</Text>
             </View>
           ))}
           {draft.poll.enabled && (
-            <View style={styles.pollOverlay}>
-              <Text style={styles.pollQ}>{draft.poll.optionA || 'Option A'}</Text>
+            <View style={[styles.pollOverlay, {backgroundColor: palette.overlay}]}>
+              <Text style={[styles.pollQ, {color: palette.foreground}]}>{draft.poll.optionA || 'Option A'}</Text>
               <View style={styles.pollBar}>
-                <Pressable style={[styles.pollSeg, {flex: 1 + draft.poll.votesA}]} onPress={() => votePoll('a')}>
-                  <Text style={styles.pollVotes}>{draft.poll.votesA}</Text>
+                <Pressable style={[styles.pollSeg, {flex: 1 + draft.poll.votesA, backgroundColor: palette.accent}]} onPress={() => votePoll('a')}>
+                  <Text style={[styles.pollVotes, {color: palette.accentForeground}]}>{draft.poll.votesA}</Text>
                 </Pressable>
-                <Pressable style={[styles.pollSegB, {flex: 1 + draft.poll.votesB}]} onPress={() => votePoll('b')}>
-                  <Text style={styles.pollVotes}>{draft.poll.votesB}</Text>
+                <Pressable style={[styles.pollSegB, {flex: 1 + draft.poll.votesB, backgroundColor: palette.muted}]} onPress={() => votePoll('b')}>
+                  <Text style={[styles.pollVotes, {color: palette.mutedForeground}]}>{draft.poll.votesB}</Text>
                 </Pressable>
               </View>
-              <Text style={styles.pollQ}>{draft.poll.optionB || 'Option B'}</Text>
+              <Text style={[styles.pollQ, {color: palette.foreground}]}>{draft.poll.optionB || 'Option B'}</Text>
             </View>
           )}
           {/* Carousel indicator */}
           {draft.assets.length > 1 && (
             <View style={styles.carouselIndicator}>
               {draft.assets.map((_, idx) => (
-                <View key={idx} style={[styles.ciDot, idx === draft.activeAssetIndex && styles.ciDotActive]} />
+                <View
+                  key={idx}
+                  style={[
+                    styles.ciDot,
+                    {backgroundColor: palette.placeholder},
+                    idx === draft.activeAssetIndex && {backgroundColor: palette.foreground, width: 14},
+                  ]}
+                />
               ))}
             </View>
           )}
@@ -262,39 +269,43 @@ export function ShareScreen() {
 
         {/* Caption & metadata */}
         <View style={styles.metaSection}>
-          <Text style={styles.caption}>{draft.caption || 'No caption'}</Text>
-          {draft.hashtags.length > 0 && <Text style={styles.tags}>{draft.hashtags.join(' ')}</Text>}
+          <Text style={[styles.caption, {color: palette.foreground}]}>{draft.caption || 'No caption'}</Text>
+          {draft.hashtags.length > 0 && <Text style={[styles.tags, {color: palette.accent}]}>{draft.hashtags.join(' ')}</Text>}
           {draft.location && (
             <View style={styles.metaRow}>
-              <MapPin size={14} color="#888" />
-              <Text style={styles.metaText}>{draft.location.name}</Text>
+              <MapPin size={14} color={palette.foregroundMuted} />
+              <Text style={[styles.metaText, {color: palette.foregroundMuted}]}>{draft.location.name}</Text>
             </View>
           )}
           {draft.tagged.length > 0 && (
             <View style={styles.metaRow}>
-              <Users size={14} color="#888" />
-              <Text style={styles.metaText}>{draft.tagged.map(t => `@${t.username}`).join(', ')}</Text>
+              <Users size={14} color={palette.foregroundMuted} />
+              <Text style={[styles.metaText, {color: palette.foregroundMuted}]}>{draft.tagged.map(t => `@${t.username}`).join(', ')}</Text>
             </View>
           )}
           {draft.products.length > 0 && (
             <View style={styles.metaRow}>
-              <ShoppingBag size={14} color="#888" />
-              <Text style={styles.metaText}>{draft.products.map(p => p.name).join(', ')}</Text>
+              <ShoppingBag size={14} color={palette.foregroundMuted} />
+              <Text style={[styles.metaText, {color: palette.foregroundMuted}]}>{draft.products.map(p => p.name).join(', ')}</Text>
             </View>
           )}
         </View>
 
         {/* Visibility */}
-        <Text style={styles.section}>Visibility</Text>
+        <Text style={[styles.section, {color: palette.foreground}]}>Visibility</Text>
         {visibilityOptions.map(o => {
           const selected = draft.visibility === o.key;
           return (
             <Pressable
               key={o.key}
               onPress={() => setVisibility(o.key)}
-              style={[styles.visRow, selected && {borderColor: palette.primary}]}>
-              <o.Icon size={18} color={selected ? palette.primary : '#888'} />
-              <Text style={[styles.visTxt, selected && {color: palette.primary}]}>{o.label}</Text>
+              style={[
+                styles.visRow,
+                {borderColor: palette.surfaceHigh, backgroundColor: palette.card},
+                selected && {borderColor: palette.primary},
+              ]}>
+              <o.Icon size={18} color={selected ? palette.primary : palette.foregroundMuted} />
+              <Text style={[styles.visTxt, {color: palette.foreground}, selected && {color: palette.primary}]}>{o.label}</Text>
               {selected && <Check size={16} color={palette.primary} />}
             </Pressable>
           );
@@ -303,44 +314,44 @@ export function ShareScreen() {
         {/* Story options */}
         {draft.mode === 'story' && (
           <>
-            <Text style={styles.section}>Story options</Text>
+            <Text style={[styles.section, {color: palette.foreground}]}>Story options</Text>
             <Pressable
-              style={styles.visRow}
+              style={[styles.visRow, {borderColor: palette.surfaceHigh, backgroundColor: palette.card}]}
               onPress={() => setStoryOptions({storyAllowReplies: !draft.storyAllowReplies})}>
-              <MessageCircle size={18} color="#888" />
-              <Text style={styles.visTxt}>Allow replies</Text>
-              <Text style={styles.onOff}>{draft.storyAllowReplies ? 'On' : 'Off'}</Text>
+              <MessageCircle size={18} color={palette.foregroundMuted} />
+              <Text style={[styles.visTxt, {color: palette.foreground}]}>Allow replies</Text>
+              <Text style={[styles.onOff, {color: palette.foregroundMuted}]}>{draft.storyAllowReplies ? 'On' : 'Off'}</Text>
             </Pressable>
             <Pressable
-              style={styles.visRow}
+              style={[styles.visRow, {borderColor: palette.surfaceHigh, backgroundColor: palette.card}]}
               onPress={() => setStoryOptions({storyShareOffPlatform: !draft.storyShareOffPlatform})}>
-              <Share2 size={18} color="#888" />
-              <Text style={styles.visTxt}>Share to partner apps</Text>
-              <Text style={styles.onOff}>{draft.storyShareOffPlatform ? 'On' : 'Off'}</Text>
+              <Share2 size={18} color={palette.foregroundMuted} />
+              <Text style={[styles.visTxt, {color: palette.foreground}]}>Share to partner apps</Text>
+              <Text style={[styles.onOff, {color: palette.foregroundMuted}]}>{draft.storyShareOffPlatform ? 'On' : 'Off'}</Text>
             </Pressable>
           </>
         )}
 
         {/* Action buttons */}
         <View style={styles.actionGrid}>
-          <Pressable style={styles.actionCard} onPress={saveDraft} disabled={busy}>
-            <Save size={22} color="#fff" />
-            <Text style={styles.actionLabel}>Save draft</Text>
+          <Pressable style={[styles.actionCard, {backgroundColor: palette.card, borderColor: palette.surfaceHigh}]} onPress={saveDraft} disabled={busy}>
+            <Save size={22} color={palette.foreground} />
+            <Text style={[styles.actionLabel, {color: palette.foreground}]}>Save draft</Text>
           </Pressable>
-          <Pressable style={styles.actionCard} onPress={downloadMock}>
-            <Download size={22} color="#fff" />
-            <Text style={styles.actionLabel}>Download</Text>
+          <Pressable style={[styles.actionCard, {backgroundColor: palette.card, borderColor: palette.surfaceHigh}]} onPress={downloadMock}>
+            <Download size={22} color={palette.foreground} />
+            <Text style={[styles.actionLabel, {color: palette.foreground}]}>Download</Text>
           </Pressable>
         </View>
         <Pressable style={[styles.publishBtn, {backgroundColor: palette.primary}]} onPress={publish}>
-          <Send size={18} color="#fff" />
-          <Text style={styles.publishTxt}>
+          <Send size={18} color={palette.accentForeground} />
+          <Text style={[styles.publishTxt, {color: palette.accentForeground}]}>
             {draft.mode === 'story' ? 'Share story' : draft.mode === 'reel' ? 'Share reel' : 'Share post'}
           </Text>
         </Pressable>
         <Pressable style={styles.discard} onPress={discard}>
-          <Trash2 size={16} color="#ff4444" />
-          <Text style={styles.discardTxt}>Discard</Text>
+          <Trash2 size={16} color={palette.destructive} />
+          <Text style={[styles.discardTxt, {color: palette.destructive}]}>Discard</Text>
         </Pressable>
         <View style={{height: 40}} />
       </ScrollView>
@@ -349,11 +360,11 @@ export function ShareScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: {flex: 1, backgroundColor: '#000'},
+  root: {flex: 1},
   header: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8},
-  back: {color: '#0095f6', fontSize: 16, fontWeight: '700'},
-  headerTitle: {color: '#fff', fontSize: 17, fontWeight: '800'},
-  preview: {width: '100%', backgroundColor: '#111', marginTop: 4},
+  back: {fontSize: 16, fontWeight: '700'},
+  headerTitle: {fontSize: 17, fontWeight: '800'},
+  preview: {width: '100%', marginTop: 4},
   media: {...StyleSheet.absoluteFillObject},
   txt: {position: 'absolute'},
   sticker: {
@@ -361,35 +372,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 8,
   },
-  stickerTxt: {color: '#fff', fontSize: 11, fontWeight: '800'},
+  stickerTxt: {fontSize: 11, fontWeight: '800'},
   pollOverlay: {
     position: 'absolute',
     bottom: 24,
     left: 16,
     right: 16,
-    backgroundColor: 'rgba(0,0,0,0.55)',
     padding: 12,
     borderRadius: 12,
   },
-  pollQ: {color: '#fff', fontWeight: '800', marginBottom: 4},
+  pollQ: {fontWeight: '800', marginBottom: 4},
   pollBar: {flexDirection: 'row', height: 36, borderRadius: 8, overflow: 'hidden', marginVertical: 6},
-  pollSeg: {backgroundColor: '#0095f6', justifyContent: 'center', alignItems: 'center'},
-  pollSegB: {backgroundColor: '#7c3aed', justifyContent: 'center', alignItems: 'center'},
-  pollVotes: {color: '#fff', fontWeight: '900'},
+  pollSeg: {justifyContent: 'center', alignItems: 'center'},
+  pollSegB: {justifyContent: 'center', alignItems: 'center'},
+  pollVotes: {fontWeight: '900'},
   carouselIndicator: {position: 'absolute', top: 12, alignSelf: 'center', flexDirection: 'row', gap: 5},
-  ciDot: {width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)'},
-  ciDotActive: {backgroundColor: '#fff', width: 14},
+  ciDot: {width: 6, height: 6, borderRadius: 3},
   metaSection: {paddingHorizontal: 14, paddingTop: 12},
-  caption: {color: '#fff', fontSize: 15, lineHeight: 22},
-  tags: {color: '#0095f6', marginTop: 6, fontSize: 14},
+  caption: {fontSize: 15, lineHeight: 22},
+  tags: {marginTop: 6, fontSize: 14},
   metaRow: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6},
-  metaText: {color: '#999', fontSize: 13},
-  section: {color: '#fff', fontWeight: '800', marginLeft: 14, marginTop: 20, fontSize: 15},
+  metaText: {fontSize: 13},
+  section: {fontWeight: '800', marginLeft: 14, marginTop: 20, fontSize: 15},
   visRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -398,24 +406,20 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#222',
-    backgroundColor: '#0d0d0d',
     gap: 10,
   },
-  visTxt: {color: '#fff', flex: 1, fontWeight: '600', fontSize: 14},
-  onOff: {color: '#888', fontWeight: '700', fontSize: 13},
+  visTxt: {flex: 1, fontWeight: '600', fontSize: 14},
+  onOff: {fontWeight: '700', fontSize: 13},
   actionGrid: {flexDirection: 'row', gap: 10, marginHorizontal: 14, marginTop: 24},
   actionCard: {
     flex: 1,
     paddingVertical: 18,
     borderRadius: 14,
     alignItems: 'center',
-    backgroundColor: '#141414',
     borderWidth: 1,
-    borderColor: '#222',
     gap: 6,
   },
-  actionLabel: {color: '#fff', fontWeight: '700', fontSize: 13},
+  actionLabel: {fontWeight: '700', fontSize: 13},
   publishBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -426,7 +430,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 14,
   },
-  publishTxt: {color: '#fff', fontWeight: '900', fontSize: 16},
+  publishTxt: {fontWeight: '900', fontSize: 16},
   discard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -434,7 +438,7 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 16,
   },
-  discardTxt: {color: '#ff4444', fontWeight: '800', fontSize: 14},
+  discardTxt: {fontWeight: '800', fontSize: 14},
   // Done screen
   doneContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24},
   doneCircle: {
@@ -444,20 +448,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  doneTitle: {color: '#fff', fontSize: 26, fontWeight: '900', marginTop: 24},
-  doneSubtitle: {color: '#aaa', fontSize: 15, textAlign: 'center', marginTop: 8, lineHeight: 22},
+  doneTitle: {fontSize: 26, fontWeight: '900', marginTop: 24},
+  doneSubtitle: {fontSize: 15, textAlign: 'center', marginTop: 8, lineHeight: 22},
   doneSummary: {
     marginTop: 24,
     width: '100%',
-    backgroundColor: '#111',
     borderRadius: 14,
     padding: 16,
     gap: 6,
   },
-  summaryText: {color: '#fff', fontSize: 14, lineHeight: 20},
-  summaryTags: {color: '#0095f6', fontSize: 13},
+  summaryText: {fontSize: 14, lineHeight: 20},
+  summaryTags: {fontSize: 13},
   summaryRow: {flexDirection: 'row', alignItems: 'center', gap: 6},
-  summaryMeta: {color: '#888', fontSize: 12},
+  summaryMeta: {fontSize: 12},
   doneActions: {marginTop: 32, width: '100%', gap: 12},
   doneBtn: {paddingVertical: 16, borderRadius: 14, alignItems: 'center'},
   doneBtnTxt: {fontWeight: '900', fontSize: 16},
@@ -469,9 +472,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#333',
   },
-  shareMoreTxt: {color: '#fff', fontWeight: '700', fontSize: 14},
+  shareMoreTxt: {fontWeight: '700', fontSize: 14},
   postingCircle: {
     width: 64,
     height: 64,
@@ -480,5 +482,5 @@ const styles = StyleSheet.create({
     borderTopColor: 'transparent',
     borderRightColor: 'transparent',
   },
-  postingText: {color: '#aaa', fontSize: 16, fontWeight: '600', marginTop: 20},
+  postingText: {fontSize: 16, fontWeight: '600', marginTop: 20},
 });

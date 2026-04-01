@@ -140,7 +140,7 @@ function ReelItem({
           left: 0,
           right: 0,
           height: 300,
-          backgroundColor: 'rgba(0,0,0,0.5)',
+          backgroundColor: palette.overlay,
         }}
       />
 
@@ -155,11 +155,11 @@ function ReelItem({
             width: 48,
             height: 48,
             borderRadius: 24,
-            backgroundColor: 'rgba(0,0,0,0.5)',
+            backgroundColor: palette.overlay,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-          <Play size={22} color="#fff" fill="#fff" />
+          <Play size={22} color={palette.foreground} fill={palette.foreground} />
         </View>
       )}
 
@@ -192,39 +192,39 @@ function ReelItem({
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderWidth: 2,
-                borderColor: '#000',
+                borderColor: palette.background,
               }}>
-              <Text style={{color: '#fff', fontSize: 12, fontWeight: '900', lineHeight: 14}}>+</Text>
+              <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '900', lineHeight: 14}}>+</Text>
             </Pressable>
           )}
         </View>
 
         {/* Like */}
         <Pressable onPress={() => setLiked(p => !p)} style={{alignItems: 'center', gap: 4}}>
-          <Heart size={28} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'transparent'} />
-          <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{item.likes}</Text>
+          <Heart size={28} color={liked ? palette.destructive : palette.foreground} fill={liked ? palette.destructive : 'transparent'} />
+          <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '700'}}>{item.likes}</Text>
         </Pressable>
 
         {/* Comment */}
         <Pressable onPress={onComments} style={{alignItems: 'center', gap: 4}}>
-          <MessageCircle size={28} color="#fff" />
-          <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{item.comments}</Text>
+          <MessageCircle size={28} color={palette.foreground} />
+          <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '700'}}>{item.comments}</Text>
         </Pressable>
 
         {/* Share */}
         <Pressable onPress={onShare} style={{alignItems: 'center', gap: 4}}>
-          <Send size={28} color="#fff" />
-          <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{item.shares}</Text>
+          <Send size={28} color={palette.foreground} />
+          <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '700'}}>{item.shares}</Text>
         </Pressable>
 
         {/* Bookmark */}
         <Pressable onPress={() => setBookmarked(p => !p)}>
-          <Bookmark size={28} color={bookmarked ? palette.primary : '#fff'} fill={bookmarked ? palette.primary : 'transparent'} />
+          <Bookmark size={28} color={bookmarked ? palette.primary : palette.foreground} fill={bookmarked ? palette.primary : 'transparent'} />
         </Pressable>
 
         {/* More */}
         <Pressable>
-          <MoreHorizontal size={28} color="#fff" />
+          <MoreHorizontal size={28} color={palette.foreground} />
         </Pressable>
 
         {/* Music disc */}
@@ -235,7 +235,7 @@ function ReelItem({
               height: 40,
               borderRadius: 20,
               borderWidth: 2,
-              borderColor: '#fff',
+              borderColor: palette.foreground,
               overflow: 'hidden',
             }}>
             <Image
@@ -256,31 +256,31 @@ function ReelItem({
           gap: 8,
         }}>
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-          <Text style={{color: '#fff', fontSize: 14, fontWeight: '900'}}>@{item.handle}</Text>
+          <Text style={{color: palette.foreground, fontSize: 14, fontWeight: '900'}}>@{item.handle}</Text>
           {item.verified && (
-            <BadgeCheck size={15} color="#3b82f6" fill="#3b82f6" strokeWidth={2} />
+            <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
           )}
           {!following && (
             <Pressable
               onPress={() => setFollowing(true)}
               style={{
                 borderWidth: 1,
-                borderColor: '#fff',
+                borderColor: palette.foreground,
                 borderRadius: borderRadiusScale === 'bold' ? 8 : 5,
                 paddingHorizontal: 10,
                 paddingVertical: 3,
                 marginLeft: 4,
               }}>
-              <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>Follow</Text>
+              <Text style={{color: palette.foreground, fontSize: 11, fontWeight: '800'}}>Follow</Text>
             </Pressable>
           )}
         </View>
-        <Text style={{color: '#e5e5e5', fontSize: 13, lineHeight: 18}} numberOfLines={2}>
+        <Text style={{color: palette.borderFaint, fontSize: 13, lineHeight: 18}} numberOfLines={2}>
           {item.caption}
         </Text>
         <Pressable onPress={onMusic} style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-          <Music2 size={12} color="#e5e5e5" />
-          <Text style={{color: '#e5e5e5', fontSize: 11}} numberOfLines={1}>{item.music}</Text>
+          <Music2 size={12} color={palette.borderFaint} />
+          <Text style={{color: palette.borderFaint, fontSize: 11}} numberOfLines={1}>{item.music}</Text>
         </Pressable>
       </View>
 
@@ -294,11 +294,11 @@ function ReelItem({
           width: 36,
           height: 36,
           borderRadius: 18,
-          backgroundColor: 'rgba(0,0,0,0.5)',
+          backgroundColor: palette.overlay,
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-        {muted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
+        {muted ? <VolumeX size={16} color={palette.foreground} /> : <Volume2 size={16} color={palette.foreground} />}
       </Pressable>
     </View>
   );
@@ -306,6 +306,7 @@ function ReelItem({
 
 export function ReelsScreen() {
   const navigation = useNavigation();
+  const {palette} = useTheme();
   const [activeIndex, setActiveIndex] = useState(0);
   const win = Dimensions.get('window');
   const [reelHeight, setReelHeight] = useState(win.height);
@@ -322,7 +323,7 @@ export function ReelsScreen() {
   };
 
   return (
-    <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
+    <ThemedSafeScreen style={{backgroundColor: palette.background}} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <View style={{flex: 1}} onLayout={onListLayout}>
         <FlatList

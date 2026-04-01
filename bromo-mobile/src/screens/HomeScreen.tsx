@@ -152,7 +152,7 @@ function PostCard({post, actions}: {post: (typeof POSTS)[0]; actions: PostCallba
   );
 
   return (
-    <View style={{borderBottomWidth: 8, borderBottomColor: isDark ? '#0a0a0a' : '#f4f4f5', backgroundColor: palette.background}}>
+    <View style={{borderBottomWidth: 8, borderBottomColor: palette.background, backgroundColor: palette.background}}>
       {/* Header */}
       <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12}}>
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
@@ -161,10 +161,10 @@ function PostCard({post, actions}: {post: (typeof POSTS)[0]; actions: PostCallba
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
               <ThemedText variant="label" style={{fontSize: 13}}>{post.username}</ThemedText>
               {post.verified === 'gold' && (
-                <BadgeCheck size={15} color="#FFD700" fill="#FFD700" strokeWidth={2} />
+                <BadgeCheck size={15} color={palette.warning} fill={palette.warning} strokeWidth={2} />
               )}
               {post.verified === 'blue' && (
-                <BadgeCheck size={15} color="#3b82f6" fill="#3b82f6" strokeWidth={2} />
+                <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
               )}
             </View>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1}}>
@@ -209,7 +209,7 @@ function PostCard({post, actions}: {post: (typeof POSTS)[0]; actions: PostCallba
       <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12}}>
         <View style={{flexDirection: 'row', gap: 20, alignItems: 'center'}}>
           <Pressable onPress={() => setLiked(p => !p)} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
-            <Heart size={24} color={liked ? '#ef4444' : palette.foreground} fill={liked ? '#ef4444' : 'transparent'} />
+            <Heart size={24} color={liked ? palette.destructive : palette.foreground} fill={liked ? palette.destructive : 'transparent'} />
             <ThemedText variant="label">{post.likes}</ThemedText>
           </Pressable>
           <Pressable onPress={actions.onOpenComments} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
@@ -284,7 +284,7 @@ export function HomeScreen() {
           paddingHorizontal: 14,
           paddingVertical: 10,
           minHeight: 52,
-          backgroundColor: isDark ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)',
+          backgroundColor: palette.background,
           borderBottomWidth: 1,
           borderBottomColor: palette.border,
           gap: 10,
@@ -403,7 +403,7 @@ export function HomeScreen() {
                   borderRadius: chipRadius,
                   borderWidth: 1,
                   borderColor: chipOn ? palette.primary : palette.border,
-                  backgroundColor: chipOn ? palette.primary : isDark ? '#0a0a0a' : '#f9f9f9',
+                  backgroundColor: chipOn ? palette.primary : palette.background,
                 }}>
                 <CatIcon size={15} color={chipOn ? palette.primaryForeground : fg} />
                 <Text
@@ -509,11 +509,11 @@ export function HomeScreen() {
                     left: 0,
                     right: 0,
                     padding: 10,
-                    backgroundColor: 'rgba(0,0,0,0.4)',
+                    backgroundColor: palette.glassMid,
                   }}>
                   <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
-                    <Play size={10} color="#fff" fill="#fff" />
-                    <Text style={{color: '#fff', fontSize: 10, fontWeight: '700'}}>{reel.views}</Text>
+                    <Play size={10} color={palette.foreground} fill={palette.foreground} />
+                    <Text style={{color: palette.foreground, fontSize: 10, fontWeight: '700'}}>{reel.views}</Text>
                   </View>
                 </View>
               </Pressable>

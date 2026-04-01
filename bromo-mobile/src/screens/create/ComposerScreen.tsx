@@ -30,6 +30,7 @@ import {
   FileText,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
+import type {ThemePalette} from '../../config/platform-theme';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {LocationTag} from '../../create/createTypes';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
@@ -66,9 +67,151 @@ const MOCK_LOCATIONS: LocationTag[] = [
   {id: 'loc5', name: 'Bandra West', address: 'Mumbai'},
 ];
 
+function makeStyles(p: ThemePalette) {
+  return StyleSheet.create({
+    root: {flex: 1, backgroundColor: p.background},
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+    },
+    title: {color: p.foreground, fontWeight: '800', fontSize: 16},
+    next: {fontSize: 16, fontWeight: '700'},
+    thumbRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      gap: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: p.surfaceHigh,
+    },
+    thumbImg: {width: 64, height: 64, borderRadius: 8},
+    captionInline: {
+      flex: 1,
+      color: p.foreground,
+      fontSize: 15,
+      textAlignVertical: 'top',
+      padding: 0,
+    },
+    rowTitle: {flexDirection: 'row', alignItems: 'center', marginLeft: 14, marginTop: 18, marginRight: 14},
+    labelInline: {color: p.foreground, fontWeight: '800', marginLeft: 8, fontSize: 14},
+    removeLink: {color: p.destructive, fontSize: 13, fontWeight: '700'},
+    tagRow: {paddingHorizontal: 12, gap: 8, marginTop: 8},
+    tagChip: {
+      backgroundColor: p.card,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    tagText: {color: p.borderFaint, fontWeight: '700', fontSize: 12},
+    locationPane: {marginHorizontal: 14, marginTop: 8},
+    locationInput: {
+      backgroundColor: p.card,
+      borderRadius: 10,
+      padding: 12,
+      color: p.foreground,
+      marginBottom: 8,
+    },
+    locationItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      backgroundColor: p.surface,
+      borderRadius: 10,
+      marginBottom: 6,
+      borderWidth: 1,
+      borderColor: p.surfaceHigh,
+    },
+    locationName: {color: p.foreground, fontSize: 14, fontWeight: '600'},
+    locationAddr: {color: p.foregroundMuted, fontSize: 12, marginTop: 1},
+    pollBox: {paddingHorizontal: 14, gap: 8, marginTop: 8},
+    pollInput: {
+      backgroundColor: p.card,
+      borderRadius: 10,
+      padding: 12,
+      color: p.foreground,
+    },
+    userRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, marginTop: 8},
+    userChip: {
+      borderWidth: 1,
+      borderColor: p.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+    },
+    userChipTxt: {color: p.foreground, fontSize: 13, fontWeight: '600'},
+    product: {
+      width: 130,
+      backgroundColor: p.card,
+      borderRadius: 14,
+      padding: 8,
+      borderWidth: 1,
+      borderColor: p.border,
+    },
+    productImg: {width: '100%', height: 80, borderRadius: 10},
+    productName: {color: p.foreground, fontWeight: '800', fontSize: 12, marginTop: 6},
+    productPrice: {color: p.success, fontSize: 11, fontWeight: '700', marginTop: 2},
+    stickerBtn: {marginTop: 8, backgroundColor: p.surfaceHigh, paddingVertical: 6, borderRadius: 8, alignItems: 'center'},
+    stickerBtnTxt: {color: p.foreground, fontSize: 11, fontWeight: '800'},
+    carouselThumb: {alignItems: 'center'},
+    carouselImg: {width: 64, height: 64, borderRadius: 8},
+    carouselBadge: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: p.overlay,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    carouselBadgeTxt: {color: p.foreground, fontSize: 10, fontWeight: '800'},
+    coverLabel: {color: p.accent, fontSize: 10, fontWeight: '800', marginTop: 2},
+    altInput: {
+      color: p.foreground,
+      marginHorizontal: 14,
+      marginTop: 8,
+      minHeight: 60,
+      backgroundColor: p.card,
+      borderRadius: 12,
+      padding: 12,
+      textAlignVertical: 'top',
+    },
+    advancedTitle: {
+      color: p.foregroundMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      marginLeft: 14,
+      marginTop: 24,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 14,
+      marginTop: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      backgroundColor: p.surface,
+      borderRadius: 10,
+      gap: 10,
+    },
+    toggleLabel: {color: p.foreground, flex: 1, fontSize: 14, fontWeight: '600'},
+  });
+}
+
 export function ComposerScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
+  const s = makeStyles(palette);
   const {
     draft,
     setCaption,
@@ -133,37 +276,37 @@ export function ComposerScreen() {
   };
 
   return (
-    <ThemedSafeScreen style={styles.root}>
-      <View style={styles.header}>
+    <ThemedSafeScreen style={s.root}>
+      <View style={s.header}>
         <Pressable onPress={() => navigation.goBack()}>
-          <ChevronLeft size={28} color="#fff" />
+          <ChevronLeft size={28} color={palette.foreground} />
         </Pressable>
-        <Text style={styles.title}>New {draft.mode}</Text>
+        <Text style={s.title}>New {draft.mode}</Text>
         <Pressable onPress={goNext}>
-          <Text style={[styles.next, {color: palette.primary}]}>Next</Text>
+          <Text style={[s.next, {color: palette.primary}]}>Next</Text>
         </Pressable>
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled">
         {/* Thumbnail preview */}
         {draft.assets.length > 0 && (
-          <View style={styles.thumbRow}>
-            <Image source={{uri: draft.assets[0].uri}} style={styles.thumbImg} />
+          <View style={s.thumbRow}>
+            <Image source={{uri: draft.assets[0].uri}} style={s.thumbImg} />
             <TextInput
               value={captionLocal}
               onChangeText={setCaptionLocal}
               onBlur={syncCaption}
               placeholder="Write a caption..."
-              placeholderTextColor="#666"
+              placeholderTextColor={palette.placeholder}
               multiline
-              style={styles.captionInline}
+              style={s.captionInline}
             />
           </View>
         )}
 
         {/* Hashtags */}
-        <SectionHeader icon={<Hash size={16} color="#fff" />} label="Hashtags" />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagRow}>
+        <SectionHeader icon={<Hash size={16} color={palette.foreground} />} label="Hashtags" palette={palette} s={s} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tagRow}>
           {SUGGEST_TAGS.map(t => {
             const active = captionLocal.includes(t);
             return (
@@ -178,8 +321,8 @@ export function ComposerScreen() {
                   setCaption(next);
                   setHashtags(next.match(/#[\w]+/g) ?? []);
                 }}
-                style={[styles.tagChip, active && {backgroundColor: palette.primary + '33', borderColor: palette.primary}]}>
-                <Text style={[styles.tagText, active && {color: palette.primary}]}>{t}</Text>
+                style={[s.tagChip, active && {backgroundColor: palette.primary + '33', borderColor: palette.primary}]}>
+                <Text style={[s.tagText, active && {color: palette.primary}]}>{t}</Text>
               </Pressable>
             );
           })}
@@ -188,22 +331,24 @@ export function ComposerScreen() {
         {/* Location */}
         <Pressable onPress={() => setShowLocation(v => !v)}>
           <SectionHeader
-            icon={<MapPin size={16} color="#fff" />}
+            icon={<MapPin size={16} color={palette.foreground} />}
             label={location ? location.name : 'Add location'}
+            palette={palette}
+            s={s}
             right={location
-              ? <Pressable onPress={() => setLocation(null)}><Text style={styles.removeLink}>Remove</Text></Pressable>
-              : <ChevronRight size={16} color="#666" />
+              ? <Pressable onPress={() => setLocation(null)}><Text style={s.removeLink}>Remove</Text></Pressable>
+              : <ChevronRight size={16} color={palette.foregroundSubtle} />
             }
           />
         </Pressable>
         {showLocation && (
-          <View style={styles.locationPane}>
+          <View style={s.locationPane}>
             <TextInput
               value={locationQuery}
               onChangeText={setLocationQuery}
               placeholder="Search places..."
-              placeholderTextColor="#666"
-              style={styles.locationInput}
+              placeholderTextColor={palette.placeholder}
+              style={s.locationInput}
             />
             {filteredLocations.map(l => (
               <Pressable
@@ -213,11 +358,11 @@ export function ComposerScreen() {
                   setShowLocation(false);
                   setLocationQuery('');
                 }}
-                style={[styles.locationItem, location?.id === l.id && {borderColor: palette.primary}]}>
-                <MapPin size={14} color="#aaa" />
+                style={[s.locationItem, location?.id === l.id && {borderColor: palette.primary}]}>
+                <MapPin size={14} color={palette.foregroundMuted} />
                 <View style={{flex: 1}}>
-                  <Text style={styles.locationName}>{l.name}</Text>
-                  {l.address && <Text style={styles.locationAddr}>{l.address}</Text>}
+                  <Text style={s.locationName}>{l.name}</Text>
+                  {l.address && <Text style={s.locationAddr}>{l.address}</Text>}
                 </View>
               </Pressable>
             ))}
@@ -226,8 +371,10 @@ export function ComposerScreen() {
 
         {/* Poll */}
         <SectionHeader
-          icon={<BarChart2 size={16} color="#fff" />}
+          icon={<BarChart2 size={16} color={palette.foreground} />}
           label="Poll"
+          palette={palette}
+          s={s}
           right={
             <Switch
               value={poll.enabled}
@@ -236,27 +383,27 @@ export function ComposerScreen() {
           }
         />
         {poll.enabled && (
-          <View style={styles.pollBox}>
-            <TextInput value={pollA} onChangeText={setPollA} style={styles.pollInput} placeholder="Option A" placeholderTextColor="#666" />
-            <TextInput value={pollB} onChangeText={setPollB} style={styles.pollInput} placeholder="Option B" placeholderTextColor="#666" />
+          <View style={s.pollBox}>
+            <TextInput value={pollA} onChangeText={setPollA} style={s.pollInput} placeholder="Option A" placeholderTextColor={palette.placeholder} />
+            <TextInput value={pollB} onChangeText={setPollB} style={s.pollInput} placeholder="Option B" placeholderTextColor={palette.placeholder} />
           </View>
         )}
 
         {/* Tag people */}
-        <SectionHeader icon={<UserPlus size={16} color="#fff" />} label="Tag people" />
-        <View style={styles.userRow}>
+        <SectionHeader icon={<UserPlus size={16} color={palette.foreground} />} label="Tag people" palette={palette} s={s} />
+        <View style={s.userRow}>
           {MOCK_USERS.map(u => {
             const on = tagged.some(t => t.id === u.id);
             return (
-              <Pressable key={u.id} onPress={() => toggleUser(u)} style={[styles.userChip, on && {borderColor: palette.primary, backgroundColor: palette.primary + '22'}]}>
-                <Text style={[styles.userChipTxt, on && {color: palette.primary}]}>@{u.username}</Text>
+              <Pressable key={u.id} onPress={() => toggleUser(u)} style={[s.userChip, on && {borderColor: palette.primary, backgroundColor: palette.primary + '22'}]}>
+                <Text style={[s.userChipTxt, on && {color: palette.primary}]}>@{u.username}</Text>
               </Pressable>
             );
           })}
         </View>
 
         {/* Products */}
-        <SectionHeader icon={<ShoppingBag size={16} color="#fff" />} label="Products" />
+        <SectionHeader icon={<ShoppingBag size={16} color={palette.foreground} />} label="Products" palette={palette} s={s} />
         <FlatList
           horizontal
           data={MOCK_PRODUCTS}
@@ -266,12 +413,12 @@ export function ComposerScreen() {
           renderItem={({item}) => {
             const on = products.some(p => p.id === item.id);
             return (
-              <Pressable onPress={() => attachProduct(item)} style={[styles.product, on && {borderColor: palette.primary}]}>
-                <Image source={{uri: item.imageUri}} style={styles.productImg} />
-                <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.productPrice}>{item.priceLabel}</Text>
-                <Pressable onPress={() => stickerFromProduct(item)} style={[styles.stickerBtn, on && {backgroundColor: palette.primary + '33'}]}>
-                  <Text style={[styles.stickerBtnTxt, on && {color: palette.primary}]}>+ Sticker</Text>
+              <Pressable onPress={() => attachProduct(item)} style={[s.product, on && {borderColor: palette.primary}]}>
+                <Image source={{uri: item.imageUri}} style={s.productImg} />
+                <Text style={s.productName} numberOfLines={1}>{item.name}</Text>
+                <Text style={s.productPrice}>{item.priceLabel}</Text>
+                <Pressable onPress={() => stickerFromProduct(item)} style={[s.stickerBtn, on && {backgroundColor: palette.primary + '33'}]}>
+                  <Text style={[s.stickerBtnTxt, on && {color: palette.primary}]}>+ Sticker</Text>
                 </Pressable>
               </Pressable>
             );
@@ -281,15 +428,15 @@ export function ComposerScreen() {
         {/* Carousel order */}
         {draft.assets.length > 1 && (
           <>
-            <SectionHeader icon={<ImageIcon size={16} color="#fff" />} label="Carousel order" />
+            <SectionHeader icon={<ImageIcon size={16} color={palette.foreground} />} label="Carousel order" palette={palette} s={s} />
             <ScrollView horizontal style={{marginTop: 8}} contentContainerStyle={{paddingHorizontal: 12, gap: 8}}>
               {draft.assets.map((a, idx) => (
-                <View key={a.uri} style={styles.carouselThumb}>
-                  <Image source={{uri: a.uri}} style={styles.carouselImg} />
-                  <View style={styles.carouselBadge}>
-                    <Text style={styles.carouselBadgeTxt}>{idx + 1}</Text>
+                <View key={a.uri} style={s.carouselThumb}>
+                  <Image source={{uri: a.uri}} style={s.carouselImg} />
+                  <View style={s.carouselBadge}>
+                    <Text style={s.carouselBadgeTxt}>{idx + 1}</Text>
                   </View>
-                  {idx === 0 && <Text style={styles.coverLabel}>Cover</Text>}
+                  {idx === 0 && <Text style={s.coverLabel}>Cover</Text>}
                 </View>
               ))}
             </ScrollView>
@@ -299,9 +446,11 @@ export function ComposerScreen() {
         {/* Alt text */}
         <Pressable onPress={() => setShowAltText(v => !v)}>
           <SectionHeader
-            icon={<FileText size={16} color="#fff" />}
+            icon={<FileText size={16} color={palette.foreground} />}
             label="Alt text"
-            right={<ChevronRight size={16} color="#666" style={{transform: [{rotate: showAltText ? '90deg' : '0deg'}]}} />}
+            palette={palette}
+            s={s}
+            right={<ChevronRight size={16} color={palette.foregroundSubtle} style={{transform: [{rotate: showAltText ? '90deg' : '0deg'}]}} />}
           />
         </Pressable>
         {showAltText && (
@@ -310,39 +459,43 @@ export function ComposerScreen() {
             onChangeText={setAltTextLocal}
             onBlur={() => setAdvanced({altText: altTextLocal})}
             placeholder="Describe this content for accessibility..."
-            placeholderTextColor="#666"
+            placeholderTextColor={palette.placeholder}
             multiline
-            style={styles.altInput}
+            style={s.altInput}
           />
         )}
 
         {/* Advanced settings */}
-        <Text style={styles.advancedTitle}>Advanced settings</Text>
+        <Text style={s.advancedTitle}>Advanced settings</Text>
 
         <ToggleRow
-          icon={<MessageCircleOff size={16} color="#fff" />}
+          icon={<MessageCircleOff size={16} color={palette.foreground} />}
           label="Turn off comments"
           value={advanced.commentsOff}
           onToggle={v => setAdvanced({commentsOff: v})}
+          s={s}
         />
         <ToggleRow
-          icon={<EyeOff size={16} color="#fff" />}
+          icon={<EyeOff size={16} color={palette.foreground} />}
           label="Hide like count"
           value={advanced.hideLikeCount}
           onToggle={v => setAdvanced({hideLikeCount: v})}
+          s={s}
         />
         <ToggleRow
-          icon={<Award size={16} color="#fff" />}
+          icon={<Award size={16} color={palette.foreground} />}
           label="Branded content / Paid partnership"
           value={advanced.brandedContent}
           onToggle={v => setAdvanced({brandedContent: v})}
+          s={s}
         />
         {draft.mode === 'post' && (
           <ToggleRow
-            icon={<Eye size={16} color="#fff" />}
+            icon={<Eye size={16} color={palette.foreground} />}
             label="Also share to your story"
             value={advanced.shareToStory}
             onToggle={v => setAdvanced({shareToStory: v})}
+            s={s}
           />
         )}
 
@@ -352,161 +505,24 @@ export function ComposerScreen() {
   );
 }
 
-function SectionHeader({icon, label, right}: {icon: React.ReactNode; label: string; right?: React.ReactNode}) {
+type Styles = ReturnType<typeof makeStyles>;
+
+function SectionHeader({icon, label, right, s}: {icon: React.ReactNode; label: string; right?: React.ReactNode; palette: ThemePalette; s: Styles}) {
   return (
-    <View style={styles.rowTitle}>
+    <View style={s.rowTitle}>
       {icon}
-      <Text style={styles.labelInline}>{label}</Text>
+      <Text style={s.labelInline}>{label}</Text>
       {right && <View style={{marginLeft: 'auto'}}>{right}</View>}
     </View>
   );
 }
 
-function ToggleRow({icon, label, value, onToggle}: {icon: React.ReactNode; label: string; value: boolean; onToggle: (v: boolean) => void}) {
+function ToggleRow({icon, label, value, onToggle, s}: {icon: React.ReactNode; label: string; value: boolean; onToggle: (v: boolean) => void; s: Styles}) {
   return (
-    <View style={styles.toggleRow}>
+    <View style={s.toggleRow}>
       {icon}
-      <Text style={styles.toggleLabel}>{label}</Text>
+      <Text style={s.toggleLabel}>{label}</Text>
       <Switch value={value} onValueChange={onToggle} />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {flex: 1, backgroundColor: '#000'},
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  title: {color: '#fff', fontWeight: '800', fontSize: 16},
-  next: {fontSize: 16, fontWeight: '700'},
-  thumbRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#222',
-  },
-  thumbImg: {width: 64, height: 64, borderRadius: 8},
-  captionInline: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 15,
-    textAlignVertical: 'top',
-    padding: 0,
-  },
-  rowTitle: {flexDirection: 'row', alignItems: 'center', marginLeft: 14, marginTop: 18, marginRight: 14},
-  labelInline: {color: '#fff', fontWeight: '800', marginLeft: 8, fontSize: 14},
-  removeLink: {color: '#ff4444', fontSize: 13, fontWeight: '700'},
-  tagRow: {paddingHorizontal: 12, gap: 8, marginTop: 8},
-  tagChip: {
-    backgroundColor: '#1e1e1e',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  tagText: {color: '#ddd', fontWeight: '700', fontSize: 12},
-  locationPane: {marginHorizontal: 14, marginTop: 8},
-  locationInput: {
-    backgroundColor: '#141414',
-    borderRadius: 10,
-    padding: 12,
-    color: '#fff',
-    marginBottom: 8,
-  },
-  locationItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#111',
-    borderRadius: 10,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
-  locationName: {color: '#fff', fontSize: 14, fontWeight: '600'},
-  locationAddr: {color: '#888', fontSize: 12, marginTop: 1},
-  pollBox: {paddingHorizontal: 14, gap: 8, marginTop: 8},
-  pollInput: {
-    backgroundColor: '#141414',
-    borderRadius: 10,
-    padding: 12,
-    color: '#fff',
-  },
-  userRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, marginTop: 8},
-  userChip: {
-    borderWidth: 1,
-    borderColor: '#333',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  userChipTxt: {color: '#fff', fontSize: 13, fontWeight: '600'},
-  product: {
-    width: 130,
-    backgroundColor: '#121212',
-    borderRadius: 14,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  productImg: {width: '100%', height: 80, borderRadius: 10},
-  productName: {color: '#fff', fontWeight: '800', fontSize: 12, marginTop: 6},
-  productPrice: {color: '#34d399', fontSize: 11, fontWeight: '700', marginTop: 2},
-  stickerBtn: {marginTop: 8, backgroundColor: '#222', paddingVertical: 6, borderRadius: 8, alignItems: 'center'},
-  stickerBtnTxt: {color: '#fff', fontSize: 11, fontWeight: '800'},
-  carouselThumb: {alignItems: 'center'},
-  carouselImg: {width: 64, height: 64, borderRadius: 8},
-  carouselBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  carouselBadgeTxt: {color: '#fff', fontSize: 10, fontWeight: '800'},
-  coverLabel: {color: '#0095f6', fontSize: 10, fontWeight: '800', marginTop: 2},
-  altInput: {
-    color: '#fff',
-    marginHorizontal: 14,
-    marginTop: 8,
-    minHeight: 60,
-    backgroundColor: '#141414',
-    borderRadius: 12,
-    padding: 12,
-    textAlignVertical: 'top',
-  },
-  advancedTitle: {
-    color: '#888',
-    fontSize: 12,
-    fontWeight: '800',
-    marginLeft: 14,
-    marginTop: 24,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 14,
-    marginTop: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: '#111',
-    borderRadius: 10,
-    gap: 10,
-  },
-  toggleLabel: {color: '#fff', flex: 1, fontSize: 14, fontWeight: '600'},
-});

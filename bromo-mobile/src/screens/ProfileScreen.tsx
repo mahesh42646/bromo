@@ -109,21 +109,21 @@ function SettingsModal({
       transparent={false}
       animationType="slide"
       onRequestClose={onClose}>
-      <View style={{flex: 1, backgroundColor: '#000'}}>
+      <View style={{flex: 1, backgroundColor: palette.background}}>
         <StatusBar barStyle="light-content" />
 
         {/* Header */}
-        <View style={styles.settingsHeader}>
+        <View style={[styles.settingsHeader, {borderBottomColor: palette.glassMid}]}>
           <Pressable onPress={onClose} hitSlop={12} style={styles.settingsClose}>
-            <X size={22} color="#fff" />
+            <X size={22} color={palette.foreground} />
           </Pressable>
-          <Text style={styles.settingsTitle}>Settings and activity</Text>
+          <Text style={[styles.settingsTitle, {color: palette.foreground}]}>Settings and activity</Text>
           <View style={{width: 40}} />
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
           {/* Account block */}
-          <View style={styles.settingsAccountBlock}>
+          <View style={[styles.settingsAccountBlock, {borderBottomColor: palette.glass}]}>
             <View style={styles.settingsAvatar}>
               {avatar ? (
                 <Image source={{uri: avatar}} style={styles.settingsAvatarImg} />
@@ -140,8 +140,8 @@ function SettingsModal({
               )}
             </View>
             <View>
-              <Text style={styles.settingsAccountName}>{displayName}</Text>
-              <Text style={styles.settingsAccountHandle}>@{username || 'you'}</Text>
+              <Text style={[styles.settingsAccountName, {color: palette.foreground}]}>{displayName}</Text>
+              <Text style={[styles.settingsAccountHandle, {color: palette.foregroundSubtle}]}>@{username || 'you'}</Text>
             </View>
           </View>
 
@@ -149,34 +149,34 @@ function SettingsModal({
           {groups.map((group, gi) => (
             <View key={gi}>
               {group.title ? (
-                <Text style={styles.settingsGroupTitle}>{group.title}</Text>
+                <Text style={[styles.settingsGroupTitle, {color: palette.placeholder}]}>{group.title}</Text>
               ) : null}
-              <View style={styles.settingsGroupCard}>
+              <View style={[styles.settingsGroupCard, {backgroundColor: palette.glassFaint, borderColor: palette.glassMid}]}>
                 {group.items.map((item, ii) => {
                   const Icon = item.icon;
-                  const accentColor = item.accent ?? '#fff';
+                  const accentColor = item.accent ?? palette.foreground;
                   return (
                     <Pressable
                       key={ii}
                       onPress={item.action}
                       style={({pressed}) => [
                         styles.settingsRow,
-                        ii < group.items.length - 1 && styles.settingsRowBorder,
+                        ii < group.items.length - 1 && [styles.settingsRowBorder, {borderBottomColor: palette.glass}],
                         {opacity: pressed ? 0.65 : 1},
                       ]}>
                       <View style={[styles.settingsIconBox, {backgroundColor: `${accentColor}14`}]}>
                         <Icon size={18} color={accentColor} />
                       </View>
                       <View style={{flex: 1}}>
-                        <Text style={[styles.settingsRowLabel, {color: accentColor === '#fff' ? '#fff' : accentColor}]}>
+                        <Text style={[styles.settingsRowLabel, {color: accentColor}]}>
                           {item.label}
                         </Text>
                         {item.sublabel ? (
-                          <Text style={styles.settingsRowSub}>{item.sublabel}</Text>
+                          <Text style={[styles.settingsRowSub, {color: palette.placeholder}]}>{item.sublabel}</Text>
                         ) : null}
                       </View>
                       {item.showChevron !== false && (
-                        <ChevronRight size={16} color="rgba(255,255,255,0.2)" />
+                        <ChevronRight size={16} color={palette.borderHeavy} />
                       )}
                     </Pressable>
                   );
@@ -260,21 +260,21 @@ export function ProfileScreen() {
           icon: Zap,
           label: 'Creator Dashboard',
           sublabel: 'Stats, earnings, and tools',
-          accent: '#f59e0b',
+          accent: palette.warning,
           action: () => nav('CreatorDashboard'),
         },
         {
           icon: BarChart2,
           label: 'Professional Dashboard',
           sublabel: 'Insights and analytics',
-          accent: '#3b82f6',
+          accent: palette.accent,
           action: () => nav('ContentInsights'),
         },
         {
           icon: BadgeCheck,
           label: 'Get Verification Badge',
           sublabel: 'Apply for the verified checkmark',
-          accent: '#3b82f6',
+          accent: palette.accent,
           action: () => nav('SettingsMain'),
         },
       ],
@@ -286,27 +286,27 @@ export function ProfileScreen() {
           icon: Bell,
           label: 'Notification settings',
           action: () => nav('NotificationSettings'),
-          accent: '#fff',
+          accent: palette.foreground,
         },
         {
           icon: Shield,
           label: 'Account privacy',
           sublabel: 'Public or private account',
           action: () => nav('PrivacySettings'),
-          accent: '#fff',
+          accent: palette.foreground,
         },
         {
           icon: Sliders,
           label: 'Content preferences',
           action: () => nav('SettingsMain'),
-          accent: '#fff',
+          accent: palette.foreground,
         },
         {
           icon: Film,
           label: 'Media quality',
           sublabel: 'Upload and playback quality',
           action: () => nav('SettingsMain'),
-          accent: '#fff',
+          accent: palette.foreground,
         },
       ],
     },
@@ -318,20 +318,20 @@ export function ProfileScreen() {
           label: 'Your activity',
           sublabel: 'Time spent, interactions',
           action: () => nav('SettingsMain'),
-          accent: '#fff',
+          accent: palette.foreground,
         },
         {
           icon: Smartphone,
           label: 'Devices and sessions',
           action: () => nav('SecuritySettings'),
-          accent: '#fff',
+          accent: palette.foreground,
         },
         {
           icon: KeyRound,
           label: 'Permissions',
           sublabel: 'Camera, location, contacts',
           action: () => nav('SecuritySettings'),
-          accent: '#fff',
+          accent: palette.foreground,
         },
       ],
     },
@@ -343,7 +343,7 @@ export function ProfileScreen() {
           label: `About ${appName}`,
           sublabel: 'Version, terms, privacy policy',
           action: () => nav('AboutApp'),
-          accent: '#fff',
+          accent: palette.foreground,
         },
       ],
     },
@@ -359,7 +359,7 @@ export function ProfileScreen() {
         {
           icon: LogOut,
           label: 'Log out',
-          accent: '#e94560',
+          accent: palette.accent,
           action: handleLogout,
           showChevron: false,
         },
@@ -382,12 +382,12 @@ export function ProfileScreen() {
       />
 
       {/* ── Top header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, {borderBottomColor: palette.glassFaint}]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <ChevronLeft size={22} color="rgba(255,255,255,0.7)" />
+          <ChevronLeft size={22} color={palette.foreground} />
         </Pressable>
 
-        <Text style={styles.headerUsername} numberOfLines={1}>
+        <Text style={[styles.headerUsername, {color: palette.foreground}]} numberOfLines={1}>
           {username || displayName}
         </Text>
 
@@ -397,7 +397,7 @@ export function ProfileScreen() {
             <Text style={[styles.coinText, {color: palette.primary}]}>0</Text>
           </View>
           <Pressable onPress={() => setMenuOpen(true)} hitSlop={12}>
-            <AlignJustify size={22} color="rgba(255,255,255,0.9)" />
+            <AlignJustify size={22} color={palette.foreground} />
           </Pressable>
         </View>
       </View>
@@ -437,8 +437,8 @@ export function ProfileScreen() {
                 },
               ].map(stat => (
                 <Pressable key={stat.label} onPress={stat.onPress} style={styles.statItem}>
-                  <Text style={styles.statValue}>{stat.value}</Text>
-                  <Text style={styles.statLabel}>{stat.label}</Text>
+                  <Text style={[styles.statValue, {color: palette.foreground}]}>{stat.value}</Text>
+                  <Text style={[styles.statLabel, {color: palette.foregroundSubtle}]}>{stat.label}</Text>
                 </Pressable>
               ))}
             </View>
@@ -447,18 +447,18 @@ export function ProfileScreen() {
           {/* Name + bio */}
           <View style={styles.bioSection}>
             <View style={styles.nameRow}>
-              <Text style={styles.displayName}>{displayName}</Text>
+              <Text style={[styles.displayName, {color: palette.foreground}]}>{displayName}</Text>
               {isVerified && (
-                <BadgeCheck size={16} color="#3b82f6" fill="#3b82f6" />
+                <BadgeCheck size={16} color={palette.accent} fill={palette.accent} />
               )}
             </View>
 
             {email ? (
-              <Text style={styles.emailLine}>{email}</Text>
+              <Text style={[styles.emailLine, {color: palette.placeholder}]}>{email}</Text>
             ) : null}
 
             {bio ? (
-              <Text style={styles.bioText}>{bio}</Text>
+              <Text style={[styles.bioText, {color: palette.foreground}]}>{bio}</Text>
             ) : null}
 
             {/* Link placeholder */}
@@ -473,12 +473,12 @@ export function ProfileScreen() {
 
             {/* Category + privacy row */}
             <View style={styles.metaRow}>
-              <View style={styles.metaBadge}>
-                <Globe size={11} color="rgba(255,255,255,0.4)" />
-                <Text style={styles.metaBadgeText}>Public</Text>
+              <View style={[styles.metaBadge, {borderColor: palette.borderMid}]}>
+                <Globe size={11} color={palette.foregroundSubtle} />
+                <Text style={[styles.metaBadgeText, {color: palette.foregroundSubtle}]}>Public</Text>
               </View>
-              <View style={styles.metaBadge}>
-                <Text style={styles.metaBadgeText}>Creator</Text>
+              <View style={[styles.metaBadge, {borderColor: palette.borderMid}]}>
+                <Text style={[styles.metaBadgeText, {color: palette.foregroundSubtle}]}>Creator</Text>
               </View>
             </View>
           </View>
@@ -486,22 +486,22 @@ export function ProfileScreen() {
           {/* Action buttons */}
           <View style={styles.actionRow}>
             <Pressable
-              style={styles.actionBtn}
+              style={[styles.actionBtn, {borderColor: palette.borderHeavy, backgroundColor: palette.glassFaint}]}
               onPress={() => parentNavigate(navigation, 'EditProfile')}>
-              <PenSquare size={15} color="#fff" />
-              <Text style={styles.actionBtnText}>Edit profile</Text>
+              <PenSquare size={15} color={palette.foreground} />
+              <Text style={[styles.actionBtnText, {color: palette.foreground}]}>Edit profile</Text>
             </Pressable>
             <Pressable
-              style={styles.actionBtn}
+              style={[styles.actionBtn, {borderColor: palette.borderHeavy, backgroundColor: palette.glassFaint}]}
               onPress={() => parentNavigate(navigation, 'ShareProfile')}>
-              <Share2 size={15} color="#fff" />
-              <Text style={styles.actionBtnText}>Share profile</Text>
+              <Share2 size={15} color={palette.foreground} />
+              <Text style={[styles.actionBtnText, {color: palette.foreground}]}>Share profile</Text>
             </Pressable>
           </View>
         </View>
 
         {/* ── Tab bar ── */}
-        <View style={styles.tabBar}>
+        <View style={[styles.tabBar, {borderTopColor: palette.glassFaint}]}>
           {GRID_TABS.map(tab => {
             const Icon = tab.icon;
             const active = gridTab === tab.id;
@@ -509,8 +509,8 @@ export function ProfileScreen() {
               <Pressable
                 key={tab.id}
                 onPress={() => setGridTab(tab.id)}
-                style={[styles.tabItem, active && styles.tabItemActive]}>
-                <Icon size={22} color={active ? '#fff' : 'rgba(255,255,255,0.35)'} />
+                style={[styles.tabItem, active && [styles.tabItemActive, {borderBottomColor: palette.foreground}]]}>
+                <Icon size={22} color={active ? palette.foreground : palette.foregroundSubtle} />
               </Pressable>
             );
           })}
@@ -522,9 +522,9 @@ export function ProfileScreen() {
           <Pressable
             onPress={() => parentNavigate(navigation, 'CreateFlow')}
             style={styles.addTile}>
-            <View style={styles.addTileInner}>
-              <Plus size={28} color="rgba(255,255,255,0.5)" />
-              <Text style={styles.addTileText}>New</Text>
+            <View style={[styles.addTileInner, {backgroundColor: palette.glassFaint, borderColor: palette.borderFaint}]}>
+              <Plus size={28} color={palette.foregroundSubtle} />
+              <Text style={[styles.addTileText, {color: palette.foregroundSubtle}]}>New</Text>
             </View>
           </Pressable>
 
@@ -543,7 +543,7 @@ export function ProfileScreen() {
               <Image source={{uri}} style={styles.gridImg} />
               {gridTab === 'reels' && (
                 <View style={styles.reelIcon}>
-                  <Play size={12} color="#fff" fill="#fff" />
+                  <Play size={12} color={palette.foreground} fill={palette.foreground} />
                 </View>
               )}
             </Pressable>
@@ -552,9 +552,9 @@ export function ProfileScreen() {
 
         {SAMPLE_POSTS.length === 0 && (
           <View style={styles.emptyState}>
-            <Camera size={40} color="rgba(255,255,255,0.15)" />
-            <Text style={styles.emptyText}>No posts yet</Text>
-            <Text style={styles.emptySubText}>Share your first moment</Text>
+            <Camera size={40} color={palette.foregroundFaint} />
+            <Text style={[styles.emptyText, {color: palette.foregroundSubtle}]}>No posts yet</Text>
+            <Text style={[styles.emptySubText, {color: palette.foregroundFaint}]}>Share your first moment</Text>
           </View>
         )}
 
@@ -583,10 +583,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.07)',
   },
   headerUsername: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: -0.3,
@@ -655,13 +653,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   statValue: {
-    color: '#fff',
     fontSize: 18,
     fontWeight: '700',
     lineHeight: 22,
   },
   statLabel: {
-    color: 'rgba(255,255,255,0.5)',
     fontSize: 12,
     fontWeight: '500',
   },
@@ -678,16 +674,13 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   displayName: {
-    color: '#fff',
     fontSize: 15,
     fontWeight: '700',
   },
   emailLine: {
-    color: 'rgba(255,255,255,0.35)',
     fontSize: 13,
   },
   bioText: {
-    color: 'rgba(255,255,255,0.75)',
     fontSize: 14,
     lineHeight: 20,
     marginTop: 2,
@@ -714,11 +707,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: 6,
   },
   metaBadgeText: {
-    color: 'rgba(255,255,255,0.45)',
     fontSize: 12,
     fontWeight: '500',
   },
@@ -737,11 +728,8 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 9,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   actionBtnText: {
-    color: 'rgba(255,255,255,0.85)',
     fontSize: 13,
     fontWeight: '600',
   },
@@ -750,7 +738,6 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.07)',
   },
   tabItem: {
     flex: 1,
@@ -759,7 +746,6 @@ const styles = StyleSheet.create({
   },
   tabItemActive: {
     borderBottomWidth: 1,
-    borderBottomColor: '#fff',
   },
 
   // Grid
@@ -774,15 +760,12 @@ const styles = StyleSheet.create({
   },
   addTileInner: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
   },
   addTileText: {
-    color: 'rgba(255,255,255,0.4)',
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -810,12 +793,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyText: {
-    color: 'rgba(255,255,255,0.5)',
     fontSize: 16,
     fontWeight: '600',
   },
   emptySubText: {
-    color: 'rgba(255,255,255,0.25)',
     fontSize: 13,
   },
 
@@ -846,7 +827,6 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   settingsClose: {
     width: 40,
@@ -855,7 +835,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   settingsTitle: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },
@@ -866,7 +845,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 20,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   settingsAvatar: {
     width: 52,
@@ -880,17 +858,14 @@ const styles = StyleSheet.create({
     borderRadius: 26,
   },
   settingsAccountName: {
-    color: '#fff',
     fontSize: 15,
     fontWeight: '700',
   },
   settingsAccountHandle: {
-    color: 'rgba(255,255,255,0.4)',
     fontSize: 13,
     marginTop: 2,
   },
   settingsGroupTitle: {
-    color: 'rgba(255,255,255,0.35)',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.2,
@@ -902,9 +877,7 @@ const styles = StyleSheet.create({
   settingsGroupCard: {
     marginHorizontal: 16,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
   },
   settingsRow: {
@@ -916,7 +889,6 @@ const styles = StyleSheet.create({
   },
   settingsRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   settingsIconBox: {
     width: 38,
@@ -930,7 +902,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   settingsRowSub: {
-    color: 'rgba(255,255,255,0.3)',
     fontSize: 12,
     marginTop: 2,
   },

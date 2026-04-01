@@ -114,10 +114,10 @@ const STORES = [
   },
 ];
 
-const TIER_COLORS: Record<string, {bg: string; text: string; label: string}> = {
-  premium: {bg: 'linear-gradient(45deg, #ffd700, #ff8c00)', text: '#000', label: 'PREMIUM'},
-  glow: {bg: '#3a7bd5', text: '#fff', label: 'GLOW'},
-  basic: {bg: '#222', text: '#888', label: 'BASIC'},
+const TIER_COLORS: Record<string, {label: string}> = {
+  premium: {label: 'PREMIUM'},
+  glow: {label: 'GLOW'},
+  basic: {label: 'BASIC'},
 };
 
 function StoreCard({
@@ -142,9 +142,9 @@ function StoreCard({
         flexDirection: isEven ? 'row' : 'row-reverse',
         gap: 16,
         alignItems: 'center',
-        backgroundColor: '#080808',
+        backgroundColor: palette.card,
         borderWidth: 1,
-        borderColor: `rgba(255,255,255,0.05)`,
+        borderColor: palette.glassFaint,
         padding: 14,
         borderRadius: radius,
         marginBottom: 20,
@@ -158,13 +158,13 @@ function StoreCard({
           top: -8,
           left: isEven ? 14 : undefined,
           right: isEven ? undefined : 14,
-          backgroundColor: store.tier === 'premium' ? '#ffd700' : store.tier === 'glow' ? '#3a7bd5' : '#222',
+          backgroundColor: store.tier === 'premium' ? palette.warning : store.tier === 'glow' ? palette.accent : palette.surfaceHigh,
           borderRadius: 8,
           paddingHorizontal: 8,
           paddingVertical: 3,
         }}>
         <Text style={{
-          color: store.tier === 'premium' ? '#000' : store.tier === 'glow' ? '#fff' : '#888',
+          color: store.tier === 'premium' ? palette.background : store.tier === 'glow' ? palette.accentForeground : palette.foregroundMuted,
           fontSize: 8,
           fontWeight: '900',
           letterSpacing: 1,
@@ -192,8 +192,8 @@ function StoreCard({
 
         {/* Rating */}
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4}}>
-          <Star size={11} color="#FFD700" fill="#FFD700" />
-          <Text style={{color: '#FFD700', fontSize: 11, fontWeight: '700'}}>{store.rating}</Text>
+          <Star size={11} color={palette.warning} fill={palette.warning} />
+          <Text style={{color: palette.warning, fontSize: 11, fontWeight: '700'}}>{store.rating}</Text>
           <ThemedText variant="caption">({store.reviews})</ThemedText>
         </View>
 
@@ -242,7 +242,7 @@ export function StoreScreen() {
       {/* Sticky Header */}
       <View
         style={{
-          backgroundColor: isDark ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)',
+          backgroundColor: palette.background,
           borderBottomWidth: 1,
           borderBottomColor: palette.border,
           padding: 14,
@@ -316,7 +316,7 @@ export function StoreScreen() {
                   paddingHorizontal: 16,
                   paddingVertical: 8,
                   borderRadius: chipRadius,
-                  backgroundColor: on ? palette.primary : isDark ? '#111' : '#f4f4f5',
+                  backgroundColor: on ? palette.primary : isDark ? palette.surface : palette.card,
                   borderWidth: 1,
                   borderColor: on ? palette.primary : palette.border,
                 }}>
@@ -361,7 +361,7 @@ export function StoreScreen() {
                   position: 'relative',
                 }}>
                 <Image source={{uri: item.image}} style={{width: '100%', height: '100%', resizeMode: 'cover', opacity: 0.6}} />
-                <View style={{position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.3)'}} />
+                <View style={{position: 'absolute', inset: 0, backgroundColor: palette.glassMid}} />
                 <View style={{position: 'absolute', bottom: 14, left: 14}}>
                   <View
                     style={{
@@ -374,7 +374,7 @@ export function StoreScreen() {
                     }}>
                     <Text style={{color: palette.primaryForeground, fontSize: 8, fontWeight: '900'}}>{item.badge.toUpperCase()}</Text>
                   </View>
-                  <Text style={{color: '#fff', fontSize: 18, fontWeight: '900', lineHeight: 20}}>{item.name}</Text>
+                  <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900', lineHeight: 20}}>{item.name}</Text>
                   <Text style={{color: palette.primary, fontSize: 10, fontWeight: '700', marginTop: 2}}>{item.offer}</Text>
                 </View>
               </Pressable>
@@ -409,10 +409,10 @@ export function StoreScreen() {
           <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 12}}>Browse by Category</ThemedText>
           <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 10}}>
             {[
-              {label: 'Fashion', icon: Tag, color: '#ec4899'},
-              {label: 'Food', icon: Store, color: '#f59e0b'},
-              {label: 'Electronics', icon: Zap, color: '#3b82f6'},
-              {label: 'Grocery', icon: ShoppingCart, color: '#10b981'},
+              {label: 'Fashion', icon: Tag, color: palette.accent},
+              {label: 'Food', icon: Store, color: palette.warning},
+              {label: 'Electronics', icon: Zap, color: palette.accent},
+              {label: 'Grocery', icon: ShoppingCart, color: palette.success},
             ].map(cat => {
               const Icon = cat.icon;
               return (

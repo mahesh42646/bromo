@@ -1,8 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { PlatformSettings, ThemePalette } from "@/types/settings";
+import type { PlatformSettings } from "@/types/settings";
 import { Loader2, Save, Sparkles } from "lucide-react";
+
+function contrastFg(hex: string): "#000000" | "#ffffff" {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return "#ffffff";
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return lum > 0.35 ? "#000000" : "#ffffff";
+}
+
+function isValidHex(hex: string): boolean {
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex);
+}
 
 type Props = {
   initial: PlatformSettings;
@@ -25,19 +40,6 @@ export function AdminSettingsForm({ initial }: Props) {
       },
     });
   }, [initial]);
-
-  function updatePalette(mode: "light" | "dark", key: keyof ThemePalette, value: string) {
-    setForm((prev) => ({
-      ...prev,
-      theme: {
-        ...prev.theme,
-        [mode]: {
-          ...prev.theme[mode],
-          [key]: value,
-        },
-      },
-    }));
-  }
 
   function updateNested<
     K extends keyof PlatformSettings,
@@ -119,20 +121,6 @@ export function AdminSettingsForm({ initial }: Props) {
     ],
     [],
   );
-
-  const colorFields: Array<{ key: keyof ThemePalette; label: string }> = [
-    { key: "background", label: "Background" },
-    { key: "foreground", label: "Foreground" },
-    { key: "muted", label: "Muted" },
-    { key: "mutedForeground", label: "Muted foreground" },
-    { key: "border", label: "Border" },
-    { key: "input", label: "Input" },
-    { key: "ring", label: "Ring" },
-    { key: "primary", label: "Primary" },
-    { key: "primaryForeground", label: "Primary foreground" },
-    { key: "destructive", label: "Destructive" },
-    { key: "destructiveForeground", label: "Destructive foreground" },
-  ];
 
   return (
     <div className="space-y-8">
@@ -246,18 +234,19 @@ export function AdminSettingsForm({ initial }: Props) {
         </section>
 
         <section className="border-border bg-background/60 rounded-2xl border p-4 md:p-6">
-          <h2 className="text-foreground mb-3 text-sm font-medium">Theme engine</h2>
-          <div className="grid gap-4 md:grid-cols-4">
+          <h2 className="text-foreground mb-1 text-sm font-medium">Theme engine</h2>
+          <p className="text-muted-foreground mb-4 text-xs">
+            Background is fixed: dark = black, light = white. Set 3 hex colors — all other tokens compute automatically with WCAG-safe contrast.
+          </p>
+
+          {/* Row 1: mode + font */}
+          <div className="grid gap-4 md:grid-cols-4 mb-6">
             <div className="space-y-1.5">
               <label className="text-foreground text-xs font-medium">Default theme</label>
               <select
                 value={form.theme.defaultTheme}
                 onChange={(e) =>
-                  updateNested(
-                    "theme",
-                    "defaultTheme",
-                    e.target.value as "light" | "dark",
-                  )
+                  updateNested("theme", "defaultTheme", e.target.value as "light" | "dark")
                 }
                 className="border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm outline-none"
               >
@@ -273,9 +262,7 @@ export function AdminSettingsForm({ initial }: Props) {
                 className="border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm outline-none"
               >
                 {fontOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
             </div>
@@ -285,10 +272,10 @@ export function AdminSettingsForm({ initial }: Props) {
                 checked={form.theme.useGoogleFont}
                 onChange={(e) => updateNested("theme", "useGoogleFont", e.target.checked)}
               />
-              Use Google font family
+              Use Google font
             </label>
             <div className="space-y-1.5">
-              <label className="text-foreground text-xs font-medium">Google font family</label>
+              <label className="text-foreground text-xs font-medium">Google font name</label>
               <input
                 value={form.theme.googleFontFamily ?? ""}
                 onChange={(e) => updateNested("theme", "googleFontFamily", e.target.value)}
@@ -296,33 +283,70 @@ export function AdminSettingsForm({ initial }: Props) {
                 className="border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm outline-none"
               />
             </div>
-            {(["light", "dark"] as const).map((mode) => (
-              <div key={mode} className="md:col-span-2 rounded-xl border border-border p-4">
-                <h3 className="text-foreground mb-3 text-sm font-medium capitalize">
-                  {mode} palette
-                </h3>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {colorFields.map((field) => (
-                    <div key={`${mode}-${field.key}`} className="space-y-1">
-                      <label className="text-muted-foreground text-xs">{field.label}</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={form.theme[mode][field.key]}
-                          onChange={(e) => updatePalette(mode, field.key, e.target.value)}
-                          className="h-8 w-9 rounded border border-border bg-transparent p-1"
-                        />
-                        <input
-                          value={form.theme[mode][field.key]}
-                          onChange={(e) => updatePalette(mode, field.key, e.target.value)}
-                          className="border-input bg-background text-foreground w-full rounded border px-2 py-1.5 text-xs font-mono outline-none"
-                        />
-                      </div>
+          </div>
+
+          {/* 3 color pickers */}
+          <div className="rounded-xl border border-border p-4 space-y-5">
+            <div className="grid gap-5 sm:grid-cols-3">
+              {([
+                { field: "accentHex" as const, label: "Accent color", desc: "Primary CTA, highlights, active states" },
+                { field: "ringHex"   as const, label: "Ring color",   desc: "Focus rings, outlines, borders" },
+                { field: "mutedHex"  as const, label: "Muted color",  desc: "Secondary elements, surfaces" },
+              ]).map(({ field, label, desc }) => {
+                const hex = form.theme[field] as string;
+                const valid = isValidHex(hex);
+                const fg = valid ? contrastFg(hex.length === 4 ? hex : hex) : "#ffffff";
+                return (
+                  <div key={field} className="space-y-2">
+                    <div>
+                      <p className="text-foreground text-xs font-medium">{label}</p>
+                      <p className="text-muted-foreground text-xs">{desc}</p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={valid ? hex : "#ff4d6d"}
+                        onChange={(e) => updateNested("theme", field, e.target.value)}
+                        className="h-9 w-9 cursor-pointer rounded border border-border bg-transparent p-0.5"
+                      />
+                      <input
+                        type="text"
+                        value={hex}
+                        onChange={(e) => updateNested("theme", field, e.target.value)}
+                        placeholder="#ff4d6d"
+                        maxLength={7}
+                        className={`border-input bg-background text-foreground font-mono w-full rounded-lg border px-3 py-2 text-sm outline-none ${!valid && hex ? "border-destructive" : ""}`}
+                      />
+                    </div>
+                    {valid && (
+                      <div className="flex gap-2">
+                        <div
+                          className="flex flex-1 items-center justify-center rounded-md px-2 py-1.5 text-xs font-medium"
+                          style={{ backgroundColor: "#000000", color: hex }}
+                        >
+                          on dark
+                        </div>
+                        <div
+                          className="flex flex-1 items-center justify-center rounded-md px-2 py-1.5 text-xs font-medium"
+                          style={{ backgroundColor: hex, color: fg }}
+                        >
+                          button
+                        </div>
+                        <div
+                          className="flex flex-1 items-center justify-center rounded-md px-2 py-1.5 text-xs font-medium"
+                          style={{ backgroundColor: "#ffffff", color: hex }}
+                        >
+                          on light
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-muted-foreground text-xs">
+              All text/button foreground colors are auto-computed from WCAG luminance — safe contrast is guaranteed.
+            </p>
           </div>
         </section>
 

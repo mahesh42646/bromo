@@ -71,7 +71,7 @@ export function SearchScreen() {
         style={{
           paddingHorizontal: 14,
           paddingVertical: 12,
-          backgroundColor: isDark ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)',
+          backgroundColor: palette.background,
           borderBottomWidth: 1,
           borderBottomColor: palette.border,
           gap: 12,
@@ -109,7 +109,7 @@ export function SearchScreen() {
                   paddingHorizontal: 14,
                   paddingVertical: 7,
                   borderRadius: chipRadius,
-                  backgroundColor: isActive ? palette.primary : isDark ? '#111' : '#f4f4f5',
+                  backgroundColor: isActive ? palette.primary : isDark ? palette.surface : palette.card,
                   borderWidth: 1,
                   borderColor: isActive ? palette.primary : palette.border,
                 }}>
@@ -254,7 +254,7 @@ export function SearchScreen() {
                     <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
                       <ThemedText variant="label">{person.name}</ThemedText>
                       {person.verified && (
-                        <BadgeCheck size={15} color="#3b82f6" fill="#3b82f6" strokeWidth={2} />
+                        <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
                       )}
                     </View>
                     <ThemedText variant="caption">@{person.handle}</ThemedText>

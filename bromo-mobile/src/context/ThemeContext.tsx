@@ -78,7 +78,7 @@ export function ThemeProvider({children}: {children: React.ReactNode}) {
   const palette = useMemo(() => {
     const serverPalette = isDark ? contract.theme.dark : contract.theme.light;
     // Validate that the palette has the required tokens
-    if (serverPalette?.background && serverPalette?.primary && serverPalette?.glass) {
+    if (serverPalette?.background && serverPalette?.accent && serverPalette?.glass) {
       return serverPalette;
     }
     return isDark ? FALLBACK_PALETTE_DARK : FALLBACK_PALETTE_LIGHT;
