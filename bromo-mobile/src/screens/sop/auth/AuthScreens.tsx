@@ -20,7 +20,6 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import Svg, {
   Defs,
-  LinearGradient,
   Path,
   RadialGradient,
   Rect,
@@ -102,39 +101,37 @@ function GradCTA({
   style?: ViewStyle;
 }) {
   const {palette} = useTheme();
+  const isDisabled = !!disabled || !!loading;
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={isDisabled}
       style={({pressed}) => [
         {
           width: '100%',
-          height: 50,
-          borderRadius: 10,
-          overflow: 'hidden',
-          opacity: disabled || loading ? 0.4 : pressed ? 0.88 : 1,
+          height: 52,
+          borderRadius: 12,
+          backgroundColor: isDisabled ? palette.glassMid : palette.accent,
+          alignItems: 'center' as const,
+          justifyContent: 'center' as const,
+          opacity: pressed ? 0.88 : 1,
           transform: [{scale: pressed ? 0.98 : 1}],
         },
         style,
       ]}>
-      <Svg style={ss.fill} width="100%" height="100%">
-        <Defs>
-          <LinearGradient id="cta_g" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={palette.primary} stopOpacity="1" />
-            <Stop offset="1" stopColor={palette.primary} stopOpacity="0.75" />
-          </LinearGradient>
-        </Defs>
-        <Rect width="100%" height="100%" fill="url(#cta_g)" />
-      </Svg>
-      <View style={[ss.fill, ss.center]}>
-        {loading ? (
-          <ActivityIndicator size="small" color={palette.primaryForeground} />
-        ) : (
-          <Text style={{color: palette.primaryForeground, fontWeight: '700', fontSize: 14, letterSpacing: 0.2}}>
-            {label}
-          </Text>
-        )}
-      </View>
+      {loading ? (
+        <ActivityIndicator size="small" color={palette.accentForeground} />
+      ) : (
+        <Text
+          style={{
+            color: isDisabled ? palette.foregroundSubtle : palette.accentForeground,
+            fontWeight: '700',
+            fontSize: 15,
+            letterSpacing: 0.3,
+          }}>
+          {label}
+        </Text>
+      )}
     </Pressable>
   );
 }
@@ -186,6 +183,7 @@ function OutlineCTA({
 }
 
 // ── Google button ─────────────────────────────────────────────────
+// Google brand guidelines: dark mode = black bg + white text, light mode = white bg + dark text
 
 function GoogleCTA({
   onPress,
@@ -196,45 +194,76 @@ function GoogleCTA({
   loading?: boolean;
   disabled?: boolean;
 }) {
-  const {palette} = useTheme();
+  const {isDark} = useTheme();
+
+  // Google-spec colors: always high contrast regardless of theme tokens
+  const bg     = isDark ? '#131314' : '#FFFFFF';
+  const border = isDark ? '#8E918F' : '#747775';
+  const text   = isDark ? '#E3E3E3' : '#1F1F1F';
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled || loading}
-      style={({pressed}) => ({
-        width: '100%',
-        height: 50,
-        borderRadius: 10,
+    <View
+      style={{
         borderWidth: 1,
-        borderColor: palette.borderMid,
-        backgroundColor: palette.glass,
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-        gap: 12,
-        opacity: disabled || loading ? 0.4 : pressed ? 0.8 : 1,
-        transform: [{scale: pressed ? 0.98 : 1}],
-      })}>
-      {loading ? (
-        <ActivityIndicator size="small" color={palette.foreground} />
-      ) : (
-        <>
-          <View style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            backgroundColor: '#fff',   // Google brand requirement — always white
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <GoogleG size={18} />
+        borderColor: isDark ? '#333333' : '#CCCCCC',
+        borderRadius: 999,
+        padding: 20,
+        // No size or margin change ensures button stays same size
+        alignSelf: 'center',
+      }}
+    >
+      <Pressable
+        onPress={onPress}
+        disabled={disabled || loading}
+        style={({pressed}) => ({
+          alignSelf: 'center',
+          minWidth: 0,
+          flexDirection: 'row',
+          height: 44,
+          borderRadius: 999,
+          borderWidth: 1.5,
+          borderColor: border,
+          backgroundColor: bg,
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: disabled || loading ? 0.55 : pressed ? 0.88 : 1,
+          transform: [{scale: pressed ? 0.98 : 1}],
+          shadowColor: '#000000',
+          shadowOffset: {width: 0, height: 1},
+          shadowOpacity: isDark ? 0.3 : 0.1,
+          shadowRadius: 3,
+          elevation: 2,
+          paddingVertical: 7,
+          paddingHorizontal: 18,
+          borderStyle: 'solid',
+        })}>
+        {loading ? (
+          <ActivityIndicator size="small" color={text} />
+        ) : (
+          <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center'}}>
+            <GoogleG size={22} />
+            <View style={{width: 10}} />
+            <Text
+              style={{
+                color: text,
+                fontWeight: '500',
+                fontSize: 16,
+                letterSpacing: 0.1,
+                flexShrink: 1,
+                flexWrap: 'nowrap',
+                textAlignVertical: 'center',
+                paddingLeft: 0,
+                paddingRight: 0,
+              }}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Sign in with Google
+            </Text>
           </View>
-          <Text style={{color: palette.foregroundMuted, fontWeight: '600', fontSize: 14}}>
-            Continue with Google
-          </Text>
-        </>
-      )}
-    </Pressable>
+        )}
+      </Pressable>
+    </View>
   );
 }
 
@@ -252,6 +281,8 @@ function Field({
   prefix,
   suffix,
   error,
+  onSubmitEditing,
+  returnKeyType,
 }: {
   value: string;
   onChange: (t: string) => void;
@@ -264,6 +295,8 @@ function Field({
   prefix?: React.ReactNode;
   suffix?: React.ReactNode;
   error?: string;
+  onSubmitEditing?: () => void;
+  returnKeyType?: 'done' | 'go' | 'next' | 'send';
 }) {
   const {palette, isDark} = useTheme();
   const [focused, setFocused] = useState(false);
@@ -300,6 +333,8 @@ function Field({
           editable={editable !== false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onSubmitEditing={onSubmitEditing}
+          returnKeyType={returnKeyType ?? (secure ? 'done' : 'next')}
           keyboardAppearance={isDark ? 'dark' : 'light'}
           style={{
             flex: 1,
@@ -396,7 +431,8 @@ function Chrome({children, showBack}: {children: React.ReactNode; showBack?: boo
       <ScreenGlow />
       <KeyboardAvoidingView
         style={{flex: 1}}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}>
         {showBack && (
           <Pressable
             onPress={() => navigation.goBack()}
@@ -544,7 +580,7 @@ export function LoginScreen() {
         )}
       </View>
 
-      {/* Form */}
+      {/* Form fields — in scroll so they move up with keyboard */}
       <View style={{paddingHorizontal: 28}}>
         <Err msg={error} />
         <Field
@@ -554,25 +590,32 @@ export function LoginScreen() {
           placeholder="Username, email or phone"
           autoCapitalize="none"
         />
-        <Field value={password} onChange={setPassword} secure placeholder="Password" />
+        <Field
+          value={password}
+          onChange={setPassword}
+          secure
+          placeholder="Password"
+          onSubmitEditing={handleLogin}
+          editable={!loading && !gLoading}
+          returnKeyType="go"
+        />
 
         <Pressable
           onPress={() => navigation.navigate('ForgotPassword')}
-          style={{alignSelf: 'flex-end', marginBottom: 22, marginTop: 2}}>
+          style={{alignSelf: 'flex-end', marginBottom: 8, marginTop: 2}}>
           <Text style={{color: palette.primary, fontSize: 13, fontWeight: '600'}}>
             Forgot password?
           </Text>
         </Pressable>
-
-        <GradCTA label="Log in" onPress={handleLogin} loading={loading} disabled={loading || gLoading} />
-
+        <View style={{paddingTop: 14}}>
+          <GradCTA label="Log in" onPress={handleLogin} loading={loading} disabled={loading || gLoading} />
+        </View>
         <OrDivider />
-
         <GoogleCTA onPress={handleGoogle} loading={gLoading} disabled={loading || gLoading} />
       </View>
 
       {/* Signup footer */}
-      <View style={{flex: 1, justifyContent: 'flex-end', paddingBottom: 24, marginTop: 24}}>
+      <View style={{paddingBottom: 24, marginTop: 24}}>
         <View style={{
           borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: palette.hairline,
@@ -683,7 +726,7 @@ export function RegisterScreen() {
     if (/[^A-Za-z0-9]/.test(password)) s++;
     if (s <= 1) return {label: 'Weak',   color: palette.destructive, pct: 25};
     if (s <= 2) return {label: 'Fair',   color: palette.warning,     pct: 50};
-    if (s <= 3) return {label: 'Good',   color: palette.info,        pct: 75};
+    if (s <= 3) return {label: 'Good',   color: palette.primary,     pct: 75};
     return       {label: 'Strong', color: palette.success,     pct: 100};
   })();
 
@@ -759,6 +802,8 @@ export function RegisterScreen() {
             }
             suffix={statusIcon}
             error={available === false ? usernameError : undefined}
+            returnKeyType="next"
+            onSubmitEditing={() => canProceed && setStep(2)}
             autoFocus
           />
 
@@ -804,7 +849,6 @@ export function RegisterScreen() {
               </View>
             </View>
           )}
-
           <GradCTA
             label="Continue"
             onPress={() => setStep(2)}
@@ -813,7 +857,7 @@ export function RegisterScreen() {
           />
         </View>
 
-        <View style={{flex: 1, justifyContent: 'flex-end', paddingBottom: 24, marginTop: 24}}>
+        <View style={{paddingBottom: 24, marginTop: 24}}>
           <View style={{
             borderTopWidth: StyleSheet.hairlineWidth,
             borderTopColor: palette.hairline,
@@ -877,9 +921,15 @@ export function RegisterScreen() {
 
         <Err msg={error} />
         <Field value={name} onChange={setName} autoCapitalize="words" placeholder="Full name" />
-        <Field value={email} onChange={setEmail} keyboard="email-address" placeholder="Email address" />
+        <Field
+          value={email}
+          onChange={setEmail}
+          keyboard="email-address"
+          placeholder="Email address"
+          returnKeyType="next"
+        />
         <Field value={phone} onChange={setPhone} keyboard="default" placeholder="Phone number (optional)" />
-        <Field value={password} onChange={setPassword} secure placeholder="Password" />
+        <Field value={password} onChange={setPassword} secure placeholder="Password" returnKeyType="next" />
 
         {password.length > 0 && (
           <View style={[ss.row, {gap: 8, marginTop: -8, marginBottom: 12}]}>
@@ -898,20 +948,23 @@ export function RegisterScreen() {
           secure
           placeholder="Confirm password"
           error={confirm.length > 0 && password !== confirm ? 'Passwords do not match' : undefined}
+          returnKeyType="go"
+          onSubmitEditing={handleRegister}
         />
 
-        <GradCTA
-          label="Create account"
-          onPress={handleRegister}
-          loading={loading}
-          disabled={loading || gLoading}
-          style={{marginTop: 4}}
-        />
-        <OrDivider />
-        <GoogleCTA onPress={handleGoogle} loading={gLoading} disabled={loading || gLoading} />
+        <View style={{marginTop: 6, marginBottom: 8}}>
+          <GradCTA
+            label="Create account"
+            onPress={handleRegister}
+            loading={loading}
+            disabled={loading || gLoading}
+          />
+          <OrDivider />
+          <GoogleCTA onPress={handleGoogle} loading={gLoading} disabled={loading || gLoading} />
+        </View>
       </View>
 
-      <View style={{flex: 1, justifyContent: 'flex-end', paddingBottom: 24, marginTop: 24}}>
+      <View style={{paddingBottom: 24, marginTop: 24}}>
         <View style={{
           borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: palette.hairline,
@@ -1106,8 +1159,20 @@ export function ForgotPasswordScreen() {
         <Text style={{color: palette.foregroundSubtle, fontSize: 14, lineHeight: 21, marginBottom: 28}}>
           Enter your email and we'll send a reset link.
         </Text>
-        <Field value={email} onChange={setEmail} keyboard="email-address" placeholder="Email address" autoFocus />
-        <GradCTA label="Send Reset Link" onPress={handleReset} loading={loading} disabled={loading} style={{marginTop: 4}} />
+        <Field
+          value={email}
+          onChange={setEmail}
+          keyboard="email-address"
+          placeholder="Email address"
+          returnKeyType="send"
+          onSubmitEditing={handleReset}
+          autoFocus
+        />
+      </View>
+
+      {/* Sticky CTA — always visible above keyboard */}
+      <View style={{paddingHorizontal: 24, paddingTop: 16}}>
+        <GradCTA label="Send Reset Link" onPress={handleReset} loading={loading} disabled={loading} />
       </View>
     </Chrome>
   );

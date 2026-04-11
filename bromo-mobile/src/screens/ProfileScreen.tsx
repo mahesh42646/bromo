@@ -393,7 +393,7 @@ export function ProfileScreen() {
 
         <View style={styles.headerRight}>
           <View style={[styles.coinBadge, {borderColor: `${palette.primary}40`, backgroundColor: `${palette.primary}12`}]}>
-            <Coins size={11} color="#FFD700" />
+            <Coins size={11} color={palette.warning} />
             <Text style={[styles.coinText, {color: palette.primary}]}>0</Text>
           </View>
           <Pressable onPress={() => setMenuOpen(true)} hitSlop={12}>

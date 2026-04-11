@@ -283,7 +283,7 @@ export function ComposerScreen() {
         </Pressable>
         <Text style={s.title}>New {draft.mode}</Text>
         <Pressable onPress={goNext}>
-          <Text style={[s.next, {color: palette.primary}]}>Next</Text>
+          <Text style={[s.next, {color: palette.accent}]}>Next</Text>
         </Pressable>
       </View>
 
@@ -321,8 +321,8 @@ export function ComposerScreen() {
                   setCaption(next);
                   setHashtags(next.match(/#[\w]+/g) ?? []);
                 }}
-                style={[s.tagChip, active && {backgroundColor: palette.primary + '33', borderColor: palette.primary}]}>
-                <Text style={[s.tagText, active && {color: palette.primary}]}>{t}</Text>
+                style={[s.tagChip, active && {backgroundColor: palette.accent + '33', borderColor: palette.accent}]}>
+                <Text style={[s.tagText, active && {color: palette.accent}]}>{t}</Text>
               </Pressable>
             );
           })}
@@ -358,7 +358,7 @@ export function ComposerScreen() {
                   setShowLocation(false);
                   setLocationQuery('');
                 }}
-                style={[s.locationItem, location?.id === l.id && {borderColor: palette.primary}]}>
+                style={[s.locationItem, location?.id === l.id && {borderColor: palette.accent}]}>
                 <MapPin size={14} color={palette.foregroundMuted} />
                 <View style={{flex: 1}}>
                   <Text style={s.locationName}>{l.name}</Text>
@@ -395,8 +395,8 @@ export function ComposerScreen() {
           {MOCK_USERS.map(u => {
             const on = tagged.some(t => t.id === u.id);
             return (
-              <Pressable key={u.id} onPress={() => toggleUser(u)} style={[s.userChip, on && {borderColor: palette.primary, backgroundColor: palette.primary + '22'}]}>
-                <Text style={[s.userChipTxt, on && {color: palette.primary}]}>@{u.username}</Text>
+              <Pressable key={u.id} onPress={() => toggleUser(u)} style={[s.userChip, on && {borderColor: palette.accent, backgroundColor: palette.accent + '22'}]}>
+                <Text style={[s.userChipTxt, on && {color: palette.accent}]}>@{u.username}</Text>
               </Pressable>
             );
           })}
@@ -413,12 +413,12 @@ export function ComposerScreen() {
           renderItem={({item}) => {
             const on = products.some(p => p.id === item.id);
             return (
-              <Pressable onPress={() => attachProduct(item)} style={[s.product, on && {borderColor: palette.primary}]}>
+              <Pressable onPress={() => attachProduct(item)} style={[s.product, on && {borderColor: palette.accent}]}>
                 <Image source={{uri: item.imageUri}} style={s.productImg} />
                 <Text style={s.productName} numberOfLines={1}>{item.name}</Text>
                 <Text style={s.productPrice}>{item.priceLabel}</Text>
-                <Pressable onPress={() => stickerFromProduct(item)} style={[s.stickerBtn, on && {backgroundColor: palette.primary + '33'}]}>
-                  <Text style={[s.stickerBtnTxt, on && {color: palette.primary}]}>+ Sticker</Text>
+                <Pressable onPress={() => stickerFromProduct(item)} style={[s.stickerBtn, on && {backgroundColor: palette.accent + '33'}]}>
+                  <Text style={[s.stickerBtnTxt, on && {color: palette.accent}]}>+ Sticker</Text>
                 </Pressable>
               </Pressable>
             );

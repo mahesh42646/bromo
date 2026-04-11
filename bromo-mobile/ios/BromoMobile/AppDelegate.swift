@@ -43,15 +43,24 @@ class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
 
   override func bundleURL() -> URL? {
 #if DEBUG
-    if let metroHost = Bundle.main.object(forInfoDictionaryKey: "RCT_METRO_HOST") as? String,
-       !metroHost.isEmpty,
-       let explicitURL = URL(string: "http://\(metroHost):8081/index.bundle?platform=ios&dev=true&minify=false")
+    if let host = Self.metroHostFromBundledConfig(), !host.isEmpty,
+       let url = URL(string: "http://\(host):8081/index.bundle?platform=ios&dev=true&minify=false")
     {
-      return explicitURL
+      return url
     }
     return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
 #else
     Bundle.main.url(forResource: "main", withExtension: "jsbundle")
 #endif
+  }
+
+  private static func metroHostFromBundledConfig() -> String? {
+    guard let url = Bundle.main.url(forResource: "bromo-config", withExtension: "json"),
+          let data = try? Data(contentsOf: url),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let host = obj["metroHost"] as? String
+    else { return nil }
+    let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
   }
 }

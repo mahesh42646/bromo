@@ -472,7 +472,7 @@ export function ChatThreadScreen() {
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}>
-                <Play size={28} color="#fff" fill="#fff" />
+                <Play size={28} color={palette.foreground} fill={palette.foreground} />
               </View>
             </View>
             <View style={{flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4, alignItems: 'center'}}>
@@ -732,7 +732,7 @@ export function ChatThreadScreen() {
       </KeyboardAvoidingView>
 
       <Modal visible={picker === 'gif'} transparent animationType="fade" onRequestClose={() => setPicker(null)}>
-        <Pressable style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end'}} onPress={() => setPicker(null)}>
+        <Pressable style={{flex: 1, backgroundColor: palette.overlay, justifyContent: 'flex-end'}} onPress={() => setPicker(null)}>
           <View style={{backgroundColor: palette.background, padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16}}>
             <Text style={{color: palette.foreground, fontWeight: '800', marginBottom: 12}}>GIFs</Text>
             <FlatList
@@ -752,7 +752,7 @@ export function ChatThreadScreen() {
       </Modal>
 
       <Modal visible={picker === 'sticker'} transparent animationType="fade" onRequestClose={() => setPicker(null)}>
-        <Pressable style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center'}} onPress={() => setPicker(null)}>
+        <Pressable style={{flex: 1, backgroundColor: palette.overlay, justifyContent: 'center'}} onPress={() => setPicker(null)}>
           <View style={{marginHorizontal: 24, backgroundColor: palette.background, padding: 16, borderRadius: 16}}>
             <Text style={{color: palette.foreground, fontWeight: '800', marginBottom: 12}}>Stickers</Text>
             <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 16, justifyContent: 'center'}}>
@@ -767,7 +767,7 @@ export function ChatThreadScreen() {
       </Modal>
 
       <Modal visible={picker === 'label'} transparent animationType="fade" onRequestClose={() => setPicker(null)}>
-        <Pressable style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center'}} onPress={() => setPicker(null)}>
+        <Pressable style={{flex: 1, backgroundColor: palette.overlay, justifyContent: 'center'}} onPress={() => setPicker(null)}>
           <View style={{marginHorizontal: 24, backgroundColor: palette.background, padding: 16, borderRadius: 16}}>
             <Text style={{color: palette.foreground, fontWeight: '800', marginBottom: 12}}>Label for @{peer.username}</Text>
             {USER_LABEL_OPTIONS.map(opt => (

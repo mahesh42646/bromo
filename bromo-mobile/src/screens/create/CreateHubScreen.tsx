@@ -44,6 +44,7 @@ import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {CreateMode, MediaAsset} from '../../create/createTypes';
 import {loadCameraSettings, type StoredCameraSettings} from '../../lib/cameraSettingsStorage';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
+import type {ThemePalette} from '../../config/platform-theme';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'CreateHub'>;
 
@@ -70,6 +71,7 @@ const MODES: {id: CreateMode; label: string}[] = [
 export function CreateHubScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
+  const styles = makeStyles(palette);
   const {draft, setMode, setAssets, reset, setLiveMeta} = useCreateDraft();
 
   const [roll, setRoll] = useState<{uri: string; type: 'image' | 'video'}[]>([]);
@@ -220,7 +222,7 @@ export function CreateHubScreen() {
             navigation.getParent()?.goBack();
           }}
           hitSlop={12}>
-          <X size={26} color="#fff" />
+          <X size={26} color={palette.foreground} />
         </Pressable>
         {draft.mode === 'live' ? (
           <Pressable
@@ -230,11 +232,11 @@ export function CreateHubScreen() {
                 liveAudience: draft.liveAudience === 'everyone' ? 'followers' : 'everyone',
               })
             }>
-            <Radio size={14} color="#fff" />
+            <Radio size={14} color={palette.foreground} />
             <Text style={styles.liveAudienceText}>
               {draft.liveAudience === 'everyone' ? 'Everyone' : 'Followers'}
             </Text>
-            <ChevronDown size={14} color="#fff" />
+            <ChevronDown size={14} color={palette.foreground} />
           </Pressable>
         ) : (
           <Text style={styles.headerTitle}>{headerTitle}</Text>
@@ -242,14 +244,14 @@ export function CreateHubScreen() {
         <View style={styles.headerRight}>
           {draft.mode === 'post' && picked.size > 0 && multiSelect && (
             <Pressable onPress={onNextMulti} style={styles.nextBtn}>
-              <Text style={[styles.nextBtnText, {color: palette.primary}]}>Next ({picked.size})</Text>
+              <Text style={[styles.nextBtnText, {color: palette.accent}]}>Next ({picked.size})</Text>
             </Pressable>
           )}
           <Pressable onPress={() => navigation.navigate('Drafts')} hitSlop={8}>
-            <FileText size={22} color="#fff" />
+            <FileText size={22} color={palette.foreground} />
           </Pressable>
           <Pressable onPress={() => navigation.navigate('CameraSettings')} hitSlop={8}>
-            <Settings size={22} color="#fff" />
+            <Settings size={22} color={palette.foreground} />
           </Pressable>
         </View>
       </View>
@@ -257,12 +259,12 @@ export function CreateHubScreen() {
       {draft.mode === 'reel' && (
         <View style={styles.subHeader}>
           <Pressable style={styles.pill} onPress={() => navigation.navigate('FilterEffects')}>
-            <Sparkles size={14} color={palette.primary} />
+            <Sparkles size={14} color={palette.accent} />
             <Text style={styles.pillText}>Effects</Text>
             <View style={styles.notifDot} />
           </Pressable>
           <Pressable style={styles.pill} onPress={() => navigation.navigate('MusicPicker', {mode: 'reel'})}>
-            <LayoutGrid size={14} color="#fff" />
+            <LayoutGrid size={14} color={palette.foreground} />
             <Text style={styles.pillText}>Audio</Text>
           </Pressable>
           <Pressable style={styles.pill} onPress={() => navigation.navigate('CollaborationInvite')}>
@@ -274,10 +276,10 @@ export function CreateHubScreen() {
       {draft.mode === 'live' && (
         <View style={styles.liveSide}>
           <Pressable style={styles.iconBtnDark}>
-            <List size={20} color="#fff" />
+            <List size={20} color={palette.foreground} />
           </Pressable>
           <Pressable style={styles.iconBtnDark}>
-            <Calendar size={20} color="#fff" />
+            <Calendar size={20} color={palette.foreground} />
           </Pressable>
         </View>
       )}
@@ -290,7 +292,7 @@ export function CreateHubScreen() {
               <Image source={{uri: previewUri}} style={styles.hero} resizeMode="cover" />
             ) : (
               <View style={[styles.hero, styles.heroPlaceholder]}>
-                <Camera size={36} color="#555" />
+                <Camera size={36} color={palette.foregroundFaint} />
                 <Text style={styles.placeholderText}>Select a photo or video</Text>
               </View>
             )}
@@ -298,7 +300,7 @@ export function CreateHubScreen() {
           <View style={styles.recentsRow}>
             <Pressable style={styles.recentsLabel}>
               <Text style={styles.recentsText}>Recents</Text>
-              <ChevronDown size={14} color="#fff" />
+              <ChevronDown size={14} color={palette.foreground} />
             </Pressable>
             <View style={styles.recentsRight}>
               <Pressable onPress={openLibraryFull} style={styles.galleryBtn}>
@@ -309,14 +311,14 @@ export function CreateHubScreen() {
                   setMultiSelect(m => !m);
                   setPicked(new Set());
                 }}>
-                <Text style={[styles.selectText, multiSelect && {color: palette.primary}]}>
+                <Text style={[styles.selectText, multiSelect && {color: palette.accent}]}>
                   {multiSelect ? 'Done' : 'Select multiple'}
                 </Text>
               </Pressable>
             </View>
           </View>
           {loadingRoll ? (
-            <ActivityIndicator color="#fff" style={{marginTop: 24}} />
+            <ActivityIndicator color={palette.foreground} style={{marginTop: 24}} />
           ) : (
             <FlatList
               data={gridData}
@@ -328,7 +330,7 @@ export function CreateHubScreen() {
                   return (
                     <Pressable onPress={openCamera} style={styles.cell}>
                       <View style={[styles.thumb, styles.camCell]}>
-                        <Camera size={26} color="#fff" />
+                        <Camera size={26} color={palette.foreground} />
                       </View>
                     </Pressable>
                   );
@@ -339,7 +341,7 @@ export function CreateHubScreen() {
                     <Image source={{uri: item.uri}} style={styles.thumb} />
                     {item.type === 'video' && (
                       <View style={styles.videoBadge}>
-                        <Play size={10} color="#fff" fill="#fff" />
+                        <Play size={10} color={palette.foreground} fill={palette.foreground} />
                       </View>
                     )}
                     {multiSelect && (
@@ -361,16 +363,16 @@ export function CreateHubScreen() {
         <View style={styles.flex1}>
           {toolbarOnLeft ? (
             <View style={styles.leftTools}>
-              <Tool Icon={Type} />
-              <Tool Icon={Repeat2} label="Boom" />
-              <Tool Icon={Grid3X3} />
-              <Tool Icon={SmilePlus} />
-              <ChevronDown size={18} color="#fff" style={{marginTop: 8}} />
+              <Tool Icon={Type} palette={palette} />
+              <Tool Icon={Repeat2} label="Boom" palette={palette} />
+              <Tool Icon={Grid3X3} palette={palette} />
+              <Tool Icon={SmilePlus} palette={palette} />
+              <ChevronDown size={18} color={palette.foreground} style={{marginTop: 8}} />
             </View>
           ) : (
             <View style={styles.rightTools}>
-              <Tool Icon={Type} />
-              <Tool Icon={SmilePlus} />
+              <Tool Icon={Type} palette={palette} />
+              <Tool Icon={SmilePlus} palette={palette} />
             </View>
           )}
           <View style={styles.cameraViewport}>
@@ -378,14 +380,14 @@ export function CreateHubScreen() {
               <Image source={{uri: previewUri}} style={styles.fullPreview} resizeMode="cover" />
             ) : (
               <View style={[styles.fullPreview, styles.heroPlaceholder]}>
-                <Camera size={44} color="#444" />
+                <Camera size={44} color={palette.foregroundFaint} />
                 <Text style={styles.placeholderText}>
                   {draft.mode === 'live' ? 'Tap Go Live below' : 'Camera'}
                 </Text>
               </View>
             )}
             <Pressable style={[styles.flashBtn, {top: 48}]} onPress={() => setFlashOn(f => !f)}>
-              {flashOn ? <Zap size={22} color="#fff" /> : <ZapOff size={22} color="#fff" />}
+              {flashOn ? <Zap size={22} color={palette.foreground} /> : <ZapOff size={22} color={palette.foreground} />}
             </Pressable>
           </View>
           <View style={styles.bottomCaptureRow}>
@@ -393,7 +395,7 @@ export function CreateHubScreen() {
               {roll[0] ? (
                 <Image source={{uri: roll[0].uri}} style={styles.smallPreviewImg} />
               ) : (
-                <View style={[styles.smallPreviewImg, {backgroundColor: '#222'}]} />
+                <View style={[styles.smallPreviewImg, {backgroundColor: palette.surfaceHigh}]} />
               )}
             </Pressable>
             <Pressable
@@ -404,11 +406,11 @@ export function CreateHubScreen() {
                   styles.shutterInner,
                   draft.mode === 'live' && styles.shutterInnerLive,
                 ]}>
-                {draft.mode === 'live' && <Radio size={28} color="#fff" />}
+                {draft.mode === 'live' && <Radio size={28} color={palette.foreground} />}
               </View>
             </Pressable>
             <Pressable style={styles.flipBtn} onPress={() => setFrontCam(f => !f)}>
-              <Repeat2 size={24} color="#fff" style={{transform: [{scaleX: -1}]}} />
+              <Repeat2 size={24} color={palette.foreground} style={{transform: [{scaleX: -1}]}} />
             </Pressable>
           </View>
         </View>
@@ -434,7 +436,7 @@ export function CreateHubScreen() {
                 <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>
                   {m.label}
                 </Text>
-                {active && <View style={[styles.modeUnderline, {backgroundColor: palette.primary}]} />}
+                {active && <View style={[styles.modeUnderline, {backgroundColor: palette.accent}]} />}
               </Pressable>
             );
           })}
@@ -447,201 +449,203 @@ export function CreateHubScreen() {
 function Tool({
   Icon,
   label,
+  palette,
 }: {
   Icon: React.ComponentType<{size?: number; color?: string}>;
   label?: string;
+  palette: ThemePalette;
 }) {
   return (
-    <Pressable style={styles.toolBtn}>
-      <Icon size={22} color="#fff" />
-      {label ? <Text style={styles.toolLabel}>{label}</Text> : null}
+    <Pressable style={{alignItems: 'center', gap: 4}}>
+      <Icon size={22} color={palette.foreground} />
+      {label ? <Text style={{color: palette.foreground, fontSize: 9}}>{label}</Text> : null}
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  root: {flex: 1, backgroundColor: '#000'},
-  flex1: {flex: 1},
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  headerTitle: {color: '#fff', fontSize: 17, fontWeight: '700'},
-  headerRight: {flexDirection: 'row', alignItems: 'center', gap: 14},
-  nextBtn: {paddingHorizontal: 10, paddingVertical: 6},
-  nextBtnText: {fontSize: 15, fontWeight: '700'},
-  liveAudience: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  liveAudienceText: {color: '#fff', fontSize: 13, fontWeight: '600'},
-  subHeader: {flexDirection: 'row', gap: 10, paddingHorizontal: 14, marginBottom: 6},
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  pillText: {color: '#fff', fontSize: 12, fontWeight: '700'},
-  notifDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#0095f6',
-    marginLeft: 2,
-  },
-  liveSide: {
-    position: 'absolute',
-    left: 10,
-    top: 120,
-    zIndex: 10,
-    gap: 14,
-  },
-  iconBtnDark: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  postTop: {paddingHorizontal: 1},
-  hero: {width: '100%', aspectRatio: 1, backgroundColor: '#111'},
-  heroPlaceholder: {alignItems: 'center', justifyContent: 'center', gap: 8},
-  placeholderText: {color: '#666', fontSize: 14},
-  recentsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  recentsLabel: {flexDirection: 'row', alignItems: 'center', gap: 4},
-  recentsText: {color: '#fff', fontSize: 15, fontWeight: '700'},
-  recentsRight: {flexDirection: 'row', alignItems: 'center', gap: 14},
-  galleryBtn: {
-    backgroundColor: '#1a1a1a',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  galleryBtnTxt: {color: '#fff', fontSize: 13, fontWeight: '700'},
-  selectText: {color: '#aaa', fontSize: 13, fontWeight: '700'},
-  cell: {width: '25%', aspectRatio: 1, padding: 1},
-  thumb: {flex: 1, backgroundColor: '#1a1a1a'},
-  camCell: {alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a1a'},
-  videoBadge: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectRing: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectRingOn: {
-    backgroundColor: '#0095f6',
-    borderColor: '#fff',
-  },
-  selectNum: {color: '#fff', fontSize: 10, fontWeight: '900'},
-  leftTools: {position: 'absolute', left: 8, top: '22%', zIndex: 5, gap: 18},
-  rightTools: {position: 'absolute', right: 8, top: '22%', zIndex: 5, gap: 18},
-  toolBtn: {alignItems: 'center', gap: 4},
-  toolLabel: {color: '#fff', fontSize: 9},
-  cameraViewport: {flex: 1, marginTop: 8, justifyContent: 'center', backgroundColor: '#050505'},
-  fullPreview: {flex: 1, width: '100%', minHeight: 360, backgroundColor: '#000'},
-  flashBtn: {
-    position: 'absolute',
-    alignSelf: 'center',
-    padding: 8,
-    zIndex: 6,
-  },
-  bottomCaptureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 28,
-    paddingVertical: 18,
-  },
-  smallPreview: {width: 42, height: 42, borderRadius: 8, overflow: 'hidden'},
-  smallPreviewImg: {width: '100%', height: '100%'},
-  shutter: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 4,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  shutterLive: {borderColor: '#ff3040'},
-  shutterInner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shutterInnerLive: {backgroundColor: '#ff3040'},
-  flipBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  modeBar: {
-    paddingBottom: 6,
-    paddingTop: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: '#000',
-  },
-  modeScroll: {paddingHorizontal: 16, gap: 20, alignItems: 'center'},
-  modeItem: {paddingHorizontal: 6, alignItems: 'center'},
-  modeLabel: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  modeLabelActive: {color: '#fff', fontSize: 14},
-  modeUnderline: {
-    width: 24,
-    height: 3,
-    borderRadius: 2,
-    marginTop: 4,
-  },
-});
+function makeStyles(p: ThemePalette) {
+  return StyleSheet.create({
+    root: {flex: 1, backgroundColor: p.background},
+    flex1: {flex: 1},
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    headerTitle: {color: p.foreground, fontSize: 17, fontWeight: '700'},
+    headerRight: {flexDirection: 'row', alignItems: 'center', gap: 14},
+    nextBtn: {paddingHorizontal: 10, paddingVertical: 6},
+    nextBtnText: {fontSize: 15, fontWeight: '700'},
+    liveAudience: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: p.borderMid,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+    },
+    liveAudienceText: {color: p.foreground, fontSize: 13, fontWeight: '600'},
+    subHeader: {flexDirection: 'row', gap: 10, paddingHorizontal: 14, marginBottom: 6},
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: p.glassMid,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: p.borderFaint,
+    },
+    pillText: {color: p.foreground, fontSize: 12, fontWeight: '700'},
+    notifDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: p.accent,
+      marginLeft: 2,
+    },
+    liveSide: {
+      position: 'absolute',
+      left: 10,
+      top: 120,
+      zIndex: 10,
+      gap: 14,
+    },
+    iconBtnDark: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: p.glassMid,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    postTop: {paddingHorizontal: 1},
+    hero: {width: '100%', aspectRatio: 1, backgroundColor: p.surface},
+    heroPlaceholder: {alignItems: 'center', justifyContent: 'center', gap: 8},
+    placeholderText: {color: p.foregroundSubtle, fontSize: 14},
+    recentsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    recentsLabel: {flexDirection: 'row', alignItems: 'center', gap: 4},
+    recentsText: {color: p.foreground, fontSize: 15, fontWeight: '700'},
+    recentsRight: {flexDirection: 'row', alignItems: 'center', gap: 14},
+    galleryBtn: {
+      backgroundColor: p.card,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+    },
+    galleryBtnTxt: {color: p.foreground, fontSize: 13, fontWeight: '700'},
+    selectText: {color: p.foregroundMuted, fontSize: 13, fontWeight: '700'},
+    cell: {width: '25%', aspectRatio: 1, padding: 1},
+    thumb: {flex: 1, backgroundColor: p.card},
+    camCell: {alignItems: 'center', justifyContent: 'center', backgroundColor: p.card},
+    videoBadge: {
+      position: 'absolute',
+      bottom: 6,
+      right: 6,
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: p.overlay,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selectRing: {
+      position: 'absolute',
+      top: 6,
+      right: 6,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: p.foreground,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selectRingOn: {
+      backgroundColor: p.accent,
+      borderColor: p.foreground,
+    },
+    selectNum: {color: p.foreground, fontSize: 10, fontWeight: '900'},
+    leftTools: {position: 'absolute', left: 8, top: '22%', zIndex: 5, gap: 18},
+    rightTools: {position: 'absolute', right: 8, top: '22%', zIndex: 5, gap: 18},
+    cameraViewport: {flex: 1, marginTop: 8, justifyContent: 'center', backgroundColor: p.background},
+    fullPreview: {flex: 1, width: '100%', minHeight: 360, backgroundColor: p.background},
+    flashBtn: {
+      position: 'absolute',
+      alignSelf: 'center',
+      padding: 8,
+      zIndex: 6,
+    },
+    bottomCaptureRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 28,
+      paddingVertical: 18,
+    },
+    smallPreview: {width: 42, height: 42, borderRadius: 8, overflow: 'hidden'},
+    smallPreviewImg: {width: '100%', height: '100%'},
+    shutter: {
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      borderWidth: 4,
+      borderColor: p.foreground,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 8,
+    },
+    shutterLive: {borderColor: p.destructive},
+    shutterInner: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      backgroundColor: p.foreground,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    shutterInnerLive: {backgroundColor: p.destructive},
+    flipBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: p.foregroundFaint,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 8,
+    },
+    modeBar: {
+      paddingBottom: 6,
+      paddingTop: 4,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: p.borderMid,
+      backgroundColor: p.background,
+    },
+    modeScroll: {paddingHorizontal: 16, gap: 20, alignItems: 'center'},
+    modeItem: {paddingHorizontal: 6, alignItems: 'center'},
+    modeLabel: {
+      color: p.foregroundSubtle,
+      fontSize: 13,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+    },
+    modeLabelActive: {color: p.foreground, fontSize: 14},
+    modeUnderline: {
+      width: 24,
+      height: 3,
+      borderRadius: 2,
+      marginTop: 4,
+    },
+  });
+}

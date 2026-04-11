@@ -1,10 +1,8 @@
-import {
-  AdminComingSoonPage,
-  buildAdminMetadata,
-} from "@/components/admin/admin-coming-soon-page";
+import type { Metadata } from "next";
+import { AdminDiagnostics } from "@/components/admin/admin-diagnostics";
 
-export const metadata = buildAdminMetadata("/admin/system/diagnostics");
+export const metadata: Metadata = { title: "AdminDiagnostics" };
 
 export default function Page() {
-  return <AdminComingSoonPage routeHref="/admin/system/diagnostics" />;
+  return <AdminDiagnostics />;
 }

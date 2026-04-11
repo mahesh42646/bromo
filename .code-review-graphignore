@@ -1,0 +1,11 @@
+node_modules/**
+**/.next/**
+**/dist/**
+**/build/**
+**/ios/Pods/**
+**/ios/build/**
+**/android/app/build/**
+**/.gradle/**
+**/__pycache__/**
+*.min.js
+*.bundle.js

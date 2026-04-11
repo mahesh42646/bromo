@@ -94,10 +94,10 @@ export function StoryViewScreen() {
   const {palette} = useTheme();
   return (
     <SopChrome title="Story" scroll={false}>
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111'}}>
-        <Text style={{color: '#fff', fontWeight: '800'}}>@{route.params.userId}</Text>
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: palette.surface}}>
+        <Text style={{color: palette.foreground, fontWeight: '800'}}>@{route.params.userId}</Text>
         <Text style={{color: palette.mutedForeground, marginTop: 8}}>24h story — full-screen (simulated)</Text>
-        <Play size={48} color="#fff" style={{marginTop: 24}} />
+        <Play size={48} color={palette.foreground} style={{marginTop: 24}} />
       </View>
     </SopChrome>
   );

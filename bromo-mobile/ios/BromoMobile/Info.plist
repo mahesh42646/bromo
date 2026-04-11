@@ -56,8 +56,6 @@
 	<string>BROMO needs photo library access to choose media for your posts.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
-	<key>RCT_METRO_HOST</key>
-	<string>192.168.1.35</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

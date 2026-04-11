@@ -50,20 +50,20 @@ function paletteVars(p: ReturnType<typeof fetchPublicPlatformSettings> extends P
     --border-heavy: ${p.borderHeavy};
     --input: ${p.input};
     --input-focused: ${p.inputFocused};
+    --accent: ${p.accent};
+    --accent-foreground: ${p.accentForeground};
     --ring: ${p.ring};
-    --primary: ${p.primary};
-    --primary-foreground: ${p.primaryForeground};
     --overlay: ${p.overlay};
+    --muted: ${p.muted};
+    --muted-foreground: ${p.mutedForeground};
     --success: ${p.success};
     --success-foreground: ${p.successForeground};
     --warning: ${p.warning};
     --warning-foreground: ${p.warningForeground};
-    --info: ${p.info};
-    --info-foreground: ${p.infoForeground};
     --destructive: ${p.destructive};
     --destructive-foreground: ${p.destructiveForeground};
-    --muted: ${p.muted};
-    --muted-foreground: ${p.mutedForeground};`;
+    --primary: ${p.accent};
+    --primary-foreground: ${p.accentForeground};`;
 }
 
 function buildCssVars(settings: Awaited<ReturnType<typeof fetchPublicPlatformSettings>>): string {

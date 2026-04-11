@@ -93,34 +93,18 @@ function IlloWallet({c}: {c: string}) {
   );
 }
 
-// ── Slide data ────────────────────────────────────────────────────
+// ── Slide data (uses palette tokens) ──────────────────────────────
 
-const SLIDES = [
-  {
-    Illo: IlloDiscover,
-    accent: '#FF2D55',
-    title: 'Hyperlocal,\nbuilt for India',
-    body: 'Discover food, stores & creators within 3KM — with offers you can actually redeem.',
-  },
-  {
-    Illo: IlloReels,
-    accent: '#BF5AF2',
-    title: 'Reels that\nactually reward',
-    body: 'Watch & earn points. Reuse trending audio — originals stay credited.',
-  },
-  {
-    Illo: IlloStore,
-    accent: '#30D158',
-    title: 'Stores +\nQR checkout',
-    body: 'Subscribe as a merchant, publish offers, settle with QR + OTP at checkout.',
-  },
-  {
-    Illo: IlloWallet,
-    accent: '#FFD60A',
-    title: 'One wallet,\nendless loop',
-    body: 'Points, coins & ad credits — earn by watching, spend at local stores.',
-  },
-];
+import type {ThemePalette} from '../../../config/platform-theme';
+
+function makeSlides(p: ThemePalette) {
+  return [
+    {Illo: IlloDiscover, accent: p.accent,    accentFg: p.accentForeground,  title: 'Hyperlocal,\nbuilt for India',      body: 'Discover food, stores & creators within 3KM — with offers you can actually redeem.'},
+    {Illo: IlloReels,    accent: p.muted,     accentFg: p.mutedForeground,   title: 'Reels that\nactually reward',        body: 'Watch & earn points. Reuse trending audio — originals stay credited.'},
+    {Illo: IlloStore,    accent: p.success,   accentFg: p.successForeground, title: 'Stores +\nQR checkout',              body: 'Subscribe as a merchant, publish offers, settle with QR + OTP at checkout.'},
+    {Illo: IlloWallet,   accent: p.warning,   accentFg: p.warningForeground, title: 'One wallet,\nendless loop',          body: 'Points, coins & ad credits — earn by watching, spend at local stores.'},
+  ];
+}
 
 // ── Gradient button (no LinearGradient package needed) ─────────────
 
@@ -128,10 +112,12 @@ function GlowBtn({
   label,
   onPress,
   accent,
+  accentFg,
 }: {
   label: string;
   onPress: () => void;
   accent: string;
+  accentFg: string;
 }) {
   return (
     <Pressable
@@ -153,7 +139,7 @@ function GlowBtn({
         <Rect width="100%" height="100%" fill="url(#gb)" />
       </Svg>
       <View style={[StyleSheet.absoluteFill, ss.center]}>
-        <Text style={{color: '#fff', fontWeight: '800', fontSize: 15, letterSpacing: 0.3}}>
+        <Text style={{color: accentFg, fontWeight: '800', fontSize: 15, letterSpacing: 0.3}}>
           {label}
         </Text>
       </View>
@@ -202,16 +188,16 @@ export function SplashScreen() {
   }, [ready, onboardingDone, firebaseUser, dbUser, needsEmailVerification, needsUsername, navigation]);
 
   return (
-    <View style={[ss.fill, ss.center, {backgroundColor: '#000000'}]}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+    <View style={[ss.fill, ss.center, {backgroundColor: palette.background}]}>
+      <StatusBar barStyle="light-content" backgroundColor={palette.background} />
 
       {/* Radial glow */}
       <View style={ss.fill} pointerEvents="none">
         <Svg style={ss.fill}>
           <Defs>
             <RadialGradient id="sp_glow" cx="50%" cy="46%" rx="42%" ry="36%">
-              <Stop offset="0%" stopColor={palette.primary} stopOpacity="0.16" />
-              <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+              <Stop offset="0%" stopColor={palette.accent} stopOpacity="0.16" />
+              <Stop offset="100%" stopColor={palette.background} stopOpacity="0" />
             </RadialGradient>
           </Defs>
           <Rect width="100%" height="100%" fill="url(#sp_glow)" />
@@ -222,7 +208,7 @@ export function SplashScreen() {
       <Animated.View style={{alignItems: 'center', opacity: logoOpacity, transform: [{scale: logoScale}]}}>
         <Text
           style={{
-            color: '#FFFFFF',
+            color: palette.foreground,
             fontSize: 54,
             fontWeight: '900',
             fontStyle: 'italic',
@@ -230,7 +216,7 @@ export function SplashScreen() {
             lineHeight: 54,
           }}>
           {contract.branding.appTitle?.toLowerCase() || 'bromo'}
-          <Text style={{color: palette.primary, fontSize: 30, fontStyle: 'normal', letterSpacing: 0}}>
+          <Text style={{color: palette.accent, fontSize: 30, fontStyle: 'normal', letterSpacing: 0}}>
             °
           </Text>
         </Text>
@@ -239,23 +225,23 @@ export function SplashScreen() {
       {/* Tagline */}
       <Animated.View style={{marginTop: 14, opacity: tagOpacity}}>
         <View style={[ss.row, {alignItems: 'center', gap: 10}]}>
-          <View style={{width: 20, height: 1, backgroundColor: 'rgba(255,255,255,0.12)'}} />
+          <View style={{width: 20, height: 1, backgroundColor: palette.borderMid}} />
           <Text
             style={{
-              color: 'rgba(255,255,255,0.22)',
+              color: palette.foregroundSubtle,
               fontSize: 10,
               letterSpacing: 4.5,
               fontWeight: '700',
             }}>
             EXPLORE · EARN · REDEEM
           </Text>
-          <View style={{width: 20, height: 1, backgroundColor: 'rgba(255,255,255,0.12)'}} />
+          <View style={{width: 20, height: 1, backgroundColor: palette.borderMid}} />
         </View>
       </Animated.View>
 
       {/* Bottom loader */}
       <View style={{position: 'absolute', bottom: 60}}>
-        <ActivityIndicator size="small" color="rgba(255,255,255,0.16)" />
+        <ActivityIndicator size="small" color={palette.borderHeavy} />
       </View>
     </View>
   );
@@ -266,6 +252,8 @@ export function SplashScreen() {
 export function OnboardingScreen() {
   const navigation = useNavigation<BootNav>();
   const {completeOnboarding} = useAuth();
+  const {palette} = useTheme();
+  const SLIDES = makeSlides(palette);
   const insets = useSafeAreaInsets();
   const [idx, setIdx] = useState(0);
 
@@ -311,8 +299,8 @@ export function OnboardingScreen() {
   const {Illo} = slide;
 
   return (
-    <View style={[ss.fill, {backgroundColor: '#000000'}]}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+    <View style={[ss.fill, {backgroundColor: palette.background}]}>
+      <StatusBar barStyle="light-content" backgroundColor={palette.background} />
 
       {/* Ambient glow — re-renders when accent changes */}
       <View style={ss.fill} pointerEvents="none">
@@ -320,7 +308,7 @@ export function OnboardingScreen() {
           <Defs>
             <RadialGradient id="ob_g" cx="50%" cy="38%" rx="52%" ry="42%">
               <Stop offset="0%" stopColor={slide.accent} stopOpacity="0.1" />
-              <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+              <Stop offset="100%" stopColor={palette.background} stopOpacity="0" />
             </RadialGradient>
           </Defs>
           <Rect width="100%" height="100%" fill="url(#ob_g)" />
@@ -378,7 +366,7 @@ export function OnboardingScreen() {
                     ? `${slide.accent}40`
                     : i === idx
                     ? slide.accent
-                    : 'rgba(255,255,255,0.1)',
+                    : palette.borderFaint,
               }}
             />
           ))}
@@ -386,7 +374,7 @@ export function OnboardingScreen() {
 
         <Text
           style={{
-            color: '#FFFFFF',
+            color: palette.foreground,
             fontSize: 30,
             fontWeight: '800',
             letterSpacing: -1,
@@ -397,7 +385,7 @@ export function OnboardingScreen() {
         </Text>
         <Text
           style={{
-            color: 'rgba(255,255,255,0.42)',
+            color: palette.foregroundSubtle,
             fontSize: 15,
             lineHeight: 22,
             marginBottom: 32,
@@ -409,10 +397,11 @@ export function OnboardingScreen() {
           label={idx < SLIDES.length - 1 ? 'Continue' : 'Get started →'}
           onPress={goNext}
           accent={slide.accent}
+          accentFg={slide.accentFg}
         />
 
         <Pressable onPress={skip} style={{paddingVertical: 14, alignItems: 'center'}}>
-          <Text style={{color: 'rgba(255,255,255,0.22)', fontWeight: '600', fontSize: 13}}>
+          <Text style={{color: palette.foregroundSubtle, fontWeight: '600', fontSize: 13}}>
             Skip
           </Text>
         </Pressable>

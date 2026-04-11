@@ -1,10 +1,8 @@
-import {
-  AdminComingSoonPage,
-  buildAdminMetadata,
-} from "@/components/admin/admin-coming-soon-page";
+import type { Metadata } from "next";
+import { AdminLocalization } from "@/components/admin/admin-localization";
 
-export const metadata = buildAdminMetadata("/admin/content/i18n");
+export const metadata: Metadata = { title: "AdminLocalization" };
 
 export default function Page() {
-  return <AdminComingSoonPage routeHref="/admin/content/i18n" />;
+  return <AdminLocalization />;
 }

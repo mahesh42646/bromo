@@ -37,7 +37,7 @@ export function SopChrome({
           paddingVertical: 10,
           borderBottomWidth: 1,
           borderBottomColor: palette.border,
-          backgroundColor: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.9)',
+          backgroundColor: palette.background,
         }}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 8}}>
           <ChevronLeft size={24} color={palette.foreground} />

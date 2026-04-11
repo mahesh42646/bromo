@@ -123,7 +123,7 @@ export function ShareScreen() {
     return (
       <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
         <View style={styles.doneContainer}>
-          <Animated.View style={[styles.doneCircle, {backgroundColor: palette.primary, transform: [{scale: scaleAnim}]}]}>
+          <Animated.View style={[styles.doneCircle, {backgroundColor: palette.accent, transform: [{scale: scaleAnim}]}]}>
             <Check size={48} color={palette.accentForeground} strokeWidth={3} />
           </Animated.View>
           <Animated.Text style={[styles.doneTitle, {color: palette.foreground, opacity: fadeAnim}]}>
@@ -175,7 +175,7 @@ export function ShareScreen() {
           </Animated.View>
 
           <Animated.View style={[styles.doneActions, {opacity: fadeAnim}]}>
-            <Pressable style={[styles.doneBtn, {backgroundColor: palette.primary}]} onPress={closeAll}>
+            <Pressable style={[styles.doneBtn, {backgroundColor: palette.accent}]} onPress={closeAll}>
               <Text style={[styles.doneBtnTxt, {color: palette.accentForeground}]}>Done</Text>
             </Pressable>
             <Pressable style={[styles.shareMoreBtn, {borderColor: palette.border}]} onPress={closeAll}>
@@ -193,7 +193,7 @@ export function ShareScreen() {
     return (
       <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
         <View style={styles.doneContainer}>
-          <View style={[styles.postingCircle, {borderColor: palette.primary}]} />
+          <View style={[styles.postingCircle, {borderColor: palette.accent}]} />
           <Text style={[styles.postingText, {color: palette.foregroundMuted}]}>Sharing your {draft.mode}...</Text>
         </View>
       </ThemedSafeScreen>
@@ -302,11 +302,11 @@ export function ShareScreen() {
               style={[
                 styles.visRow,
                 {borderColor: palette.surfaceHigh, backgroundColor: palette.card},
-                selected && {borderColor: palette.primary},
+                selected && {borderColor: palette.accent},
               ]}>
-              <o.Icon size={18} color={selected ? palette.primary : palette.foregroundMuted} />
-              <Text style={[styles.visTxt, {color: palette.foreground}, selected && {color: palette.primary}]}>{o.label}</Text>
-              {selected && <Check size={16} color={palette.primary} />}
+              <o.Icon size={18} color={selected ? palette.accent : palette.foregroundMuted} />
+              <Text style={[styles.visTxt, {color: palette.foreground}, selected && {color: palette.accent}]}>{o.label}</Text>
+              {selected && <Check size={16} color={palette.accent} />}
             </Pressable>
           );
         })}
@@ -343,7 +343,7 @@ export function ShareScreen() {
             <Text style={[styles.actionLabel, {color: palette.foreground}]}>Download</Text>
           </Pressable>
         </View>
-        <Pressable style={[styles.publishBtn, {backgroundColor: palette.primary}]} onPress={publish}>
+        <Pressable style={[styles.publishBtn, {backgroundColor: palette.accent}]} onPress={publish}>
           <Send size={18} color={palette.accentForeground} />
           <Text style={[styles.publishTxt, {color: palette.accentForeground}]}>
             {draft.mode === 'story' ? 'Share story' : draft.mode === 'reel' ? 'Share reel' : 'Share post'}

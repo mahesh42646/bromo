@@ -28,7 +28,7 @@ export function Card({style, elevated = false, ...props}: Props) {
           borderWidth: 1,
           borderColor: palette.border,
           ...(elevated && {
-            shadowColor: '#000',
+            shadowColor: palette.background,
             shadowOffset: {width: 0, height: 4},
             shadowOpacity: 0.3,
             shadowRadius: 8,

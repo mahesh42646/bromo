@@ -1,10 +1,8 @@
-import {
-  AdminComingSoonPage,
-  buildAdminMetadata,
-} from "@/components/admin/admin-coming-soon-page";
+import type { Metadata } from "next";
+import { AdminApiKeys } from "@/components/admin/admin-api-keys";
 
-export const metadata = buildAdminMetadata("/admin/platform/api-keys");
+export const metadata: Metadata = { title: "AdminApiKeys" };
 
 export default function Page() {
-  return <AdminComingSoonPage routeHref="/admin/platform/api-keys" />;
+  return <AdminApiKeys />;
 }

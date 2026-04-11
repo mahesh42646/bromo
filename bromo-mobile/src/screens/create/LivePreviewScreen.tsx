@@ -25,6 +25,7 @@ import {
   Zap,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
+import type {ThemePalette} from '../../config/platform-theme';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 
@@ -53,6 +54,7 @@ type LivePhase = 'preview' | 'live' | 'ended';
 export function LivePreviewScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
+  const styles = makeStyles(palette);
   const {draft, setLiveMeta, reset} = useCreateDraft();
 
   const [phase, setPhase] = useState<LivePhase>('preview');
@@ -144,33 +146,33 @@ export function LivePreviewScreen() {
     return (
       <ThemedSafeScreen style={styles.root}>
         <View style={styles.endedContainer}>
-          <Radio size={40} color="#ff3040" />
+          <Radio size={40} color={palette.destructive} />
           <Text style={styles.endedTitle}>Live ended</Text>
           <Text style={styles.endedSub}>Duration: {formatTime(duration)}</Text>
 
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
-              <Eye size={20} color="#fff" />
+              <Eye size={20} color={palette.foreground} />
               <Text style={styles.statNum}>{viewers}</Text>
               <Text style={styles.statLabel}>Peak viewers</Text>
             </View>
             <View style={styles.statCard}>
-              <Heart size={20} color="#ff3040" />
+              <Heart size={20} color={palette.destructive} />
               <Text style={styles.statNum}>{likes}</Text>
               <Text style={styles.statLabel}>Likes</Text>
             </View>
             <View style={styles.statCard}>
-              <MessageCircle size={20} color="#0095f6" />
+              <MessageCircle size={20} color={palette.accent} />
               <Text style={styles.statNum}>{comments.length}</Text>
               <Text style={styles.statLabel}>Comments</Text>
             </View>
           </View>
 
-          <Pressable style={[styles.doneBtn, {backgroundColor: palette.primary}]} onPress={closeAll}>
+          <Pressable style={[styles.doneBtn, {backgroundColor: palette.accent}]} onPress={closeAll}>
             <Text style={styles.doneBtnTxt}>Done</Text>
           </Pressable>
           <Pressable style={styles.shareBtn} onPress={closeAll}>
-            <Share2 size={16} color="#fff" />
+            <Share2 size={16} color={palette.foreground} />
             <Text style={styles.shareBtnTxt}>Share to feed</Text>
           </Pressable>
         </View>
@@ -184,11 +186,11 @@ export function LivePreviewScreen() {
       <ThemedSafeScreen style={styles.root}>
         <View style={styles.previewContainer}>
           <Pressable style={styles.closeBtn} onPress={() => navigation.goBack()}>
-            <X size={24} color="#fff" />
+            <X size={24} color={palette.foreground} />
           </Pressable>
 
           <View style={styles.cameraPlaceholder}>
-            <Radio size={48} color="#ff3040" />
+            <Radio size={48} color={palette.accent} />
             <Text style={styles.cameraText}>Camera preview</Text>
           </View>
 
@@ -197,7 +199,7 @@ export function LivePreviewScreen() {
               value={titleLocal}
               onChangeText={setTitleLocal}
               placeholder="Add a title for your live..."
-              placeholderTextColor="#666"
+              placeholderTextColor={palette.foregroundSubtle}
               style={styles.titleInput}
             />
 
@@ -208,11 +210,11 @@ export function LivePreviewScreen() {
                 })
               }
               style={styles.audienceBtn}>
-              <Users size={16} color="#fff" />
+              <Users size={16} color={palette.foreground} />
               <Text style={styles.audienceTxt}>
                 {draft.liveAudience === 'everyone' ? 'Everyone' : 'Followers only'}
               </Text>
-              <ChevronDown size={14} color="#888" />
+              <ChevronDown size={14} color={palette.foregroundMuted} />
             </Pressable>
 
             <Pressable style={styles.goLiveBtn} onPress={goLive}>
@@ -243,11 +245,11 @@ export function LivePreviewScreen() {
             <Text style={styles.liveTimer}>{formatTime(duration)}</Text>
           </View>
           <View style={styles.viewerBadge}>
-            <Eye size={14} color="#fff" />
+            <Eye size={14} color={palette.foreground} />
             <Text style={styles.viewerCount}>{viewers}</Text>
           </View>
           <Pressable style={styles.endBtn} onPress={endLive}>
-            <X size={20} color="#fff" />
+            <X size={20} color={palette.foreground} />
           </Pressable>
         </View>
 
@@ -266,7 +268,7 @@ export function LivePreviewScreen() {
             keyExtractor={item => item.id}
             renderItem={({item}) => (
               <View style={styles.commentRow}>
-                <Text style={[styles.commentUser, item.isHost && {color: palette.primary}]}>
+                <Text style={[styles.commentUser, item.isHost && {color: palette.accent}]}>
                   {item.username}
                 </Text>
                 <Text style={styles.commentText}>{item.text}</Text>
@@ -282,25 +284,25 @@ export function LivePreviewScreen() {
               value={myComment}
               onChangeText={setMyComment}
               placeholder="Comment..."
-              placeholderTextColor="#666"
+              placeholderTextColor={palette.foregroundSubtle}
               style={styles.commentInput}
             />
             <Pressable onPress={sendComment} style={styles.sendBtn}>
-              <Send size={18} color={palette.primary} />
+              <Send size={18} color={palette.accent} />
             </Pressable>
           </View>
           <View style={styles.liveActions}>
             <Pressable style={styles.liveActionBtn} onPress={() => setLikes(l => l + 1)}>
-              <Heart size={22} color="#ff3040" fill={likes > 0 ? '#ff3040' : 'transparent'} />
+              <Heart size={22} color={palette.destructive} fill={likes > 0 ? palette.destructive : 'transparent'} />
             </Pressable>
             <Pressable style={styles.liveActionBtn}>
-              <ShoppingBag size={22} color="#fff" />
+              <ShoppingBag size={22} color={palette.foreground} />
             </Pressable>
             <Pressable style={styles.liveActionBtn}>
-              <Zap size={22} color="#FFD700" />
+              <Zap size={22} color={palette.warning} />
             </Pressable>
             <Pressable style={styles.liveActionBtn}>
-              <Share2 size={22} color="#fff" />
+              <Share2 size={22} color={palette.foreground} />
             </Pressable>
           </View>
         </View>
@@ -309,174 +311,52 @@ export function LivePreviewScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: {flex: 1, backgroundColor: '#000'},
-  // Preview
-  previewContainer: {flex: 1},
-  closeBtn: {position: 'absolute', top: 8, right: 12, zIndex: 10, padding: 8},
-  cameraPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0a0a0a',
-    gap: 12,
-  },
-  cameraText: {color: '#555', fontSize: 16},
-  previewForm: {padding: 20, gap: 14},
-  titleInput: {
-    backgroundColor: '#141414',
-    borderRadius: 12,
-    padding: 14,
-    color: '#fff',
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
-  audienceBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#141414',
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
-  audienceTxt: {color: '#fff', flex: 1, fontWeight: '600'},
-  goLiveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#ff3040',
-    paddingVertical: 16,
-    borderRadius: 14,
-  },
-  goLiveTxt: {color: '#fff', fontWeight: '900', fontSize: 17},
-  // Live
-  liveContainer: {flex: 1},
-  liveCameraBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#111',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  liveCameraText: {color: '#333', fontSize: 18, fontWeight: '700'},
-  liveTopBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 10,
-    zIndex: 5,
-  },
-  liveBadgeRow: {flexDirection: 'row', alignItems: 'center', gap: 8},
-  liveBadge: {
-    backgroundColor: '#ff3040',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  liveBadgeTxt: {color: '#fff', fontWeight: '900', fontSize: 12},
-  liveTimer: {color: '#fff', fontWeight: '700', fontSize: 14},
-  viewerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    marginLeft: 'auto',
-  },
-  viewerCount: {color: '#fff', fontWeight: '800', fontSize: 13},
-  endBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  liveTitleBar: {
-    marginHorizontal: 12,
-    marginTop: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    zIndex: 5,
-  },
-  liveTitleTxt: {color: '#fff', fontWeight: '700', fontSize: 15},
-  commentsContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    zIndex: 5,
-  },
-  commentRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    marginBottom: 8,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    maxWidth: '85%',
-  },
-  commentUser: {color: '#fff', fontWeight: '800', fontSize: 13},
-  commentText: {color: '#ddd', fontSize: 13, flex: 1},
-  liveBottom: {paddingHorizontal: 12, paddingBottom: 12, zIndex: 5},
-  commentInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    gap: 8,
-  },
-  commentInput: {flex: 1, color: '#fff', paddingVertical: 10},
-  sendBtn: {padding: 6},
-  liveActions: {flexDirection: 'row', justifyContent: 'space-around', marginTop: 10},
-  liveActionBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Ended
-  endedContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 8},
-  endedTitle: {color: '#fff', fontSize: 24, fontWeight: '900', marginTop: 12},
-  endedSub: {color: '#888', fontSize: 15},
-  statsRow: {flexDirection: 'row', gap: 16, marginTop: 24},
-  statCard: {
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#111',
-    borderRadius: 14,
-    padding: 16,
-    minWidth: 90,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
-  statNum: {color: '#fff', fontWeight: '900', fontSize: 20},
-  statLabel: {color: '#888', fontSize: 11, fontWeight: '600'},
-  doneBtn: {paddingVertical: 16, paddingHorizontal: 48, borderRadius: 14, marginTop: 28},
-  doneBtnTxt: {color: '#fff', fontWeight: '900', fontSize: 16},
-  shareBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#333',
-    marginTop: 10,
-  },
-  shareBtnTxt: {color: '#fff', fontWeight: '700', fontSize: 14},
-});
+function makeStyles(p: ThemePalette) {
+  return StyleSheet.create({
+    root: {flex: 1, backgroundColor: p.background},
+    previewContainer: {flex: 1},
+    closeBtn: {position: 'absolute', top: 8, right: 12, zIndex: 10, padding: 8},
+    cameraPlaceholder: {flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: p.background, gap: 12},
+    cameraText: {color: p.foregroundFaint, fontSize: 16},
+    previewForm: {padding: 20, gap: 14},
+    titleInput: {backgroundColor: p.card, borderRadius: 12, padding: 14, color: p.foreground, fontSize: 16, borderWidth: 1, borderColor: p.surfaceHigh},
+    audienceBtn: {flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: p.card, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: p.surfaceHigh},
+    audienceTxt: {color: p.foreground, flex: 1, fontWeight: '600'},
+    goLiveBtn: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: p.accent, paddingVertical: 16, borderRadius: 14},
+    goLiveTxt: {color: p.accentForeground, fontWeight: '900', fontSize: 17},
+    liveContainer: {flex: 1},
+    liveCameraBg: {...StyleSheet.absoluteFillObject, backgroundColor: p.surface, alignItems: 'center', justifyContent: 'center'},
+    liveCameraText: {color: p.border, fontSize: 18, fontWeight: '700'},
+    liveTopBar: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 10, zIndex: 5},
+    liveBadgeRow: {flexDirection: 'row', alignItems: 'center', gap: 8},
+    liveBadge: {backgroundColor: p.destructive, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6},
+    liveBadgeTxt: {color: p.destructiveForeground, fontWeight: '900', fontSize: 12},
+    liveTimer: {color: p.foreground, fontWeight: '700', fontSize: 14},
+    viewerBadge: {flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: p.overlay, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, marginLeft: 'auto'},
+    viewerCount: {color: p.foreground, fontWeight: '800', fontSize: 13},
+    endBtn: {width: 36, height: 36, borderRadius: 18, backgroundColor: p.destructive, alignItems: 'center', justifyContent: 'center'},
+    liveTitleBar: {marginHorizontal: 12, marginTop: 4, backgroundColor: p.overlay, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, zIndex: 5},
+    liveTitleTxt: {color: p.foreground, fontWeight: '700', fontSize: 15},
+    commentsContainer: {flex: 1, justifyContent: 'flex-end', paddingHorizontal: 12, paddingBottom: 8, zIndex: 5},
+    commentRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 8, backgroundColor: p.glassMid, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, maxWidth: '85%'},
+    commentUser: {color: p.foreground, fontWeight: '800', fontSize: 13},
+    commentText: {color: p.foregroundMuted, fontSize: 13, flex: 1},
+    liveBottom: {paddingHorizontal: 12, paddingBottom: 12, zIndex: 5},
+    commentInputRow: {flexDirection: 'row', alignItems: 'center', backgroundColor: p.borderFaint, borderRadius: 999, paddingHorizontal: 14, gap: 8},
+    commentInput: {flex: 1, color: p.foreground, paddingVertical: 10},
+    sendBtn: {padding: 6},
+    liveActions: {flexDirection: 'row', justifyContent: 'space-around', marginTop: 10},
+    liveActionBtn: {width: 44, height: 44, borderRadius: 22, backgroundColor: p.glassMid, alignItems: 'center', justifyContent: 'center'},
+    endedContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 8},
+    endedTitle: {color: p.foreground, fontSize: 24, fontWeight: '900', marginTop: 12},
+    endedSub: {color: p.foregroundMuted, fontSize: 15},
+    statsRow: {flexDirection: 'row', gap: 16, marginTop: 24},
+    statCard: {alignItems: 'center', gap: 6, backgroundColor: p.surface, borderRadius: 14, padding: 16, minWidth: 90, borderWidth: 1, borderColor: p.surfaceHigh},
+    statNum: {color: p.foreground, fontWeight: '900', fontSize: 20},
+    statLabel: {color: p.foregroundMuted, fontSize: 11, fontWeight: '600'},
+    doneBtn: {paddingVertical: 16, paddingHorizontal: 48, borderRadius: 14, marginTop: 28},
+    doneBtnTxt: {color: p.accentForeground, fontWeight: '900', fontSize: 16},
+    shareBtn: {flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 14, borderWidth: 1, borderColor: p.border, marginTop: 10},
+    shareBtnTxt: {color: p.foreground, fontWeight: '700', fontSize: 14},
+  });
+}

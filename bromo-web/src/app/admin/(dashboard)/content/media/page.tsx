@@ -1,10 +1,8 @@
-import {
-  AdminComingSoonPage,
-  buildAdminMetadata,
-} from "@/components/admin/admin-coming-soon-page";
+import type { Metadata } from "next";
+import { AdminMediaLibrary } from "@/components/admin/admin-media-library";
 
-export const metadata = buildAdminMetadata("/admin/content/media");
+export const metadata: Metadata = { title: "AdminMediaLibrary" };
 
 export default function Page() {
-  return <AdminComingSoonPage routeHref="/admin/content/media" />;
+  return <AdminMediaLibrary />;
 }

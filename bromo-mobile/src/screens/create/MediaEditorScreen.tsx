@@ -43,6 +43,7 @@ import {
 import {DEFAULT_ADJUSTMENTS} from '../../create/createTypes';
 import {FILTER_LABELS, FILTER_LAYERS} from '../../create/filterStyles';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
+import type {ThemePalette} from '../../config/platform-theme';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'MediaEditor'>;
 
@@ -79,6 +80,7 @@ const ADJUST_KEYS = [
 export function MediaEditorScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
+  const styles = makeStyles(palette);
   const {
     draft,
     setActiveAssetIndex,
@@ -155,11 +157,11 @@ export function MediaEditorScreen() {
     <ThemedSafeScreen style={styles.dark}>
       <View style={styles.topBar}>
         <Pressable onPress={() => navigation.goBack()}>
-          <ChevronLeft size={28} color="#fff" />
+          <ChevronLeft size={28} color={palette.foreground} />
         </Pressable>
         <Text style={styles.title}>Edit</Text>
         <Pressable onPress={() => navigation.navigate('Composer')}>
-          <Text style={[styles.next, {color: palette.primary}]}>Next</Text>
+          <Text style={[styles.next, {color: palette.accent}]}>Next</Text>
         </Pressable>
       </View>
 
@@ -183,7 +185,7 @@ export function MediaEditorScreen() {
                 const fl = FILTER_LAYERS[f];
                 const r = draft.rotationByAsset[index] ?? 0;
                 return (
-                  <View style={{width: W, height: previewHeight, backgroundColor: '#0a0a0a'}}>
+                  <View style={{width: W, height: previewHeight, backgroundColor: palette.background}}>
                     <View style={[styles.media, {transform: [{rotate: `${r}deg`}]}]}>
                       {item.type === 'video' ? (
                         <Video
@@ -249,7 +251,7 @@ export function MediaEditorScreen() {
                     {o.text}
                   </Text>
                   <Pressable style={styles.removeOverlay} onPress={() => removeTextOverlay(o.id)}>
-                    <X size={12} color="#fff" />
+                    <X size={12} color={palette.foreground} />
                   </Pressable>
                 </View>
               ))}
@@ -261,10 +263,10 @@ export function MediaEditorScreen() {
         <View style={styles.tabBar}>
           {(['filters', 'adjust', 'crop'] as EditorTab[]).map(t => (
             <Pressable key={t} onPress={() => setTab(t)} style={styles.tabItem}>
-              {t === 'filters' && <SlidersHorizontal size={18} color={tab === t ? palette.primary : '#888'} />}
-              {t === 'adjust' && <Sun size={18} color={tab === t ? palette.primary : '#888'} />}
-              {t === 'crop' && <Crop size={18} color={tab === t ? palette.primary : '#888'} />}
-              <Text style={[styles.tabLabel, tab === t && {color: palette.primary}]}>
+              {t === 'filters' && <SlidersHorizontal size={18} color={tab === t ? palette.accent : palette.foregroundSubtle} />}
+              {t === 'adjust' && <Sun size={18} color={tab === t ? palette.accent : palette.foregroundSubtle} />}
+              {t === 'crop' && <Crop size={18} color={tab === t ? palette.accent : palette.foregroundSubtle} />}
+              <Text style={[styles.tabLabel, tab === t && {color: palette.accent}]}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </Text>
             </Pressable>
@@ -278,7 +280,7 @@ export function MediaEditorScreen() {
               <Pressable
                 key={fid}
                 onPress={() => setFilterForActive(fid as FilterId)}
-                style={[styles.filterChip, filter === fid && {borderColor: palette.primary}]}>
+                style={[styles.filterChip, filter === fid && {borderColor: palette.accent}]}>
                 <View style={styles.filterThumb}>
                   <Image source={{uri: cur.uri}} style={styles.filterImg} />
                   <View
@@ -300,7 +302,7 @@ export function MediaEditorScreen() {
             {ADJUST_KEYS.map(({key, label, Icon}) => (
               <View key={key} style={styles.adjustRow}>
                 <View style={styles.adjustLabelRow}>
-                  <Icon size={16} color="#ccc" />
+                  <Icon size={16} color={palette.foregroundMuted} />
                   <Text style={styles.adjustLabel}>{label}</Text>
                   <Text style={styles.adjustValue}>
                     {Math.round((adjustments[key as keyof typeof adjustments]) * 100)}
@@ -311,9 +313,9 @@ export function MediaEditorScreen() {
                   maximumValue={1}
                   value={adjustments[key as keyof typeof adjustments]}
                   onValueChange={v => setAdjustForActive({[key]: v})}
-                  minimumTrackTintColor={palette.primary}
-                  maximumTrackTintColor="#444"
-                  thumbTintColor="#fff"
+                  minimumTrackTintColor={palette.accent}
+                  maximumTrackTintColor={palette.foregroundFaint}
+                  thumbTintColor={palette.foreground}
                   style={styles.adjustSlider}
                 />
               </View>
@@ -328,8 +330,8 @@ export function MediaEditorScreen() {
               <Pressable
                 key={c.id}
                 onPress={() => setCropForActive(c.id)}
-                style={[styles.cropChip, crop === c.id && {backgroundColor: palette.primary}]}>
-                <Text style={[styles.cropLabel, crop === c.id && {color: '#000'}]}>{c.label}</Text>
+                style={[styles.cropChip, crop === c.id && {backgroundColor: palette.accent}]}>
+                <Text style={[styles.cropLabel, crop === c.id && {color: palette.accentForeground}]}>{c.label}</Text>
               </Pressable>
             ))}
           </View>
@@ -338,15 +340,15 @@ export function MediaEditorScreen() {
         {/* Tools row */}
         <View style={styles.tools}>
           <Pressable style={styles.tool} onPress={rotateActive}>
-            <RotateCw size={22} color="#fff" />
+            <RotateCw size={22} color={palette.foreground} />
             <Text style={styles.toolTxt}>Rotate</Text>
           </Pressable>
           <Pressable style={styles.tool} onPress={() => setShowTextInput(s => !s)}>
-            <Type size={22} color="#fff" />
+            <Type size={22} color={palette.foreground} />
             <Text style={styles.toolTxt}>Text</Text>
           </Pressable>
           <Pressable style={styles.tool} onPress={() => navigation.navigate('Composer')}>
-            <Plus size={22} color="#fff" />
+            <Plus size={22} color={palette.foreground} />
             <Text style={styles.toolTxt}>Sticker</Text>
           </Pressable>
         </View>
@@ -377,7 +379,7 @@ export function MediaEditorScreen() {
                     setShowTextInput(false);
                   }
                 }}>
-                <Text style={{color: palette.primary, fontWeight: '800'}}>Add</Text>
+                <Text style={{color: palette.accent, fontWeight: '800'}}>Add</Text>
               </Pressable>
             </View>
             <Text style={styles.sectionLabel}>Color</Text>
@@ -389,7 +391,7 @@ export function MediaEditorScreen() {
                   style={[
                     styles.colorDot,
                     {backgroundColor: c},
-                    textColor === c && {borderWidth: 3, borderColor: palette.primary},
+                    textColor === c && {borderWidth: 3, borderColor: palette.accent},
                   ]}
                 />
               ))}
@@ -401,9 +403,9 @@ export function MediaEditorScreen() {
               step={2}
               value={textSize}
               onValueChange={setTextSize}
-              minimumTrackTintColor={palette.primary}
-              maximumTrackTintColor="#444"
-              thumbTintColor="#fff"
+              minimumTrackTintColor={palette.accent}
+              maximumTrackTintColor={palette.foregroundFaint}
+              thumbTintColor={palette.foreground}
               style={{marginHorizontal: 14}}
             />
           </View>
@@ -422,18 +424,18 @@ export function MediaEditorScreen() {
                 maximumValue={0.95}
                 value={trimStart}
                 onValueChange={v => onTrimChange([v, Math.max(v + 0.05, trimEnd)])}
-                minimumTrackTintColor={palette.primary}
-                maximumTrackTintColor="#444"
-                thumbTintColor="#fff"
+                minimumTrackTintColor={palette.accent}
+                maximumTrackTintColor={palette.foregroundFaint}
+                thumbTintColor={palette.foreground}
               />
               <Slider
                 minimumValue={0.05}
                 maximumValue={1}
                 value={trimEnd}
                 onValueChange={v => onTrimChange([Math.min(trimStart, v - 0.05), v])}
-                minimumTrackTintColor={palette.primary}
-                maximumTrackTintColor="#444"
-                thumbTintColor="#fff"
+                minimumTrackTintColor={palette.accent}
+                maximumTrackTintColor={palette.foregroundFaint}
+                thumbTintColor={palette.foreground}
               />
             </View>
             <Text style={styles.sectionLabel}>Speed</Text>
@@ -442,8 +444,8 @@ export function MediaEditorScreen() {
                 <Pressable
                   key={s}
                   onPress={() => setPlaybackSpeed(s)}
-                  style={[styles.speedChip, draft.playbackSpeed === s && {backgroundColor: palette.primary}]}>
-                  <Text style={[styles.speedTxt, draft.playbackSpeed === s && {color: '#000'}]}>{s}x</Text>
+                  style={[styles.speedChip, draft.playbackSpeed === s && {backgroundColor: palette.accent}]}>
+                  <Text style={[styles.speedTxt, draft.playbackSpeed === s && {color: palette.accentForeground}]}>{s}x</Text>
                 </Pressable>
               ))}
             </View>
@@ -455,8 +457,8 @@ export function MediaEditorScreen() {
         <ScrollView horizontal contentContainerStyle={styles.audioRow}>
           <Pressable
             onPress={() => setSelectedAudio(null)}
-            style={[styles.audioCard, !draft.selectedAudio && {borderColor: palette.primary}]}>
-            <Music2 size={16} color="#fff" />
+            style={[styles.audioCard, !draft.selectedAudio && {borderColor: palette.accent}]}>
+            <Music2 size={16} color={palette.foreground} />
             <Text style={styles.audioTitle}>No music</Text>
             <Text style={styles.audioArtist}>Original</Text>
           </Pressable>
@@ -464,8 +466,8 @@ export function MediaEditorScreen() {
             <Pressable
               key={track.id}
               onPress={() => setSelectedAudio(track)}
-              style={[styles.audioCard, draft.selectedAudio?.id === track.id && {borderColor: palette.primary}]}>
-              <Music2 size={16} color="#fff" />
+              style={[styles.audioCard, draft.selectedAudio?.id === track.id && {borderColor: palette.accent}]}>
+              <Music2 size={16} color={palette.foreground} />
               <Text style={styles.audioTitle} numberOfLines={1}>
                 {track.title}
               </Text>
@@ -481,106 +483,108 @@ export function MediaEditorScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  dark: {flex: 1, backgroundColor: '#000'},
-  white: {color: '#fff'},
-  link: {color: '#0095f6', marginTop: 12},
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  title: {color: '#fff', fontSize: 17, fontWeight: '700'},
-  next: {fontSize: 16, fontWeight: '700'},
-  dots: {flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 8},
-  dot: {width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)'},
-  dotOn: {backgroundColor: '#fff', width: 14},
-  previewWrap: {width: '100%', backgroundColor: '#0a0a0a'},
-  media: {flex: 1, overflow: 'hidden'},
-  overlayText: {position: 'absolute', flexDirection: 'row', alignItems: 'center'},
-  removeOverlay: {
-    marginLeft: 6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#222',
-  },
-  tabItem: {alignItems: 'center', gap: 4},
-  tabLabel: {color: '#888', fontSize: 11, fontWeight: '700'},
-  sectionLabel: {color: '#fff', fontSize: 13, fontWeight: '800', marginLeft: 14, marginTop: 14},
-  hint: {color: '#888', marginLeft: 14, marginTop: 4, fontSize: 12},
-  filterRow: {paddingHorizontal: 10, gap: 10, paddingVertical: 10},
-  filterChip: {
-    width: 72,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    borderRadius: 12,
-    paddingBottom: 6,
-  },
-  filterThumb: {width: 64, height: 64, borderRadius: 12, overflow: 'hidden'},
-  filterImg: {width: '100%', height: '100%'},
-  filterName: {color: '#ddd', fontSize: 10, marginTop: 4, fontWeight: '600'},
-  adjustPane: {paddingHorizontal: 14, paddingTop: 8},
-  adjustRow: {marginBottom: 10},
-  adjustLabelRow: {flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2},
-  adjustLabel: {color: '#ccc', fontSize: 13, fontWeight: '600', flex: 1},
-  adjustValue: {color: '#888', fontSize: 12, fontWeight: '700', width: 40, textAlign: 'right'},
-  adjustSlider: {height: 32},
-  cropRow: {flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 12},
-  cropChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#222',
-  },
-  cropLabel: {color: '#fff', fontWeight: '800', fontSize: 13},
-  tools: {flexDirection: 'row', justifyContent: 'space-around', marginTop: 8, paddingVertical: 10},
-  tool: {alignItems: 'center', gap: 4},
-  toolTxt: {color: '#aaa', fontSize: 11},
-  textSection: {marginBottom: 8},
-  textBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 14,
-    marginTop: 10,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    gap: 10,
-  },
-  textInput: {flex: 1, paddingVertical: 12},
-  colorRow: {paddingHorizontal: 12, gap: 10, marginTop: 8},
-  colorDot: {width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#333'},
-  trimSliders: {paddingHorizontal: 14},
-  speedRow: {flexDirection: 'row', gap: 8, marginHorizontal: 14, marginTop: 8, flexWrap: 'wrap'},
-  speedChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#222',
-  },
-  speedTxt: {color: '#fff', fontWeight: '800'},
-  audioRow: {paddingHorizontal: 12, gap: 10, paddingVertical: 10},
-  audioCard: {
-    width: 120,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: '#141414',
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  audioTitle: {color: '#fff', fontSize: 12, fontWeight: '800', marginTop: 6},
-  audioArtist: {color: '#888', fontSize: 10, marginTop: 2},
-});
+function makeStyles(p: ThemePalette) {
+  return StyleSheet.create({
+    dark: {flex: 1, backgroundColor: p.background},
+    white: {color: p.foreground},
+    link: {color: p.accent, marginTop: 12},
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    title: {color: p.foreground, fontSize: 17, fontWeight: '700'},
+    next: {fontSize: 16, fontWeight: '700'},
+    dots: {flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 8},
+    dot: {width: 6, height: 6, borderRadius: 3, backgroundColor: p.borderMid},
+    dotOn: {backgroundColor: p.foreground, width: 14},
+    previewWrap: {width: '100%', backgroundColor: p.background},
+    media: {flex: 1, overflow: 'hidden'},
+    overlayText: {position: 'absolute', flexDirection: 'row', alignItems: 'center'},
+    removeOverlay: {
+      marginLeft: 6,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: p.overlay,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tabBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: p.surfaceHigh,
+    },
+    tabItem: {alignItems: 'center', gap: 4},
+    tabLabel: {color: p.foregroundSubtle, fontSize: 11, fontWeight: '700'},
+    sectionLabel: {color: p.foreground, fontSize: 13, fontWeight: '800', marginLeft: 14, marginTop: 14},
+    hint: {color: p.foregroundSubtle, marginLeft: 14, marginTop: 4, fontSize: 12},
+    filterRow: {paddingHorizontal: 10, gap: 10, paddingVertical: 10},
+    filterChip: {
+      width: 72,
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: 'transparent',
+      borderRadius: 12,
+      paddingBottom: 6,
+    },
+    filterThumb: {width: 64, height: 64, borderRadius: 12, overflow: 'hidden'},
+    filterImg: {width: '100%', height: '100%'},
+    filterName: {color: p.foregroundMuted, fontSize: 10, marginTop: 4, fontWeight: '600'},
+    adjustPane: {paddingHorizontal: 14, paddingTop: 8},
+    adjustRow: {marginBottom: 10},
+    adjustLabelRow: {flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2},
+    adjustLabel: {color: p.foregroundMuted, fontSize: 13, fontWeight: '600', flex: 1},
+    adjustValue: {color: p.foregroundSubtle, fontSize: 12, fontWeight: '700', width: 40, textAlign: 'right'},
+    adjustSlider: {height: 32},
+    cropRow: {flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 12},
+    cropChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 10,
+      backgroundColor: p.surfaceHigh,
+    },
+    cropLabel: {color: p.foreground, fontWeight: '800', fontSize: 13},
+    tools: {flexDirection: 'row', justifyContent: 'space-around', marginTop: 8, paddingVertical: 10},
+    tool: {alignItems: 'center', gap: 4},
+    toolTxt: {color: p.foregroundMuted, fontSize: 11},
+    textSection: {marginBottom: 8},
+    textBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 14,
+      marginTop: 10,
+      backgroundColor: p.card,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      gap: 10,
+    },
+    textInput: {flex: 1, paddingVertical: 12},
+    colorRow: {paddingHorizontal: 12, gap: 10, marginTop: 8},
+    colorDot: {width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: p.surfaceHigh},
+    trimSliders: {paddingHorizontal: 14},
+    speedRow: {flexDirection: 'row', gap: 8, marginHorizontal: 14, marginTop: 8, flexWrap: 'wrap'},
+    speedChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: p.surfaceHigh,
+    },
+    speedTxt: {color: p.foreground, fontWeight: '800'},
+    audioRow: {paddingHorizontal: 12, gap: 10, paddingVertical: 10},
+    audioCard: {
+      width: 120,
+      padding: 10,
+      borderRadius: 12,
+      backgroundColor: p.card,
+      borderWidth: 1,
+      borderColor: p.border,
+    },
+    audioTitle: {color: p.foreground, fontSize: 12, fontWeight: '800', marginTop: 6},
+    audioArtist: {color: p.foregroundSubtle, fontSize: 10, marginTop: 2},
+  });
+}

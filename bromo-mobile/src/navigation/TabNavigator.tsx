@@ -61,6 +61,7 @@ export function TabNavigator() {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 10);
   const tabBarHeight = 56 + bottomPad;
+  const inactiveTabTint = isDark ? palette.foregroundSubtle : palette.foregroundMuted;
 
   return (
     <Tab.Navigator
@@ -75,7 +76,7 @@ export function TabNavigator() {
           paddingTop: 6,
         },
         tabBarActiveTintColor: palette.primary,
-        tabBarInactiveTintColor: palette.mutedForeground,
+        tabBarInactiveTintColor: inactiveTabTint,
         tabBarShowLabel: false,
         tabBarItemStyle: styles.tabItem,
       }}>

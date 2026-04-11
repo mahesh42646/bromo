@@ -10,18 +10,19 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-const variantColors: Record<Variant, {bg: string; text: string}> = {
-  primary: {bg: '#7c3aed', text: '#fff'},
-  gold: {bg: '#ffd700', text: '#000'},
-  blue: {bg: '#3b82f6', text: '#fff'},
-  green: {bg: '#10b981', text: '#000'},
-  muted: {bg: '#222', text: '#888'},
-};
-
 export function Badge({label, variant = 'primary', style}: Props) {
-  const {contract} = useTheme();
+  const {palette, contract} = useTheme();
   const {borderRadiusScale} = contract.brandGuidelines;
   const radius = borderRadiusScale === 'bold' ? 10 : borderRadiusScale === 'balanced' ? 6 : 4;
+
+  const variantColors: Record<Variant, {bg: string; text: string}> = {
+    primary: {bg: palette.accent, text: palette.accentForeground},
+    gold: {bg: palette.warning, text: palette.warningForeground},
+    blue: {bg: palette.accent, text: palette.accentForeground},
+    green: {bg: palette.success, text: palette.successForeground},
+    muted: {bg: palette.muted, text: palette.mutedForeground},
+  };
+
   const {bg, text} = variantColors[variant];
 
   return (

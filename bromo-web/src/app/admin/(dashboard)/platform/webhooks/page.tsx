@@ -1,10 +1,8 @@
-import {
-  AdminComingSoonPage,
-  buildAdminMetadata,
-} from "@/components/admin/admin-coming-soon-page";
+import type { Metadata } from "next";
+import { AdminWebhooks } from "@/components/admin/admin-webhooks";
 
-export const metadata = buildAdminMetadata("/admin/platform/webhooks");
+export const metadata: Metadata = { title: "AdminWebhooks" };
 
 export default function Page() {
-  return <AdminComingSoonPage routeHref="/admin/platform/webhooks" />;
+  return <AdminWebhooks />;
 }

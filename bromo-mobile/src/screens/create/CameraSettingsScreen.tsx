@@ -3,14 +3,56 @@ import {Pressable, ScrollView, StyleSheet, Switch, Text, View} from 'react-nativ
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
 import {ChevronRight, Radio, Clapperboard, CirclePlus} from 'lucide-react-native';
+import {useTheme} from '../../context/ThemeContext';
+import type {ThemePalette} from '../../config/platform-theme';
 import {
   loadCameraSettings,
   saveCameraSettings,
   type StoredCameraSettings,
 } from '../../lib/cameraSettingsStorage';
 
+function makeStyles(palette: ThemePalette) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: palette.background },
+    white: { color: palette.foreground },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
+    title: { color: palette.foreground, fontSize: 18, fontWeight: '800' },
+    done: { color: palette.accent, fontSize: 16, fontWeight: '700' },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: palette.surfaceHigh,
+      gap: 12,
+    },
+    rowLabel: { flex: 1, color: palette.foreground, fontSize: 16, fontWeight: '600' },
+    section: { color: palette.foregroundMuted, fontSize: 12, fontWeight: '800', marginLeft: 16, marginTop: 20, letterSpacing: 0.5 },
+    card: {
+      marginHorizontal: 14,
+      marginTop: 8,
+      backgroundColor: palette.surface,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: palette.surfaceHigh,
+    },
+    cardTxt: { color: palette.foreground, fontSize: 15, fontWeight: '600' },
+    sub: { color: palette.foregroundSubtle, fontSize: 12, marginTop: 8, marginBottom: 12 },
+    switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    radioRow: { gap: 12 },
+    radioItem: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+    radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: palette.foregroundSubtle },
+    radioOn: { backgroundColor: palette.foreground, borderColor: palette.foreground },
+    small: { color: palette.foregroundSubtle, fontSize: 11, marginTop: 10, lineHeight: 16 },
+  });
+}
+
 export function CameraSettingsScreen() {
   const navigation = useNavigation();
+  const {palette} = useTheme();
+  const styles = makeStyles(palette);
   const [s, setS] = useState<StoredCameraSettings | null>(null);
 
   useEffect(() => {
@@ -46,9 +88,9 @@ export function CameraSettingsScreen() {
           { icon: Radio, label: 'Live', sub: 'Audience & alerts' },
         ].map(row => (
           <Pressable key={row.label} style={styles.row}>
-            <row.icon size={20} color="#fff" />
+            <row.icon size={20} color={palette.foreground} />
             <Text style={styles.rowLabel}>{row.label}</Text>
-            <ChevronRight size={18} color="#666" />
+            <ChevronRight size={18} color={palette.foregroundSubtle} />
           </Pressable>
         ))}
 
@@ -78,46 +120,10 @@ export function CameraSettingsScreen() {
             <Switch value={s.allowGallerySuggestions} onValueChange={v => patch({ allowGallerySuggestions: v })} />
           </View>
           <Text style={styles.small}>
-            BROMO can suggest posts and reels from your library when enabled (MVP stores preference only).
+            BROMO can suggest posts and reels based on your library when enabled (MVP stores preference only).
           </Text>
         </View>
       </ScrollView>
     </ThemedSafeScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-  white: { color: '#fff' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
-  title: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  done: { color: '#0095f6', fontSize: 16, fontWeight: '700' },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#222',
-    gap: 12,
-  },
-  rowLabel: { flex: 1, color: '#fff', fontSize: 16, fontWeight: '600' },
-  section: { color: '#888', fontSize: 12, fontWeight: '800', marginLeft: 16, marginTop: 20, letterSpacing: 0.5 },
-  card: {
-    marginHorizontal: 14,
-    marginTop: 8,
-    backgroundColor: '#111',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
-  cardTxt: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  sub: { color: '#666', fontSize: 12, marginTop: 8, marginBottom: 12 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  radioRow: { gap: 12 },
-  radioItem: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
-  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#666' },
-  radioOn: { backgroundColor: '#fff', borderColor: '#fff' },
-  small: { color: '#666', fontSize: 11, marginTop: 10, lineHeight: 16 },
-});

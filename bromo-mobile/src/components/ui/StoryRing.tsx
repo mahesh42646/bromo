@@ -24,7 +24,7 @@ export function StoryRing({uri, size = 64, seen = false, style}: Props) {
           borderRadius: outerSize / 2,
           padding: ringPad,
           borderWidth: ringPad,
-          borderColor: seen ? palette.border : '#dc2743',
+          borderColor: seen ? palette.border : palette.accent,
           backgroundColor: seen ? 'transparent' : undefined,
         },
         style,

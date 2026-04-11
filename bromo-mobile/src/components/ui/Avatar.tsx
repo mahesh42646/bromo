@@ -35,7 +35,7 @@ export function Avatar({uri, size = 56, hasStory = false, isOwn = false, style}:
             padding: ringWidth,
             // gradient ring via border trick
             borderWidth: ringWidth,
-            borderColor: '#e6683c',
+            borderColor: palette.accent,
           }}>
           <Image
             source={{uri: uri ?? `https://i.pravatar.cc/${size}`}}

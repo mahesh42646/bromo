@@ -14,6 +14,7 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ChevronLeft, Trash2, Clock, FileText} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
+import type {ThemePalette} from '../../config/platform-theme';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 
@@ -37,9 +38,48 @@ function timeAgo(ts: number): string {
   return `${days}d ago`;
 }
 
+function makeStyles(palette: ThemePalette) {
+  return StyleSheet.create({
+    root: {flex: 1, backgroundColor: palette.background},
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+    },
+    title: {color: palette.foreground, fontSize: 18, fontWeight: '800'},
+    deleteAll: {color: palette.destructive, fontSize: 14, fontWeight: '700'},
+    empty: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12},
+    emptyTitle: {color: palette.foreground, fontSize: 18, fontWeight: '800'},
+    emptyText: {color: palette.foregroundSubtle, fontSize: 14, textAlign: 'center', lineHeight: 20},
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: palette.surface,
+      borderRadius: 14,
+      padding: 10,
+      marginBottom: 10,
+      gap: 12,
+      borderWidth: 1,
+      borderColor: palette.surfaceHigh,
+    },
+    thumb: {width: 64, height: 64, borderRadius: 10, backgroundColor: palette.surfaceHigh},
+    thumbEmpty: {alignItems: 'center', justifyContent: 'center'},
+    cardBody: {flex: 1, gap: 3},
+    cardMode: {color: palette.foregroundMuted, fontSize: 10, fontWeight: '900', letterSpacing: 1},
+    cardCaption: {color: palette.foreground, fontSize: 14, fontWeight: '600', lineHeight: 18},
+    cardMeta: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2},
+    cardTime: {color: palette.foregroundSubtle, fontSize: 11},
+    cardAssets: {color: palette.foregroundSubtle, fontSize: 11},
+    deleteBtn: {padding: 8},
+  });
+}
+
 export function DraftsScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
+  const styles = makeStyles(palette);
   const {setMode, setAssets, setCaption, setHashtags} = useCreateDraft();
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,7 +149,7 @@ export function DraftsScreen() {
     <ThemedSafeScreen style={styles.root}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()}>
-          <ChevronLeft size={28} color="#fff" />
+          <ChevronLeft size={28} color={palette.foreground} />
         </Pressable>
         <Text style={styles.title}>Drafts</Text>
         {drafts.length > 0 ? (
@@ -127,7 +167,7 @@ export function DraftsScreen() {
         </View>
       ) : drafts.length === 0 ? (
         <View style={styles.empty}>
-          <FileText size={40} color="#444" />
+          <FileText size={40} color={palette.foregroundFaint} />
           <Text style={styles.emptyTitle}>No drafts</Text>
           <Text style={styles.emptyText}>
             Drafts you save while creating content will appear here.
@@ -147,7 +187,7 @@ export function DraftsScreen() {
                   <Image source={{uri: thumb}} style={styles.thumb} />
                 ) : (
                   <View style={[styles.thumb, styles.thumbEmpty]}>
-                    <FileText size={20} color="#666" />
+                    <FileText size={20} color={palette.foregroundSubtle} />
                   </View>
                 )}
                 <View style={styles.cardBody}>
@@ -156,7 +196,7 @@ export function DraftsScreen() {
                     {d.caption || 'No caption'}
                   </Text>
                   <View style={styles.cardMeta}>
-                    <Clock size={12} color="#666" />
+                    <Clock size={12} color={palette.foregroundSubtle} />
                     <Text style={styles.cardTime}>{timeAgo(item.savedAt)}</Text>
                     {d.assets?.length > 0 && (
                       <Text style={styles.cardAssets}>{d.assets.length} media</Text>
@@ -164,7 +204,7 @@ export function DraftsScreen() {
                   </View>
                 </View>
                 <Pressable style={styles.deleteBtn} onPress={() => deleteDraft(index)}>
-                  <Trash2 size={18} color="#ff4444" />
+                  <Trash2 size={18} color={palette.destructive} />
                 </Pressable>
               </Pressable>
             );
@@ -174,39 +214,3 @@ export function DraftsScreen() {
     </ThemedSafeScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {flex: 1, backgroundColor: '#000'},
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  title: {color: '#fff', fontSize: 18, fontWeight: '800'},
-  deleteAll: {color: '#ff4444', fontSize: 14, fontWeight: '700'},
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12},
-  emptyTitle: {color: '#fff', fontSize: 18, fontWeight: '800'},
-  emptyText: {color: '#666', fontSize: 14, textAlign: 'center', lineHeight: 20},
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111',
-    borderRadius: 14,
-    padding: 10,
-    marginBottom: 10,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#1a1a1a',
-  },
-  thumb: {width: 64, height: 64, borderRadius: 10, backgroundColor: '#222'},
-  thumbEmpty: {alignItems: 'center', justifyContent: 'center'},
-  cardBody: {flex: 1, gap: 3},
-  cardMode: {color: '#888', fontSize: 10, fontWeight: '900', letterSpacing: 1},
-  cardCaption: {color: '#fff', fontSize: 14, fontWeight: '600', lineHeight: 18},
-  cardMeta: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2},
-  cardTime: {color: '#666', fontSize: 11},
-  cardAssets: {color: '#666', fontSize: 11},
-  deleteBtn: {padding: 8},
-});
