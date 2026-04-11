@@ -16,9 +16,11 @@ import {
   googleAuth as googleAuthApi,
   setUsername as setUsernameApi,
   getEmailByUsername,
+  invalidateTokenCache,
 } from '../api/authApi';
 
 const K_ONBOARD = '@bromo/onboarding_done';
+const K_DB_USER = '@bromo/db_user_v1';
 
 GoogleSignin.configure({
   iosClientId:
@@ -67,6 +69,15 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   }, []);
 
   useEffect(() => {
+    // Load cached dbUser instantly so the app feels fast
+    AsyncStorage.getItem(K_DB_USER).then(raw => {
+      if (raw) {
+        try { setDbUser(JSON.parse(raw)); } catch {}
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = auth().onAuthStateChanged(async user => {
       setFirebaseUser(user);
       if (user) {
@@ -74,14 +85,17 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
           const result = await getMe();
           if ('needsRegistration' in result) {
             setDbUser(null);
+            AsyncStorage.removeItem(K_DB_USER);
           } else {
             setDbUser(result.user);
+            AsyncStorage.setItem(K_DB_USER, JSON.stringify(result.user));
           }
         } catch {
-          setDbUser(null);
+          // keep cached value if network fails
         }
       } else {
         setDbUser(null);
+        AsyncStorage.removeItem(K_DB_USER);
       }
       if (initializing) {
         setInitializing(false);
@@ -220,15 +234,20 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     try {
       await GoogleSignin.signOut();
     } catch {}
+    invalidateTokenCache();
     await auth().signOut();
     setDbUser(null);
+    AsyncStorage.removeItem(K_DB_USER);
   }, []);
 
   const refreshDbUser = useCallback(async () => {
     if (!firebaseUser) return;
     try {
       const result = await getMe();
-      if ('user' in result) setDbUser(result.user);
+      if ('user' in result) {
+        setDbUser(result.user);
+        AsyncStorage.setItem(K_DB_USER, JSON.stringify(result.user));
+      }
     } catch {}
   }, [firebaseUser]);
 

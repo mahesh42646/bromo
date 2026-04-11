@@ -228,17 +228,19 @@ userAuthRouter.patch(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
-      const { displayName, bio, profilePicture, phone } = req.body as {
+      const { displayName, bio, profilePicture, phone, website } = req.body as {
         displayName?: string;
         bio?: string;
         profilePicture?: string;
         phone?: string;
+        website?: string;
       };
 
       if (displayName !== undefined) user.displayName = displayName.trim().slice(0, 100);
       if (bio !== undefined) user.bio = bio.trim().slice(0, 300);
       if (profilePicture !== undefined) user.profilePicture = profilePicture;
       if (phone !== undefined) user.phone = phone.trim();
+      if (website !== undefined) user.website = website.trim().slice(0, 200);
 
       await user.save();
       return res.json({ user });

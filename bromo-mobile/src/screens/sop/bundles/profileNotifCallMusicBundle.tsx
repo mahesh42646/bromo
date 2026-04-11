@@ -14,14 +14,7 @@ export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 
-export function ShareProfileScreen() {
-  return (
-    <SopChrome title="Share profile">
-      <SopMeta label="Shareable bromo.me link + QR; share sheet to other apps." />
-      <SopRow title="Show QR" />
-    </SopChrome>
-  );
-}
+export {ShareProfileScreen} from '../../ShareProfileScreen';
 
 export {FollowersFollowingScreen} from '../../FollowersFollowingScreen';
 

@@ -14,10 +14,12 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {BadgeCheck, ChevronLeft, Grid3x3, MessageCircle, MoreHorizontal, Play} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
+import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {getUserProfile, followUser, unfollowUser, type UserProfile} from '../api/followApi';
 import {getUserPosts, type Post} from '../api/postsApi';
+import {createConversation} from '../api/chatApi';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'OtherUserProfile'>;
@@ -33,8 +35,23 @@ export function OtherUserProfileScreen() {
   const route = useRoute<Route>();
   const {userId} = route.params;
   const {palette, contract} = useTheme();
+  const {dbUser} = useAuth();
   const {borderRadiusScale} = contract.brandGuidelines;
   const btnR = borderRadiusScale === 'bold' ? 999 : 8;
+  const isSelf = dbUser?._id === userId;
+  const [startingChat, setStartingChat] = useState(false);
+
+  const openChat = useCallback(async () => {
+    setStartingChat(true);
+    try {
+      const {conversation} = await createConversation(userId);
+      navigation.getParent()?.navigate('MessagesFlow', {initialConvId: conversation._id});
+    } catch {
+      navigation.getParent()?.navigate('MessagesFlow');
+    } finally {
+      setStartingChat(false);
+    }
+  }, [userId, navigation]);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -164,8 +181,8 @@ export function OtherUserProfileScreen() {
             <View style={{flex: 1, flexDirection: 'row', justifyContent: 'space-around'}}>
               {[
                 {label: 'Posts', value: formatCount(profile.postsCount ?? 0)},
-                {label: 'Followers', value: formatCount(profile.followersCount)},
-                {label: 'Following', value: formatCount(profile.followingCount)},
+                {label: 'Followers', value: formatCount(profile.followersCount ?? 0)},
+                {label: 'Following', value: formatCount(profile.followingCount ?? 0)},
               ].map(s => (
                 <Pressable
                   key={s.label}
@@ -198,29 +215,43 @@ export function OtherUserProfileScreen() {
           ) : null}
 
           {/* Action buttons */}
-          <View style={{flexDirection: 'row', gap: 8, marginTop: 12}}>
+          {isSelf ? (
             <Pressable
-              onPress={handleFollow}
+              onPress={() => navigation.navigate('EditProfile')}
               style={{
-                flex: 1, paddingVertical: 9, borderRadius: btnR,
-                backgroundColor: followBg,
-                borderWidth: followStatus === 'none' ? 0 : 1,
-                borderColor: palette.primary,
+                marginTop: 12, paddingVertical: 9, borderRadius: btnR,
+                backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border,
                 alignItems: 'center',
               }}>
-              <Text style={{color: followTextColor, fontWeight: '700', fontSize: 13}}>{followLabel}</Text>
+              <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 13}}>Edit Profile</Text>
             </Pressable>
-            <Pressable
-              onPress={() => navigation.getParent()?.navigate('MessagesFlow')}
-              style={{
-                flex: 1, paddingVertical: 9, borderRadius: btnR,
-                backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border,
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-              }}>
-              <MessageCircle size={14} color={palette.foreground} />
-              <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 13}}>Message</Text>
-            </Pressable>
-          </View>
+          ) : (
+            <View style={{flexDirection: 'row', gap: 8, marginTop: 12}}>
+              <Pressable
+                onPress={handleFollow}
+                style={{
+                  flex: 1, paddingVertical: 9, borderRadius: btnR,
+                  backgroundColor: followBg,
+                  borderWidth: followStatus === 'none' ? 0 : 1,
+                  borderColor: palette.primary,
+                  alignItems: 'center',
+                }}>
+                <Text style={{color: followTextColor, fontWeight: '700', fontSize: 13}}>{followLabel}</Text>
+              </Pressable>
+              <Pressable
+                onPress={openChat}
+                disabled={startingChat}
+                style={{
+                  flex: 1, paddingVertical: 9, borderRadius: btnR,
+                  backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border,
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  opacity: startingChat ? 0.6 : 1,
+                }}>
+                <MessageCircle size={14} color={palette.foreground} />
+                <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 13}}>Message</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
 
         {/* Tab indicator */}

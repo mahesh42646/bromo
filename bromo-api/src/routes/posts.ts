@@ -13,8 +13,25 @@ import { User } from "../models/User.js";
 
 export const postsRouter = Router();
 
-const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified";
+const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
 const PAGE_SIZE = 20;
+
+function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, followingSet: Set<string>, dbUserId?: string) {
+  const author = p.authorId as Record<string, unknown> | null;
+  return {
+    ...p,
+    likesCount: Number(p.likesCount) || 0,
+    commentsCount: Number(p.commentsCount) || 0,
+    viewsCount: Number(p.viewsCount) || 0,
+    isLiked: likedSet.has(String(p._id)),
+    author: author ? {
+      ...author,
+      followersCount: Number(author.followersCount) || 0,
+    } : null,
+    isFollowing: dbUserId ? followingSet.has(String((author as {_id: unknown} | null)?._id)) : false,
+    authorId: undefined,
+  };
+}
 
 function buildUrl(req: FirebaseAuthedRequest, filename: string): string {
   if (filename.startsWith("http")) return filename;
@@ -65,13 +82,7 @@ postsRouter.get(
 
       const followingSet = new Set(followingIds.map(String));
 
-      const result = posts.map((p) => ({
-        ...p,
-        isLiked: likedSet.has(String(p._id)),
-        author: p.authorId,
-        isFollowing: dbUser ? followingSet.has(String((p.authorId as { _id: mongoose.Types.ObjectId })._id)) : false,
-        authorId: undefined,
-      }));
+      const result = posts.map((p) => normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)));
 
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
     } catch (err) {
@@ -108,12 +119,8 @@ postsRouter.get(
         likes.forEach((l) => likedSet.add(String(l.targetId)));
       }
 
-      const result = posts.map((p) => ({
-        ...p,
-        isLiked: likedSet.has(String(p._id)),
-        author: p.authorId,
-        authorId: undefined,
-      }));
+      const emptyFollowing = new Set<string>();
+      const result = posts.map((p) => normalizePost(p as unknown as Record<string, unknown>, likedSet, emptyFollowing));
 
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
     } catch (err) {
@@ -153,11 +160,8 @@ postsRouter.get(
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
-      const result = posts.map((p) => ({
-        ...p,
-        author: p.authorId,
-        authorId: undefined,
-      }));
+      const emptySet = new Set<string>();
+      const result = posts.map((p) => normalizePost(p as unknown as Record<string, unknown>, emptySet, emptySet));
 
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
     } catch (err) {
@@ -245,7 +249,13 @@ postsRouter.get(
         likes.forEach((l) => likedSet.add(String(l.targetId)));
       }
 
-      const result = posts.map((p) => ({ ...p, isLiked: likedSet.has(String(p._id)) }));
+      const result = posts.map((p) => ({
+        ...p,
+        likesCount: Number(p.likesCount) || 0,
+        commentsCount: Number(p.commentsCount) || 0,
+        viewsCount: Number(p.viewsCount) || 0,
+        isLiked: likedSet.has(String(p._id)),
+      }));
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
     } catch (err) {
       console.error("[posts] user posts error:", err);
@@ -272,7 +282,17 @@ postsRouter.get(
         isLiked = !!like;
       }
 
-      return res.json({ post: { ...post, isLiked, author: post.authorId, authorId: undefined } });
+      return res.json({
+        post: {
+          ...post,
+          likesCount: Number(post.likesCount) || 0,
+          commentsCount: Number(post.commentsCount) || 0,
+          viewsCount: Number(post.viewsCount) || 0,
+          isLiked,
+          author: post.authorId,
+          authorId: undefined,
+        },
+      });
     } catch (err) {
       console.error("[posts] get post error:", err);
       return res.status(500).json({ message: "Failed to fetch post" });

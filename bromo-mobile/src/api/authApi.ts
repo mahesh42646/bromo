@@ -1,16 +1,30 @@
 import auth from '@react-native-firebase/auth';
 import {settings} from '../config/settings';
 
-function apiBase(): string {
+export function apiBase(): string {
   const base = settings.apiBaseUrl?.trim().replace(/\/+$/, '');
   if (base) return base;
   return 'https://bromo.darkunde.in';
 }
 
+// Token cache: Firebase tokens are valid for 1 hour; refresh at 55 min
+let _cachedToken: string | null = null;
+let _tokenExpiresAt = 0;
+const TOKEN_TTL_MS = 55 * 60 * 1000;
+
 async function getIdToken(): Promise<string> {
   const user = auth().currentUser;
   if (!user) throw new Error('Not authenticated');
-  return user.getIdToken(true);
+  const now = Date.now();
+  if (_cachedToken && now < _tokenExpiresAt) return _cachedToken;
+  _cachedToken = await user.getIdToken(false);
+  _tokenExpiresAt = now + TOKEN_TTL_MS;
+  return _cachedToken;
+}
+
+export function invalidateTokenCache(): void {
+  _cachedToken = null;
+  _tokenExpiresAt = 0;
 }
 
 const FETCH_TIMEOUT_MS = 12_000;
@@ -172,9 +186,7 @@ export async function updateProfile(data: {
 }
 
 export async function uploadAvatar(localUri: string): Promise<{url: string}> {
-  const user = (await import('@react-native-firebase/auth')).default().currentUser;
-  if (!user) throw new Error('Not authenticated');
-  const token = await user.getIdToken(true);
+  const token = await getIdToken();
   const base = apiBase();
 
   const form = new FormData();

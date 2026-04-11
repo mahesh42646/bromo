@@ -8,7 +8,7 @@ export const settings = {
   apiBaseUrl,
   // Optional web proxy endpoint (if you expose theme via bromo-web)
   webThemeContractUrl: '',
-  // Poll admin settings so live changes reflect without reinstall
-  themeRefreshMs: 10000,
+  // Poll admin settings once per minute; cached in AsyncStorage between opens
+  themeRefreshMs: 60_000,
   enableAnalytics: false,
 } as const;

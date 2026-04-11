@@ -13,6 +13,7 @@ import {useNavigation} from '@react-navigation/native';
 import type {NavigationProp} from '@react-navigation/native';
 import {BadgeCheck, TrendingUp, Hash, MapPin, ShoppingBag, Users} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
+import {useAuth} from '../context/AuthContext';
 import {ThemedText} from '../components/ui/ThemedText';
 import {SearchBar} from '../components/ui/SearchBar';
 import {Card} from '../components/ui/Card';
@@ -54,15 +55,19 @@ function PersonRow({
   navigation,
   palette,
   borderRadiusScale,
+  currentUserId,
 }: {
   user: SuggestedUser & {followStatus?: string};
   navigation: Nav;
   palette: ReturnType<typeof useTheme>['palette'];
   borderRadiusScale: string;
+  currentUserId?: string;
 }) {
   const [followStatus, setFollowStatus] = useState(user.followStatus ?? 'none');
+  const isSelf = currentUserId === user._id;
 
   const handleFollow = async () => {
+    if (isSelf) return;
     try {
       if (followStatus === 'following') {
         await unfollowUser(user._id);
@@ -92,26 +97,28 @@ function PersonRow({
               )}
             </View>
             <ThemedText variant="caption">@{user.username}</ThemedText>
-            <ThemedText variant="caption">{formatCount(user.followersCount)} followers</ThemedText>
+            <ThemedText variant="caption">{formatCount(user.followersCount ?? 0)} followers</ThemedText>
           </View>
-          <Pressable
-            onPress={handleFollow}
-            style={{
-              backgroundColor: followStatus === 'none' ? palette.primary : 'transparent',
-              borderWidth: 1,
-              borderColor: palette.primary,
-              borderRadius: borderRadiusScale === 'bold' ? 10 : 6,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-            }}>
-            <Text style={{
-              color: followStatus === 'none' ? palette.primaryForeground : palette.primary,
-              fontSize: 12,
-              fontWeight: '800',
-            }}>
-              {followStatus === 'following' ? 'Following' : followStatus === 'requested' ? 'Requested' : 'Follow'}
-            </Text>
-          </Pressable>
+          {!isSelf && (
+            <Pressable
+              onPress={handleFollow}
+              style={{
+                backgroundColor: followStatus === 'none' ? palette.primary : 'transparent',
+                borderWidth: 1,
+                borderColor: palette.primary,
+                borderRadius: borderRadiusScale === 'bold' ? 10 : 6,
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+              }}>
+              <Text style={{
+                color: followStatus === 'none' ? palette.primaryForeground : palette.primary,
+                fontSize: 12,
+                fontWeight: '800',
+              }}>
+                {followStatus === 'following' ? 'Following' : followStatus === 'requested' ? 'Requested' : 'Follow'}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </Card>
     </Pressable>
@@ -121,6 +128,7 @@ function PersonRow({
 export function SearchScreen() {
   const navigation = useNavigation() as Nav;
   const {palette, contract, isDark} = useTheme();
+  const {dbUser} = useAuth();
   const tabBarHeight = useBottomTabBarHeight();
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState('explore');
@@ -256,6 +264,7 @@ export function SearchScreen() {
                     navigation={navigation}
                     palette={palette}
                     borderRadiusScale={borderRadiusScale}
+                    currentUserId={dbUser?._id}
                   />
                 ))}
               </View>

@@ -10,7 +10,7 @@ import { User } from "../models/User.js";
 
 export const followRouter = Router();
 
-const USER_SELECT = "username displayName profilePicture followersCount followingCount postsCount isPrivate";
+const USER_SELECT = "username displayName profilePicture followersCount followingCount postsCount isPrivate emailVerified";
 
 // ── GET /users/suggestions ───────────────────────────────────────────
 followRouter.get(
@@ -37,7 +37,14 @@ followRouter.get(
         .limit(limit)
         .lean();
 
-      return res.json({ users });
+      return res.json({
+        users: users.map(u => ({
+          ...u,
+          followersCount: u.followersCount ?? 0,
+          followingCount: u.followingCount ?? 0,
+          postsCount: u.postsCount ?? 0,
+        })),
+      });
     } catch (err) {
       console.error("[follow] suggestions error:", err);
       return res.status(500).json({ message: "Failed to get suggestions" });
@@ -75,7 +82,15 @@ followRouter.get(
       }
 
       const result = users.map((u) => ({
-        ...u,
+        _id: u._id,
+        username: u.username,
+        displayName: u.displayName,
+        profilePicture: u.profilePicture,
+        followersCount: u.followersCount ?? 0,
+        followingCount: u.followingCount ?? 0,
+        postsCount: u.postsCount ?? 0,
+        isPrivate: u.isPrivate,
+        emailVerified: u.emailVerified,
         followStatus: followingSet.has(`${String(u._id)}:accepted`)
           ? "following"
           : followingSet.has(`${String(u._id)}:pending`)
