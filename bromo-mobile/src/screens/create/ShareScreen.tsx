@@ -30,13 +30,13 @@ import {
   ShoppingBag,
   Trash2,
   Users,
-  X,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import {FILTER_LAYERS} from '../../create/filterStyles';
 import type {Visibility} from '../../create/createTypes';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
+import {uploadMedia, createPost} from '../../api/postsApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'ShareFinal'>;
 
@@ -83,11 +83,30 @@ export function ShareScreen() {
     Alert.alert('Downloaded', 'Content saved to Photos (simulated).', [{text: 'OK'}]);
   };
 
-  const publish = () => {
+  const publish = async () => {
+    if (!asset) {
+      Alert.alert('No media', 'Please add a photo or video first.');
+      return;
+    }
     setPhase('posting');
-    setTimeout(() => {
+    try {
+      const {url} = await uploadMedia(asset.uri);
+      const mediaType = asset.type === 'video' ? 'video' : 'image';
+      const postType = draft.mode === 'reel' ? 'reel' : draft.mode === 'story' ? 'story' : 'post';
+      await createPost({
+        type: postType,
+        mediaUrl: url,
+        mediaType,
+        caption: [draft.caption, ...draft.hashtags].filter(Boolean).join(' ') || undefined,
+        location: draft.location?.name,
+        music: draft.selectedAudio?.title,
+        tags: draft.tagged.map(t => t.username),
+      });
       setPhase('done');
-    }, 1500);
+    } catch (err) {
+      setPhase('review');
+      Alert.alert('Failed to post', err instanceof Error ? err.message : 'Try again');
+    }
   };
 
   useEffect(() => {
@@ -193,7 +212,7 @@ export function ShareScreen() {
     return (
       <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
         <View style={styles.doneContainer}>
-          <View style={[styles.postingCircle, {borderColor: palette.accent}]} />
+          <Animated.View style={[styles.postingCircle, {borderColor: palette.accent}]} />
           <Text style={[styles.postingText, {color: palette.foregroundMuted}]}>Sharing your {draft.mode}...</Text>
         </View>
       </ThemedSafeScreen>

@@ -8,6 +8,10 @@ import { authRouter } from "./routes/auth.js";
 import { settingsRouter } from "./routes/settings.js";
 import { userAuthRouter } from "./routes/userAuth.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
+import { postsRouter } from "./routes/posts.js";
+import { followRouter } from "./routes/follow.js";
+import { mediaRouter } from "./routes/media.js";
+import { chatRouter } from "./routes/chat.js";
 import { initFirebase } from "./config/firebase.js";
 
 export function createApp() {
@@ -20,7 +24,7 @@ export function createApp() {
     }),
   );
 
-  const allowedOrigins = envOrDefault("CORS_ORIGIN", "http://localhost:3000")
+  const allowedOrigins = envOrDefault("CORS_ORIGIN", "*")
     .split(",")
     .map((s) => s.trim());
   app.use(
@@ -35,7 +39,7 @@ export function createApp() {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "10mb" }));
   app.use(cookieParser());
   app.use(morgan("dev"));
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
@@ -48,6 +52,10 @@ export function createApp() {
   app.use("/settings", settingsRouter);
   app.use("/user-auth", userAuthRouter);
   app.use("/admin", adminUsersRouter);
+  app.use("/posts", postsRouter);
+  app.use("/users", followRouter);
+  app.use("/media", mediaRouter);
+  app.use("/chat", chatRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });

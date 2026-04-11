@@ -15,7 +15,7 @@ async function getIdToken(): Promise<string> {
 
 const FETCH_TIMEOUT_MS = 12_000;
 
-async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -44,9 +44,14 @@ export type DbUser = {
   profilePicture: string;
   bio: string;
   phone: string;
+  website: string;
   provider: 'email' | 'google';
   isActive: boolean;
   onboardingComplete: boolean;
+  isPrivate: boolean;
+  followersCount: number;
+  followingCount: number;
+  postsCount: number;
 };
 
 export async function getEmailByUsername(username: string): Promise<{email: string}> {
@@ -153,6 +158,7 @@ export async function updateProfile(data: {
   bio?: string;
   profilePicture?: string;
   phone?: string;
+  website?: string;
 }): Promise<{user: DbUser}> {
   const res = await authedFetch('/user-auth/profile', {
     method: 'PATCH',
@@ -163,4 +169,28 @@ export async function updateProfile(data: {
     throw new Error((body as {message?: string}).message ?? 'Update failed');
   }
   return res.json() as Promise<{user: DbUser}>;
+}
+
+export async function uploadAvatar(localUri: string): Promise<{url: string}> {
+  const user = (await import('@react-native-firebase/auth')).default().currentUser;
+  if (!user) throw new Error('Not authenticated');
+  const token = await user.getIdToken(true);
+  const base = apiBase();
+
+  const form = new FormData();
+  const filename = localUri.split('/').pop() ?? 'avatar.jpg';
+  const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const mimeMap: Record<string, string> = {jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp'};
+  form.append('avatar', {uri: localUri, type: mimeMap[ext] ?? 'image/jpeg', name: filename} as unknown as Blob);
+
+  const res = await fetch(`${base}/media/avatar`, {
+    method: 'POST',
+    headers: {Authorization: `Bearer ${token}`},
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Upload failed');
+  }
+  return res.json() as Promise<{url: string}>;
 }

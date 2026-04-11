@@ -1,5 +1,6 @@
-import React, {useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -9,6 +10,7 @@ import {
 } from 'react-native';
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
 import {useNavigation} from '@react-navigation/native';
+import type {NavigationProp} from '@react-navigation/native';
 import {BadgeCheck, TrendingUp, Hash, MapPin, ShoppingBag, Users} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {ThemedText} from '../components/ui/ThemedText';
@@ -17,6 +19,12 @@ import {Card} from '../components/ui/Card';
 import {Badge} from '../components/ui/Badge';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
+import {searchUsers, getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
+import {getExplore, type Post} from '../api/postsApi';
+
+type Nav = NavigationProp<Record<string, object | undefined>> & {
+  getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
+};
 
 const TRENDING_TOPICS = [
   {id: '1', tag: '#Maharashtra', posts: '2.4M posts', category: 'Politics'},
@@ -27,24 +35,6 @@ const TRENDING_TOPICS = [
   {id: '6', tag: '#LocalFood', posts: '450K posts', category: 'Lifestyle'},
 ];
 
-const EXPLORE_GRID = [
-  {id: '1', uri: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=300', tall: true},
-  {id: '2', uri: 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=300', tall: false},
-  {id: '3', uri: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=300', tall: false},
-  {id: '4', uri: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=300', tall: true},
-  {id: '5', uri: 'https://images.unsplash.com/photo-1533107862482-0e6974b06ec4?w=300', tall: false},
-  {id: '6', uri: 'https://images.unsplash.com/photo-1514525253361-bee8718a7439?w=300', tall: false},
-  {id: '7', uri: 'https://images.unsplash.com/photo-1506461883276-594a12b11cf3?w=300', tall: false},
-  {id: '8', uri: 'https://images.unsplash.com/photo-1555133539-4a34610018f1?w=300', tall: true},
-  {id: '9', uri: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=300', tall: false},
-];
-
-const PEOPLE = [
-  {id: '1', name: 'Amit Desai', handle: 'amit_d', avatar: 'https://i.pravatar.cc/100?img=18', followers: '42.5K', verified: true},
-  {id: '2', name: 'Snehal Joshi', handle: 'snehal_22', avatar: 'https://i.pravatar.cc/100?img=32', followers: '18.2K', verified: false},
-  {id: '3', name: 'Rahul Sharma', handle: 'rahul_s', avatar: 'https://i.pravatar.cc/100?img=15', followers: '95.1K', verified: true},
-];
-
 const FILTER_TABS = [
   {id: 'explore', label: 'Explore', icon: TrendingUp},
   {id: 'people', label: 'People', icon: Users},
@@ -53,14 +43,136 @@ const FILTER_TABS = [
   {id: 'shops', label: 'Shops', icon: ShoppingBag},
 ];
 
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function PersonRow({
+  user,
+  navigation,
+  palette,
+  borderRadiusScale,
+}: {
+  user: SuggestedUser & {followStatus?: string};
+  navigation: Nav;
+  palette: ReturnType<typeof useTheme>['palette'];
+  borderRadiusScale: string;
+}) {
+  const [followStatus, setFollowStatus] = useState(user.followStatus ?? 'none');
+
+  const handleFollow = async () => {
+    try {
+      if (followStatus === 'following') {
+        await unfollowUser(user._id);
+        setFollowStatus('none');
+      } else {
+        const res = await followUser(user._id);
+        setFollowStatus(res.status === 'pending' ? 'requested' : 'following');
+      }
+    } catch {}
+  };
+
+  const avatarUri = user.profilePicture || `https://ui-avatars.com/api/?name=${user.displayName}`;
+
+  return (
+    <Pressable onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: user._id})}>
+      <Card style={{padding: 14}}>
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
+          <Image
+            source={{uri: avatarUri}}
+            style={{width: 52, height: 52, borderRadius: 26, borderWidth: 2, borderColor: palette.primary}}
+          />
+          <View style={{flex: 1}}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
+              <ThemedText variant="label">{user.displayName}</ThemedText>
+              {user.emailVerified && (
+                <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
+              )}
+            </View>
+            <ThemedText variant="caption">@{user.username}</ThemedText>
+            <ThemedText variant="caption">{formatCount(user.followersCount)} followers</ThemedText>
+          </View>
+          <Pressable
+            onPress={handleFollow}
+            style={{
+              backgroundColor: followStatus === 'none' ? palette.primary : 'transparent',
+              borderWidth: 1,
+              borderColor: palette.primary,
+              borderRadius: borderRadiusScale === 'bold' ? 10 : 6,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+            }}>
+            <Text style={{
+              color: followStatus === 'none' ? palette.primaryForeground : palette.primary,
+              fontSize: 12,
+              fontWeight: '800',
+            }}>
+              {followStatus === 'following' ? 'Following' : followStatus === 'requested' ? 'Requested' : 'Follow'}
+            </Text>
+          </Pressable>
+        </View>
+      </Card>
+    </Pressable>
+  );
+}
+
 export function SearchScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation() as Nav;
   const {palette, contract, isDark} = useTheme();
   const tabBarHeight = useBottomTabBarHeight();
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState('explore');
   const {borderRadiusScale} = contract.brandGuidelines;
   const chipRadius = borderRadiusScale === 'bold' ? 999 : 10;
+
+  const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+  const [searchResults, setSearchResults] = useState<(SuggestedUser & {followStatus?: string})[]>([]);
+  const [explorePosts, setExplorePosts] = useState<Post[]>([]);
+  const [loadingPeople, setLoadingPeople] = useState(false);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [loadingExplore, setLoadingExplore] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'people' && suggestions.length === 0) {
+      setLoadingPeople(true);
+      getUserSuggestions(20)
+        .then(res => setSuggestions(res.users))
+        .catch(() => {})
+        .finally(() => setLoadingPeople(false));
+    }
+    if (activeTab === 'explore' && explorePosts.length === 0) {
+      setLoadingExplore(true);
+      getExplore(1)
+        .then(res => setExplorePosts(res.posts))
+        .catch(() => {})
+        .finally(() => setLoadingExplore(false));
+    }
+  }, [activeTab]);
+
+  const handleSearch = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setLoadingSearch(true);
+    try {
+      const res = await searchUsers(q.trim());
+      setSearchResults(res.users);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setLoadingSearch(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => handleSearch(query), 400);
+    return () => clearTimeout(timer);
+  }, [query, handleSearch]);
+
+  const showSearchResults = query.trim().length > 0;
 
   return (
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
@@ -76,18 +188,17 @@ export function SearchScreen() {
           borderBottomColor: palette.border,
           gap: 12,
         }}>
-        <Pressable onPress={() => parentNavigate(navigation, 'ExploreHome')}>
-          <ThemedText variant="heading" style={{fontSize: 20, fontStyle: 'italic', color: palette.primary}}>
-            Explore
-          </ThemedText>
-        </Pressable>
+        <ThemedText variant="heading" style={{fontSize: 20, fontStyle: 'italic', color: palette.primary}}>
+          Explore
+        </ThemedText>
         <SearchBar
           value={query}
           onChangeText={setQuery}
           placeholder="Search people, tags, places..."
           onSubmitEditing={() => {
-            const q = query.trim() || 'bromo';
-            parentNavigate(navigation, 'SearchResults', {query: q});
+            if (query.trim()) {
+              parentNavigate(navigation, 'SearchResults', {query: query.trim()});
+            }
           }}
         />
         {/* Filter Tabs */}
@@ -103,22 +214,15 @@ export function SearchScreen() {
                 key={tab.id}
                 onPress={() => setActiveTab(tab.id)}
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
+                  flexDirection: 'row', alignItems: 'center', gap: 5,
+                  paddingHorizontal: 14, paddingVertical: 7,
                   borderRadius: chipRadius,
                   backgroundColor: isActive ? palette.primary : isDark ? palette.surface : palette.card,
                   borderWidth: 1,
                   borderColor: isActive ? palette.primary : palette.border,
                 }}>
                 <Icon size={12} color={isActive ? palette.primaryForeground : palette.mutedForeground} />
-                <Text style={{
-                  fontSize: 12,
-                  fontWeight: '700',
-                  color: isActive ? palette.primaryForeground : palette.foreground,
-                }}>
+                <Text style={{fontSize: 12, fontWeight: '700', color: isActive ? palette.primaryForeground : palette.foreground}}>
                   {tab.label}
                 </Text>
               </Pressable>
@@ -130,9 +234,38 @@ export function SearchScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{paddingBottom: tabBarHeight + 16}}>
-        {activeTab === 'explore' && (
+
+        {/* Live search results overlay */}
+        {showSearchResults && (
+          <View style={{paddingHorizontal: 14, paddingTop: 12}}>
+            <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 10}}>
+              {loadingSearch ? 'Searching...' : `Results for "${query}"`}
+            </ThemedText>
+            {loadingSearch ? (
+              <ActivityIndicator color={palette.primary} />
+            ) : searchResults.length === 0 ? (
+              <ThemedText variant="muted" style={{textAlign: 'center', paddingVertical: 20}}>
+                No users found for "{query}"
+              </ThemedText>
+            ) : (
+              <View style={{gap: 10}}>
+                {searchResults.map(user => (
+                  <PersonRow
+                    key={user._id}
+                    user={user}
+                    navigation={navigation}
+                    palette={palette}
+                    borderRadiusScale={borderRadiusScale}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Explore tab */}
+        {!showSearchResults && activeTab === 'explore' && (
           <>
-            {/* Trending Topics */}
             <View style={{padding: 14}}>
               <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12}}>
                 <TrendingUp size={14} color={palette.primary} />
@@ -141,23 +274,16 @@ export function SearchScreen() {
               {TRENDING_TOPICS.map((topic, index) => (
                 <Pressable
                   key={topic.id}
-                  onPress={() =>
-                    parentNavigate(navigation, 'HashtagDetail', {
-                      tag: topic.tag.replace(/^#/, ''),
-                    })
-                  }
+                  onPress={() => parentNavigate(navigation, 'HashtagDetail', {tag: topic.tag.replace(/^#/, '')})}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: 'row', alignItems: 'center',
                     justifyContent: 'space-between',
                     paddingVertical: 12,
                     borderBottomWidth: index < TRENDING_TOPICS.length - 1 ? 1 : 0,
                     borderBottomColor: palette.border,
                   }}>
                   <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
-                    <ThemedText variant="muted" style={{fontSize: 14, fontWeight: '900', width: 20}}>
-                      {index + 1}
-                    </ThemedText>
+                    <ThemedText variant="muted" style={{fontSize: 14, fontWeight: '900', width: 20}}>{index + 1}</ThemedText>
                     <View>
                       <ThemedText variant="label" style={{fontSize: 14}}>{topic.tag}</ThemedText>
                       <ThemedText variant="caption">{topic.posts}</ThemedText>
@@ -171,112 +297,56 @@ export function SearchScreen() {
             {/* Explore Grid */}
             <View style={{padding: 14}}>
               <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 12}}>Explore Posts</ThemedText>
-              <View style={{flexDirection: 'row', gap: 3}}>
-                {/* Left column */}
-                <View style={{flex: 1, gap: 3}}>
-                  {EXPLORE_GRID.filter((_, i) => i % 3 === 0).map(item => (
-                    <Pressable
-                      key={item.id}
-                      onPress={() => parentNavigate(navigation, 'PostDetail', {postId: item.id})}>
-                      <Image
-                        source={{uri: item.uri}}
-                        style={{
-                          width: '100%',
-                          aspectRatio: item.tall ? 0.7 : 1,
-                          borderRadius: 4,
-                        }}
-                        resizeMode="cover"
-                      />
-                    </Pressable>
+              {loadingExplore ? (
+                <ActivityIndicator color={palette.primary} />
+              ) : (
+                <View style={{flexDirection: 'row', gap: 3}}>
+                  {[0, 1, 2].map(col => (
+                    <View key={col} style={{flex: 1, gap: 3}}>
+                      {explorePosts.filter((_, i) => i % 3 === col).map((post, i) => (
+                        <Pressable
+                          key={post._id}
+                          onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}>
+                          <Image
+                            source={{uri: post.mediaUrl}}
+                            style={{width: '100%', aspectRatio: i % 2 === 0 ? 0.8 : 1, borderRadius: 4}}
+                            resizeMode="cover"
+                          />
+                        </Pressable>
+                      ))}
+                    </View>
                   ))}
                 </View>
-                {/* Middle column */}
-                <View style={{flex: 1, gap: 3}}>
-                  {EXPLORE_GRID.filter((_, i) => i % 3 === 1).map(item => (
-                    <Pressable
-                      key={item.id}
-                      onPress={() => parentNavigate(navigation, 'PostDetail', {postId: item.id})}>
-                      <Image
-                        source={{uri: item.uri}}
-                        style={{
-                          width: '100%',
-                          aspectRatio: item.tall ? 0.7 : 1,
-                          borderRadius: 4,
-                        }}
-                        resizeMode="cover"
-                      />
-                    </Pressable>
-                  ))}
-                </View>
-                {/* Right column */}
-                <View style={{flex: 1, gap: 3}}>
-                  {EXPLORE_GRID.filter((_, i) => i % 3 === 2).map(item => (
-                    <Pressable
-                      key={item.id}
-                      onPress={() => parentNavigate(navigation, 'PostDetail', {postId: item.id})}>
-                      <Image
-                        source={{uri: item.uri}}
-                        style={{
-                          width: '100%',
-                          aspectRatio: item.tall ? 0.7 : 1,
-                          borderRadius: 4,
-                        }}
-                        resizeMode="cover"
-                      />
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
+              )}
             </View>
           </>
         )}
 
-        {activeTab === 'people' && (
+        {/* People tab */}
+        {!showSearchResults && activeTab === 'people' && (
           <View style={{padding: 14, gap: 12}}>
             <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 4}}>Suggested People</ThemedText>
-            {PEOPLE.map(person => (
-              <Pressable
-                key={person.id}
-                onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: person.handle})}>
-              <Card style={{padding: 14}}>
-                <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
-                  <Image
-                    source={{uri: person.avatar}}
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 26,
-                      borderWidth: 2,
-                      borderColor: palette.primary,
-                    }}
-                  />
-                  <View style={{flex: 1}}>
-                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
-                      <ThemedText variant="label">{person.name}</ThemedText>
-                      {person.verified && (
-                        <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
-                      )}
-                    </View>
-                    <ThemedText variant="caption">@{person.handle}</ThemedText>
-                    <ThemedText variant="caption">{person.followers} followers</ThemedText>
-                  </View>
-                  <Pressable
-                    style={{
-                      backgroundColor: palette.primary,
-                      borderRadius: borderRadiusScale === 'bold' ? 10 : 6,
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                    }}>
-                    <Text style={{color: palette.primaryForeground, fontSize: 12, fontWeight: '800'}}>Follow</Text>
-                  </Pressable>
-                </View>
-              </Card>
-              </Pressable>
-            ))}
+            {loadingPeople ? (
+              <ActivityIndicator color={palette.primary} />
+            ) : suggestions.length === 0 ? (
+              <ThemedText variant="muted" style={{textAlign: 'center', paddingVertical: 30}}>
+                No suggestions available
+              </ThemedText>
+            ) : (
+              suggestions.map(user => (
+                <PersonRow
+                  key={user._id}
+                  user={user}
+                  navigation={navigation}
+                  palette={palette}
+                  borderRadiusScale={borderRadiusScale}
+                />
+              ))
+            )}
           </View>
         )}
 
-        {(activeTab === 'tags' || activeTab === 'places' || activeTab === 'shops') && (
+        {!showSearchResults && (activeTab === 'tags' || activeTab === 'places' || activeTab === 'shops') && (
           <View style={{padding: 40, alignItems: 'center', gap: 16}}>
             {activeTab === 'tags' ? (
               <Hash size={40} color={palette.mutedForeground} strokeWidth={1.5} />
@@ -286,28 +356,8 @@ export function SearchScreen() {
               <ShoppingBag size={40} color={palette.mutedForeground} strokeWidth={1.5} />
             )}
             <ThemedText variant="muted" style={{marginTop: 12, textAlign: 'center'}}>
-              Type above or open a curated hub for {activeTab}.
+              Type above to search {activeTab}.
             </ThemedText>
-            <Pressable
-              onPress={() => {
-                if (activeTab === 'tags') {
-                  parentNavigate(navigation, 'ExploreHome');
-                } else if (activeTab === 'places') {
-                  parentNavigate(navigation, 'NearbyPeople');
-                } else {
-                  parentNavigate(navigation, 'StoreNearbyHome');
-                }
-              }}
-              style={{
-                backgroundColor: palette.primary,
-                paddingHorizontal: 20,
-                paddingVertical: 10,
-                borderRadius: chipRadius,
-              }}>
-              <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 13}}>
-                {activeTab === 'tags' ? 'Open explore' : activeTab === 'places' ? 'Nearby people' : 'Store map'}
-              </Text>
-            </Pressable>
           </View>
         )}
 

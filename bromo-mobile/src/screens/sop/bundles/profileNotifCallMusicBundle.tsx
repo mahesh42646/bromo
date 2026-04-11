@@ -9,26 +9,10 @@ import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 
+export {EditProfileScreen} from '../../EditProfileScreen';
+export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
+
 type Nav = NativeStackNavigationProp<AppStackParamList>;
-
-export function EditProfileScreen() {
-  return (
-    <SopChrome title="Edit profile">
-      <SopMeta label="Name, mandatory username, bio, avatar, website — persisted locally in demo." />
-      <SopRow title="Profile photo" />
-      <SopRow title="Username" sub="@bromo_user" />
-    </SopChrome>
-  );
-}
-
-export function OtherUserProfileScreen() {
-  const route = useRoute<RouteProp<AppStackParamList, 'OtherUserProfile'>>();
-  return (
-    <SopChrome title="Profile">
-      <SopMeta label={`User ${route.params.userId} — follow, message, collab`} />
-    </SopChrome>
-  );
-}
 
 export function ShareProfileScreen() {
   return (
@@ -39,16 +23,7 @@ export function ShareProfileScreen() {
   );
 }
 
-export function FollowersFollowingScreen() {
-  const route = useRoute<RouteProp<AppStackParamList, 'FollowersFollowing'>>();
-  return (
-    <SopChrome title={route.params.tab === 'followers' ? 'Followers' : 'Following'}>
-      <SopMeta label={`User ${route.params.userId}`} />
-      <SopRow title="priya_vibes" />
-      <SopRow title="tech_marathi" />
-    </SopChrome>
-  );
-}
+export {FollowersFollowingScreen} from '../../FollowersFollowingScreen';
 
 export function PointsWalletScreen() {
   const navigation = useNavigation<Nav>();

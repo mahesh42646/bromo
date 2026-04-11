@@ -1,9 +1,12 @@
-import React, {useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -47,6 +50,7 @@ import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {resetToAuth} from '../navigation/rootNavigation';
+import {getUserPosts, type Post} from '../api/postsApi';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -70,18 +74,6 @@ const GRID_TABS = [
   {id: 'posts', icon: Grid3X3, label: 'Posts'},
   {id: 'reels', icon: Clapperboard, label: 'Reels'},
   {id: 'saved', icon: Bookmark, label: 'Saved'},
-];
-
-const SAMPLE_POSTS = [
-  'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=400',
-  'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=400',
-  'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=400',
-  'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400',
-  'https://images.unsplash.com/photo-1533107862482-0e6974b06ec4?w=400',
-  'https://images.unsplash.com/photo-1514525253361-bee8718a7439?w=400',
-  'https://images.unsplash.com/photo-1506461883276-594a12b11cf3?w=400',
-  'https://images.unsplash.com/photo-1555133539-4a34610018f1?w=400',
-  'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400',
 ];
 
 // ─── Settings Modal ───────────────────────────────────────────────
@@ -197,9 +189,12 @@ function SettingsModal({
 export function ProfileScreen() {
   const navigation = useNavigation();
   const {palette, contract} = useTheme();
-  const {dbUser, logout} = useAuth();
+  const {dbUser, logout, refreshDbUser} = useAuth();
   const [gridTab, setGridTab] = useState('posts');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const displayName = dbUser?.displayName || 'User';
   const username = dbUser?.username || '';
@@ -207,6 +202,30 @@ export function ProfileScreen() {
   const avatar = dbUser?.profilePicture || null;
   const bio = dbUser?.bio || '';
   const isVerified = dbUser?.emailVerified && dbUser?.provider === 'google';
+
+  const loadPosts = useCallback(async (tab: string) => {
+    if (!dbUser?._id) return;
+    setPostsLoading(true);
+    try {
+      const typeMap: Record<string, string> = {posts: 'post', reels: 'reel', saved: 'post'};
+      const res = await getUserPosts(dbUser._id, typeMap[tab] ?? 'post');
+      setUserPosts(res.posts);
+    } catch {
+      setUserPosts([]);
+    } finally {
+      setPostsLoading(false);
+    }
+  }, [dbUser?._id]);
+
+  useEffect(() => {
+    loadPosts(gridTab);
+  }, [gridTab, loadPosts]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refreshDbUser(), loadPosts(gridTab)]);
+    setRefreshing(false);
+  }, [refreshDbUser, loadPosts, gridTab]);
 
   const appName = contract.branding.appTitle || 'bromo';
 
@@ -402,7 +421,11 @@ export function ProfileScreen() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} colors={[palette.primary]} />
+        }>
 
         {/* ── Profile section ── */}
         <View style={styles.profileSection}>
@@ -424,16 +447,16 @@ export function ProfileScreen() {
             {/* Stats */}
             <View style={styles.statsRow}>
               {[
-                {label: 'Posts', value: 0, onPress: () => parentNavigate(navigation, 'ManageContent')},
+                {label: 'Posts', value: dbUser?.postsCount ?? 0, onPress: () => parentNavigate(navigation, 'ManageContent')},
                 {
                   label: 'Followers',
-                  value: 0,
-                  onPress: () => parentNavigate(navigation, 'FollowersFollowing', {userId: username, tab: 'followers'}),
+                  value: dbUser?.followersCount ?? 0,
+                  onPress: () => parentNavigate(navigation, 'FollowersFollowing', {userId: dbUser?._id, tab: 'followers'}),
                 },
                 {
                   label: 'Following',
-                  value: 0,
-                  onPress: () => parentNavigate(navigation, 'FollowersFollowing', {userId: username, tab: 'following'}),
+                  value: dbUser?.followingCount ?? 0,
+                  onPress: () => parentNavigate(navigation, 'FollowersFollowing', {userId: dbUser?._id, tab: 'following'}),
                 },
               ].map(stat => (
                 <Pressable key={stat.label} onPress={stat.onPress} style={styles.statItem}>
@@ -517,40 +540,37 @@ export function ProfileScreen() {
         </View>
 
         {/* ── Content grid ── */}
-        <View style={styles.grid}>
-          {/* Add new content tile */}
-          <Pressable
-            onPress={() => parentNavigate(navigation, 'CreateFlow')}
-            style={styles.addTile}>
-            <View style={[styles.addTileInner, {backgroundColor: palette.glassFaint, borderColor: palette.borderFaint}]}>
-              <Plus size={28} color={palette.foregroundSubtle} />
-              <Text style={[styles.addTileText, {color: palette.foregroundSubtle}]}>New</Text>
-            </View>
-          </Pressable>
-
-          {/* Sample post tiles */}
-          {SAMPLE_POSTS.map((uri, i) => (
+        {postsLoading ? (
+          <ActivityIndicator color={palette.primary} style={{marginVertical: 32}} />
+        ) : (
+          <View style={styles.grid}>
+            {/* Add new content tile */}
             <Pressable
-              key={i}
-              onPress={() => {
-                if (gridTab === 'saved') {
-                  parentNavigate(navigation, 'SavedPosts');
-                  return;
-                }
-                parentNavigate(navigation, 'PostDetail', {postId: String(i + 1)});
-              }}
-              style={styles.gridTile}>
-              <Image source={{uri}} style={styles.gridImg} />
-              {gridTab === 'reels' && (
-                <View style={styles.reelIcon}>
-                  <Play size={12} color={palette.foreground} fill={palette.foreground} />
-                </View>
-              )}
+              onPress={() => parentNavigate(navigation, 'CreateFlow')}
+              style={styles.addTile}>
+              <View style={[styles.addTileInner, {backgroundColor: palette.glassFaint, borderColor: palette.borderFaint}]}>
+                <Plus size={28} color={palette.foregroundSubtle} />
+                <Text style={[styles.addTileText, {color: palette.foregroundSubtle}]}>New</Text>
+              </View>
             </Pressable>
-          ))}
-        </View>
 
-        {SAMPLE_POSTS.length === 0 && (
+            {userPosts.map(post => (
+              <Pressable
+                key={post._id}
+                onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
+                style={styles.gridTile}>
+                <Image source={{uri: post.mediaUrl}} style={styles.gridImg} />
+                {(post.type === 'reel' || post.mediaType === 'video') && (
+                  <View style={styles.reelIcon}>
+                    <Play size={12} color={palette.foreground} fill={palette.foreground} />
+                  </View>
+                )}
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {!postsLoading && userPosts.length === 0 && (
           <View style={styles.emptyState}>
             <Camera size={40} color={palette.foregroundFaint} />
             <Text style={[styles.emptyText, {color: palette.foregroundSubtle}]}>No posts yet</Text>

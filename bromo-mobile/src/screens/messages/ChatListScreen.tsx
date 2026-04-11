@@ -1,5 +1,6 @@
-import React, {useMemo, useState} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Pressable,
@@ -9,7 +10,7 @@ import {
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {BadgeCheck, ChevronLeft, Search} from 'lucide-react-native';
+import {BadgeCheck, ChevronLeft, MessageSquarePlus, Search} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {SearchBar} from '../../components/ui/SearchBar';
@@ -17,6 +18,7 @@ import type {ChatListFilter} from '../../messaging/messageTypes';
 import {useMessaging} from '../../messaging/MessagingContext';
 import {formatThreadRowTime} from '../../messaging/formatTime';
 import type {MessagesStackParamList} from '../../navigation/MessagesStackNavigator';
+import {searchUsers} from '../../api/followApi';
 
 type Nav = NativeStackNavigationProp<MessagesStackParamList, 'ChatList'>;
 
@@ -29,9 +31,11 @@ const FILTERS: {id: ChatListFilter; label: string}[] = [
 export function ChatListScreen() {
   const navigation = useNavigation<Nav>();
   const {palette, contract, isDark} = useTheme();
-  const {filterThreads, searchDirectory, ensureThread} = useMessaging();
+  const {filterThreads, searchDirectory, ensureThread, openThreadForUser, loadingConversations} = useMessaging();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ChatListFilter>('all');
+  const [userSearchResults, setUserSearchResults] = useState<{_id: string; displayName: string; username: string; profilePicture: string}[]>([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
   const {borderRadiusScale} = contract.brandGuidelines;
   const chipR = borderRadiusScale === 'bold' ? 999 : 12;
 
@@ -47,6 +51,30 @@ export function ChatListScreen() {
     ensureThread(peerId);
     navigation.navigate('ChatThread', {peerId});
   };
+
+  const openNewChatWithUser = useCallback(async (user: {_id: string; displayName: string; username: string; profilePicture: string}) => {
+    try {
+      const convId = await openThreadForUser(user._id, user.displayName, user.profilePicture, user.username);
+      navigation.navigate('ChatThread', {peerId: convId});
+    } catch {}
+  }, [openThreadForUser, navigation]);
+
+  // Search real users when query changes
+  React.useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) {
+      setUserSearchResults([]);
+      return;
+    }
+    setSearchingUsers(true);
+    const timer = setTimeout(() => {
+      searchUsers(q)
+        .then(res => setUserSearchResults(res.users))
+        .catch(() => setUserSearchResults([]))
+        .finally(() => setSearchingUsers(false));
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   return (
     <ThemedSafeScreen style={{backgroundColor: palette.background}}>
@@ -71,6 +99,10 @@ export function ChatListScreen() {
         <Text style={{color: palette.foreground, fontSize: 20, fontWeight: '800', flex: 1}}>
           Messages
         </Text>
+        {loadingConversations && <ActivityIndicator color={palette.primary} size="small" />}
+        <Pressable hitSlop={12} style={{padding: 8}}>
+          <MessageSquarePlus size={22} color={palette.foreground} />
+        </Pressable>
       </View>
 
       <View style={{paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8}}>
@@ -114,43 +146,49 @@ export function ChatListScreen() {
         }}
       />
 
-      {directoryHits.length > 0 && search.trim().length > 0 && (
+      {/* User search results for starting new chats */}
+      {search.trim().length >= 2 && (
         <View style={{borderBottomWidth: 1, borderBottomColor: palette.border, paddingBottom: 8}}>
-          <Text
-            style={{
-              color: palette.mutedForeground,
-              fontSize: 11,
-              fontWeight: '800',
-              letterSpacing: 0.6,
-              paddingHorizontal: 16,
-              marginBottom: 8,
-            }}>
+          <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, paddingHorizontal: 16, marginBottom: 8}}>
             START NEW CHAT
           </Text>
-          {directoryHits.slice(0, 6).map(p => (
-            <Pressable
-              key={p.id}
-              onPress={() => openThread(p.id)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 10,
-                paddingHorizontal: 16,
-                gap: 12,
-              }}>
-              <Image source={{uri: p.avatar}} style={{width: 48, height: 48, borderRadius: 24}} />
-              <View style={{flex: 1}}>
-                <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
-                  <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>
-                    {p.displayName}
-                  </Text>
-                  {p.verified ? <BadgeCheck size={14} color={palette.primary} /> : null}
+          {searchingUsers ? (
+            <ActivityIndicator color={palette.primary} style={{marginVertical: 12}} />
+          ) : userSearchResults.length > 0 ? (
+            userSearchResults.slice(0, 6).map(u => (
+              <Pressable
+                key={u._id}
+                onPress={() => openNewChatWithUser(u)}
+                style={{flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16, gap: 12}}>
+                <Image
+                  source={{uri: u.profilePicture || `https://ui-avatars.com/api/?name=${u.displayName}`}}
+                  style={{width: 48, height: 48, borderRadius: 24}}
+                />
+                <View style={{flex: 1}}>
+                  <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>{u.displayName}</Text>
+                  <Text style={{color: palette.mutedForeground, fontSize: 13}}>@{u.username}</Text>
                 </View>
-                <Text style={{color: palette.mutedForeground, fontSize: 13}}>@{p.username}</Text>
-              </View>
-              <Search size={18} color={palette.mutedForeground} />
-            </Pressable>
-          ))}
+                <MessageSquarePlus size={18} color={palette.mutedForeground} />
+              </Pressable>
+            ))
+          ) : (
+            directoryHits.slice(0, 6).map(p => (
+              <Pressable
+                key={p.id}
+                onPress={() => openThread(p.id)}
+                style={{flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16, gap: 12}}>
+                <Image source={{uri: p.avatar || `https://ui-avatars.com/api/?name=${p.displayName}`}} style={{width: 48, height: 48, borderRadius: 24}} />
+                <View style={{flex: 1}}>
+                  <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+                    <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>{p.displayName}</Text>
+                    {p.verified ? <BadgeCheck size={14} color={palette.primary} /> : null}
+                  </View>
+                  <Text style={{color: palette.mutedForeground, fontSize: 13}}>@{p.username}</Text>
+                </View>
+                <Search size={18} color={palette.mutedForeground} />
+              </Pressable>
+            ))
+          )}
         </View>
       )}
 

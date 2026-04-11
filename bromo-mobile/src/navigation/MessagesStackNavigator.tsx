@@ -3,6 +3,7 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {MessagingProvider} from '@/messaging/MessagingContext';
 import {ChatListScreen} from '@/screens/messages/ChatListScreen';
 import {ChatThreadScreen} from '@/screens/messages/ChatThreadScreen';
+import {useAuth} from '@/context/AuthContext';
 
 export type MessagesStackParamList = {
   ChatList: undefined;
@@ -12,8 +13,9 @@ export type MessagesStackParamList = {
 const Stack = createNativeStackNavigator<MessagesStackParamList>();
 
 export function MessagesStackNavigator() {
+  const {dbUser} = useAuth();
   return (
-    <MessagingProvider>
+    <MessagingProvider myDbUserId={dbUser?._id ?? null}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

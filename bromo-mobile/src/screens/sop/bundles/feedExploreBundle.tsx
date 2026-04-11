@@ -3,7 +3,7 @@ import {Alert, Image, Pressable, Share, Text, View} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {Heart, MessageCircle, Play, Send, Users} from 'lucide-react-native';
+import {Play, Users} from 'lucide-react-native';
 import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
@@ -33,48 +33,9 @@ export function CategoryFeedScreen() {
   );
 }
 
-export function PostDetailScreen() {
-  const route = useRoute<RouteProp<AppStackParamList, 'PostDetail'>>();
-  const navigation = useNavigation<Nav>();
-  const {palette} = useTheme();
-  return (
-    <SopChrome title="Post">
-      <SopMeta label={`Post ${route.params.postId} — likes, comments, share.`} />
-      <Image source={{uri: MOCK_POST.image}} style={{width: '100%', aspectRatio: 1, borderRadius: 12}} />
-      <View style={{flexDirection: 'row', gap: 20, marginTop: 12}}>
-        <Pressable style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-          <Heart size={22} color={palette.foreground} />
-          <Text style={{color: palette.foreground}}>{MOCK_POST.likes}</Text>
-        </Pressable>
-        <Pressable onPress={() => navigation.navigate('Comments', {postId: route.params.postId})} style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-          <MessageCircle size={22} color={palette.foreground} />
-        </Pressable>
-        <Pressable onPress={() => navigation.navigate('ShareSend', {postId: route.params.postId})}>
-          <Send size={22} color={palette.foreground} />
-        </Pressable>
-      </View>
-    </SopChrome>
-  );
-}
+export {PostDetailScreen} from '../../PostDetailScreen';
 
-export function CommentsScreen() {
-  const {palette} = useTheme();
-  const items = [
-    {id: '1', u: 'priya_vibes', t: 'So good 🔥'},
-    {id: '2', u: 'tech_marathi', t: 'Replying to @priya_vibes — agree!', reply: true},
-  ];
-  return (
-    <SopChrome title="Comments">
-      <SopMeta label="Nested comments, like replies, delete own — UI mock." />
-      {items.map(c => (
-        <View key={c.id} style={{marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderColor: palette.border}}>
-          <Text style={{color: palette.primary, fontWeight: '800'}}>@{c.u}</Text>
-          <Text style={{color: palette.foreground, marginTop: 4}}>{c.t}</Text>
-        </View>
-      ))}
-    </SopChrome>
-  );
-}
+export {CommentsScreen} from '../../CommentsScreen';
 
 export function ShareSendScreen() {
   const route = useRoute<RouteProp<AppStackParamList, 'ShareSend'>>();

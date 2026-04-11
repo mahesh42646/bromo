@@ -9,9 +9,14 @@ export interface UserDoc extends Document {
   profilePicture: string;
   bio: string;
   phone: string;
+  website: string;
   provider: "email" | "google";
   isActive: boolean;
   onboardingComplete: boolean;
+  isPrivate: boolean;
+  followersCount: number;
+  followingCount: number;
+  postsCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,6 +68,10 @@ const userSchema = new Schema<UserDoc>(
       type: String,
       default: "",
     },
+    website: {
+      type: String,
+      default: "",
+    },
     provider: {
       type: String,
       enum: ["email", "google"],
@@ -76,6 +85,22 @@ const userSchema = new Schema<UserDoc>(
     onboardingComplete: {
       type: Boolean,
       default: false,
+    },
+    isPrivate: {
+      type: Boolean,
+      default: false,
+    },
+    followersCount: {
+      type: Number,
+      default: 0,
+    },
+    followingCount: {
+      type: Number,
+      default: 0,
+    },
+    postsCount: {
+      type: Number,
+      default: 0,
     },
   },
   { timestamps: true },

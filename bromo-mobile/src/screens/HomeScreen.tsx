@@ -1,9 +1,11 @@
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import type {ComponentType} from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   Text,
@@ -24,7 +26,6 @@ import {
   MessageCircle,
   MoreHorizontal,
   Music2,
-  Play,
   MapPin,
   Plus,
   Search,
@@ -34,15 +35,18 @@ import {
   User,
   Users,
   X,
-  Zap,
 } from 'lucide-react-native';
+import type {NavigationProp} from '@react-navigation/native';
 import {useTheme} from '../context/ThemeContext';
+import {useAuth} from '../context/AuthContext';
 import {ThemedText} from '../components/ui/ThemedText';
 import {StoryRing} from '../components/ui/StoryRing';
 import {SearchBar} from '../components/ui/SearchBar';
 import {Card} from '../components/ui/Card';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
+import {getFeed, getStories, toggleLike, type Post, type StoryGroup} from '../api/postsApi';
+import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 
 type IconComp = ComponentType<{size?: number; color?: string}>;
 
@@ -55,126 +59,78 @@ const CATEGORIES: {id: string; label: string; Icon: IconComp}[] = [
   {id: 'tech', label: 'Tech', Icon: Laptop},
 ];
 
-const STORIES = [
-  {id: '0', username: 'Your Story', uri: 'https://i.pravatar.cc/100?u=me', isOwn: true},
-  {id: '1', username: 'Rohan_K', uri: 'https://i.pravatar.cc/100?img=12', hasStory: true},
-  {id: '2', username: 'Priya.V', uri: 'https://i.pravatar.cc/100?img=1', hasStory: true},
-  {id: '3', username: 'Tech_Bro', uri: 'https://i.pravatar.cc/100?img=9', hasStory: true},
-  {id: '4', username: 'Anjali_22', uri: 'https://i.pravatar.cc/100?img=5', hasStory: true},
-  {id: '5', username: 'Sid_P', uri: 'https://i.pravatar.cc/100?img=11', hasStory: true},
-];
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
-const REELS = [
-  {id: '1', uri: 'https://images.unsplash.com/photo-1533107862482-0e6974b06ec4?w=400', views: '1.2M'},
-  {id: '2', uri: 'https://images.unsplash.com/photo-1514525253361-bee8718a7439?w=400', views: '950K'},
-  {id: '3', uri: 'https://images.unsplash.com/photo-1541963463532-d68292c34b19?w=400', views: '1.5M'},
-  {id: '4', uri: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=400', views: '890K'},
-];
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
-const POSTS = [
-  {
-    id: '1',
-    username: 'Leader Maharashtra',
-    handle: 'leader_mh',
-    avatar: 'https://i.pravatar.cc/100?img=12',
-    location: 'Mumbai',
-    time: '2h ago',
-    verified: 'gold',
-    image: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800',
-    caption: 'आजचा दिवस ऐतिहासिक! विकासाची नवी दिशा. #Maharashtra #Progress',
-    likes: '24.5k',
-    comments: '890',
-    views: '145k',
-    music: 'Original Audio • Marathi Beats',
-    hasStory: true,
-  },
-  {
-    id: '2',
-    username: 'Travel Katta',
-    handle: 'travel_katta',
-    avatar: 'https://i.pravatar.cc/100?img=40',
-    location: 'Pune',
-    time: '4h ago',
-    verified: null,
-    image: 'https://images.unsplash.com/photo-1506461883276-594a12b11cf3?w=800',
-    caption: 'Exploring the hidden gems of Maharashtra. #Travel #Explore',
-    likes: '8.2k',
-    comments: '234',
-    views: '42k',
-    music: 'Trending Sound',
-    hasStory: false,
-  },
-  {
-    id: '3',
-    username: 'Business Guru',
-    handle: 'biz_guru',
-    avatar: 'https://i.pravatar.cc/100?img=33',
-    location: 'Delhi',
-    time: '6h ago',
-    verified: 'blue',
-    image: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=800',
-    caption: 'The secret to building a 7-figure business in 2025. #Business #Entrepreneur',
-    likes: '31.1k',
-    comments: '1.2k',
-    views: '200k',
-    music: 'Business Podcast Clip',
-    hasStory: true,
-  },
-];
-
-const SUGGESTIONS = [
-  {id: '1', username: 'Siddharth_P', avatar: 'https://i.pravatar.cc/100?img=22', mutual: '12 Mutual Friends'},
-  {id: '2', username: 'Anjali_V', avatar: 'https://i.pravatar.cc/100?img=32', mutual: 'Popular in Pune'},
-  {id: '3', username: 'Rahul_D', avatar: 'https://i.pravatar.cc/100?img=18', mutual: 'Suggested For You'},
-];
-
-type PostCallbacks = {
-  onOpenPost: () => void;
-  onOpenComments: () => void;
-  onOpenShare: () => void;
-  onOpenHeaderStory?: () => void;
-  onOpenAudio: () => void;
+type Nav = NavigationProp<Record<string, object | undefined>> & {
+  getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
 };
 
-function PostCard({post, actions}: {post: (typeof POSTS)[0]; actions: PostCallbacks}) {
-  const {palette, contract, isDark} = useTheme();
-  const [liked, setLiked] = useState(false);
+type PostCardProps = {
+  post: Post;
+  onLikeToggle: (postId: string) => void;
+  navigation: Nav;
+};
+
+function PostCard({post, onLikeToggle, navigation}: PostCardProps) {
+  const {palette, contract} = useTheme();
   const [bookmarked, setBookmarked] = useState(false);
   const {borderRadiusScale} = contract.brandGuidelines;
   const radius = borderRadiusScale === 'bold' ? 14 : 10;
 
-  const headerAvatar = post.hasStory ? (
-    <Pressable onPress={actions.onOpenHeaderStory} disabled={!actions.onOpenHeaderStory}>
-      <StoryRing uri={post.avatar} size={36} />
+  const hasStory = false; // TODO: derive from story API
+
+  const headerAvatar = hasStory ? (
+    <Pressable onPress={() => parentNavigate(navigation, 'StoryView', {userId: post.author.username})}>
+      <StoryRing uri={post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`} size={36} />
     </Pressable>
   ) : (
-    <Image source={{uri: post.avatar}} style={{width: 36, height: 36, borderRadius: 18}} />
+    <Image
+      source={{uri: post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`}}
+      style={{width: 36, height: 36, borderRadius: 18}}
+    />
   );
 
   return (
     <View style={{borderBottomWidth: 8, borderBottomColor: palette.background, backgroundColor: palette.background}}>
-      {/* Header */}
       <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12}}>
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
+        <Pressable
+          style={{flexDirection: 'row', alignItems: 'center', gap: 10}}
+          onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: post.author._id})}>
           {headerAvatar}
           <View>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
-              <ThemedText variant="label" style={{fontSize: 13}}>{post.username}</ThemedText>
-              {post.verified === 'gold' && (
-                <BadgeCheck size={15} color={palette.warning} fill={palette.warning} strokeWidth={2} />
-              )}
-              {post.verified === 'blue' && (
+              <ThemedText variant="label" style={{fontSize: 13}}>{post.author.displayName}</ThemedText>
+              {post.author.emailVerified && (
                 <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
               )}
             </View>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1}}>
-              <MapPin size={9} color={palette.mutedForeground} />
-              <ThemedText variant="caption">{post.location} • {post.time}</ThemedText>
+              {post.location ? (
+                <>
+                  <MapPin size={9} color={palette.mutedForeground} />
+                  <ThemedText variant="caption">{post.location} • {timeAgo(post.createdAt)}</ThemedText>
+                </>
+              ) : (
+                <ThemedText variant="caption">{timeAgo(post.createdAt)}</ThemedText>
+              )}
             </View>
           </View>
-        </View>
+        </Pressable>
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
-          {!post.hasStory && (
+          {!post.isFollowing && (
             <Pressable
               style={{
                 borderWidth: 1,
@@ -190,59 +146,127 @@ function PostCard({post, actions}: {post: (typeof POSTS)[0]; actions: PostCallba
         </View>
       </View>
 
-      {/* Caption above image */}
-      {post.caption && (
+      {post.caption ? (
         <View style={{paddingHorizontal: 14, paddingBottom: 8}}>
           <ThemedText variant="body" style={{fontSize: 13, lineHeight: 19}}>{post.caption}</ThemedText>
         </View>
-      )}
+      ) : null}
 
-      {/* Image */}
-      <Pressable onPress={actions.onOpenPost}>
+      <Pressable onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}>
         <Image
-          source={{uri: post.image}}
+          source={{uri: post.mediaUrl}}
           style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
         />
       </Pressable>
 
-      {/* Actions */}
       <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12}}>
         <View style={{flexDirection: 'row', gap: 20, alignItems: 'center'}}>
-          <Pressable onPress={() => setLiked(p => !p)} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
-            <Heart size={24} color={liked ? palette.destructive : palette.foreground} fill={liked ? palette.destructive : 'transparent'} />
-            <ThemedText variant="label">{post.likes}</ThemedText>
+          <Pressable onPress={() => onLikeToggle(post._id)} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
+            <Heart
+              size={24}
+              color={post.isLiked ? palette.destructive : palette.foreground}
+              fill={post.isLiked ? palette.destructive : 'transparent'}
+            />
+            <ThemedText variant="label">{formatCount(post.likesCount)}</ThemedText>
           </Pressable>
-          <Pressable onPress={actions.onOpenComments} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
+          <Pressable
+            onPress={() => parentNavigate(navigation, 'Comments', {postId: post._id})}
+            style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
             <MessageCircle size={24} color={palette.foreground} />
-            <ThemedText variant="label">{post.comments}</ThemedText>
+            <ThemedText variant="label">{formatCount(post.commentsCount)}</ThemedText>
           </Pressable>
-          <Pressable onPress={actions.onOpenShare}>
+          <Pressable onPress={() => parentNavigate(navigation, 'ShareSend', {postId: post._id})}>
             <Send size={24} color={palette.foreground} />
           </Pressable>
         </View>
         <Pressable onPress={() => setBookmarked(p => !p)}>
-          <Bookmark size={24} color={bookmarked ? palette.primary : palette.foreground} fill={bookmarked ? palette.primary : 'transparent'} />
+          <Bookmark
+            size={24}
+            color={bookmarked ? palette.primary : palette.foreground}
+            fill={bookmarked ? palette.primary : 'transparent'}
+          />
         </Pressable>
       </View>
 
-      {/* Views + Music */}
       <View style={{paddingHorizontal: 14, paddingBottom: 14}}>
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4}}>
           <Eye size={11} color={palette.mutedForeground} />
-          <ThemedText variant="caption">{post.views} Views</ThemedText>
+          <ThemedText variant="caption">{formatCount(post.viewsCount)} Views</ThemedText>
         </View>
-        <Pressable onPress={actions.onOpenAudio} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
-          <Music2 size={10} color={palette.mutedForeground} />
-          <ThemedText variant="caption">{post.music}</ThemedText>
-        </Pressable>
+        {post.music ? (
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
+            <Music2 size={10} color={palette.mutedForeground} />
+            <ThemedText variant="caption">{post.music}</ThemedText>
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
+type SuggestionCardProps = {
+  user: SuggestedUser;
+  onFollowToggle: (userId: string, isFollowing: boolean) => void;
+  navigation: Nav;
+  palette: ReturnType<typeof useTheme>['palette'];
+  borderRadiusScale: string;
+};
+
+function SuggestionCard({user, onFollowToggle, navigation, palette, borderRadiusScale}: SuggestionCardProps) {
+  const [following, setFollowing] = useState(false);
+
+  const handleFollow = async () => {
+    try {
+      if (following) {
+        await unfollowUser(user._id);
+        setFollowing(false);
+      } else {
+        await followUser(user._id);
+        setFollowing(true);
+      }
+      onFollowToggle(user._id, !following);
+    } catch {}
+  };
+
+  return (
+    <Pressable onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: user._id})}>
+      <Card style={{width: 160, padding: 14, alignItems: 'center'}}>
+        <Image
+          source={{uri: user.profilePicture || `https://ui-avatars.com/api/?name=${user.displayName}`}}
+          style={{width: 72, height: 72, borderRadius: 36, borderWidth: 2, borderColor: palette.primary, marginBottom: 8}}
+        />
+        <ThemedText variant="label" style={{textAlign: 'center'}} numberOfLines={1}>{user.displayName}</ThemedText>
+        <ThemedText variant="caption" style={{textAlign: 'center', marginTop: 2}} numberOfLines={1}>
+          @{user.username}
+        </ThemedText>
+        <ThemedText variant="caption" style={{textAlign: 'center', marginTop: 2}}>
+          {formatCount(user.followersCount)} followers
+        </ThemedText>
+        <Pressable
+          onPress={handleFollow}
+          style={{
+            marginTop: 10,
+            backgroundColor: following ? 'transparent' : palette.primary,
+            borderWidth: 1,
+            borderColor: palette.primary,
+            borderRadius: borderRadiusScale === 'bold' ? 10 : 6,
+            paddingVertical: 8,
+            width: '100%',
+            alignItems: 'center',
+          }}>
+          <Text style={{color: following ? palette.primary : palette.primaryForeground, fontSize: 12, fontWeight: '800'}}>
+            {following ? 'Following' : 'Follow'}
+          </Text>
+        </Pressable>
+      </Card>
+    </Pressable>
+  );
+}
+
 export function HomeScreen() {
   const {palette, contract, isDark} = useTheme();
-  const navigation = useNavigation();
+  const {dbUser} = useAuth();
+  const navigation = useNavigation() as Nav;
   const tabBarHeight = useBottomTabBarHeight();
   const [activeCategory, setActiveCategory] = useState('home');
   const [searchExpanded, setSearchExpanded] = useState(false);
@@ -250,27 +274,101 @@ export function HomeScreen() {
   const {borderRadiusScale} = contract.brandGuidelines;
   const chipRadius = borderRadiusScale === 'bold' ? 999 : 12;
 
-  const openProfile = useCallback(() => {
-    parentNavigate(navigation, 'Profile');
-  }, [navigation]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const initialLoadDone = useRef(false);
 
-  const postActions = useCallback(
-    (post: (typeof POSTS)[0]): PostCallbacks => ({
-      onOpenPost: () => parentNavigate(navigation, 'PostDetail', {postId: post.id}),
-      onOpenComments: () => parentNavigate(navigation, 'Comments'),
-      onOpenShare: () => parentNavigate(navigation, 'ShareSend', {postId: post.id}),
-      onOpenHeaderStory: post.hasStory
-        ? () => parentNavigate(navigation, 'StoryView', {userId: post.handle})
-        : undefined,
-      onOpenAudio: () => parentNavigate(navigation, 'ReuseAudio', {audioId: post.id}),
-    }),
-    [navigation],
-  );
+  const loadData = useCallback(async (reset = false) => {
+    try {
+      const p = reset ? 1 : page;
+      const [feedRes, storiesRes, suggestionsRes] = await Promise.all([
+        getFeed(p),
+        reset ? getStories() : Promise.resolve(null),
+        reset ? getUserSuggestions(6) : Promise.resolve(null),
+      ]);
+
+      if (reset) {
+        setPosts(feedRes.posts);
+        if (storiesRes) setStoryGroups(storiesRes.stories);
+        if (suggestionsRes) setSuggestions(suggestionsRes.users);
+        setPage(2);
+      } else {
+        setPosts(prev => [...prev, ...feedRes.posts]);
+        setPage(p + 1);
+      }
+      setHasMore(feedRes.hasMore);
+    } catch (err) {
+      console.error('[HomeScreen] loadData error:', err);
+    }
+  }, [page]);
+
+  useEffect(() => {
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+    setLoading(true);
+    loadData(true).finally(() => setLoading(false));
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData(true);
+    setRefreshing(false);
+  }, [loadData]);
+
+  const onLoadMore = useCallback(async () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    await loadData(false);
+    setLoadingMore(false);
+  }, [hasMore, loadingMore, loadData]);
+
+  const handleLikeToggle = useCallback((postId: string) => {
+    setPosts(prev =>
+      prev.map(p =>
+        p._id === postId
+          ? {...p, isLiked: !p.isLiked, likesCount: p.isLiked ? p.likesCount - 1 : p.likesCount + 1}
+          : p,
+      ),
+    );
+    toggleLike(postId).catch(() => {
+      // Revert on error
+      setPosts(prev =>
+        prev.map(p =>
+          p._id === postId
+            ? {...p, isLiked: !p.isLiked, likesCount: p.isLiked ? p.likesCount - 1 : p.likesCount + 1}
+            : p,
+        ),
+      );
+    });
+  }, []);
 
   const collapseSearch = useCallback(() => {
     setSearchExpanded(false);
     setHomeSearchQuery('');
   }, []);
+
+  const myAvatar = dbUser?.profilePicture || undefined;
+
+  // Interleave posts and suggestions (insert suggestions after 1st post)
+  type FeedItem =
+    | {kind: 'post'; post: Post; key: string}
+    | {kind: 'suggestions'; key: string}
+    | {kind: 'stories'; key: string};
+
+  const feedItems: FeedItem[] = [];
+  feedItems.push({kind: 'stories', key: 'stories'});
+  posts.forEach((p, i) => {
+    feedItems.push({kind: 'post', post: p, key: p._id});
+    if (i === 0 && suggestions.length > 0) {
+      feedItems.push({kind: 'suggestions', key: 'suggestions'});
+    }
+  });
 
   return (
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
@@ -316,11 +414,7 @@ export function HomeScreen() {
                 collapseSearch();
               }}
             />
-            <Pressable
-              onPress={collapseSearch}
-              hitSlop={12}
-              accessibilityLabel="Close search"
-              style={{padding: 4}}>
+            <Pressable onPress={collapseSearch} hitSlop={12} style={{padding: 4}}>
               <X size={22} color={palette.foreground} />
             </Pressable>
           </>
@@ -330,259 +424,205 @@ export function HomeScreen() {
             <Pressable
               onPress={() => setSearchExpanded(true)}
               hitSlop={12}
-              accessibilityLabel="Open search"
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: palette.border,
+                width: 40, height: 40, borderRadius: 20,
+                borderWidth: 1, borderColor: palette.border,
                 backgroundColor: palette.input,
-                alignItems: 'center',
-                justifyContent: 'center',
+                alignItems: 'center', justifyContent: 'center',
               }}>
               <Search size={20} color={palette.foreground} />
             </Pressable>
-            <Pressable
-              hitSlop={8}
-              accessibilityLabel="Notifications"
-              onPress={() => parentNavigate(navigation, 'Notifications')}>
+            <Pressable hitSlop={8} onPress={() => parentNavigate(navigation, 'Notifications')}>
               <Bell size={22} color={palette.foreground} />
             </Pressable>
-            <Pressable
-              hitSlop={8}
-              accessibilityLabel="Messages"
-              onPress={() => parentNavigate(navigation, 'MessagesFlow')}>
+            <Pressable hitSlop={8} onPress={() => parentNavigate(navigation, 'MessagesFlow')}>
               <MessageCircle size={22} color={palette.foreground} />
             </Pressable>
             <Pressable
-              onPress={openProfile}
+              onPress={() => parentNavigate(navigation, 'Profile')}
               hitSlop={8}
-              accessibilityLabel="Profile"
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                borderWidth: 1,
-                borderColor: palette.border,
-                overflow: 'hidden',
-                alignItems: 'center',
-                justifyContent: 'center',
+                width: 36, height: 36, borderRadius: 18,
+                borderWidth: 1, borderColor: palette.border,
+                overflow: 'hidden', alignItems: 'center', justifyContent: 'center',
                 backgroundColor: palette.muted,
               }}>
-              <User size={20} color={palette.foreground} />
+              {myAvatar ? (
+                <Image source={{uri: myAvatar}} style={{width: 36, height: 36, borderRadius: 18}} />
+              ) : (
+                <User size={20} color={palette.foreground} />
+              )}
             </Pressable>
           </>
         )}
       </View>
 
+      {/* Category Chips */}
       <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{paddingBottom: tabBarHeight + 16}}>
-        {/* Category Chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{paddingHorizontal: 12, paddingVertical: 10, gap: 8}}
-          style={{borderBottomWidth: 1, borderBottomColor: palette.border}}>
-          {CATEGORIES.map(cat => {
-            const CatIcon = cat.Icon;
-            const chipOn = activeCategory === cat.id;
-            const fg = chipOn ? palette.background : palette.foreground;
-            return (
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{paddingHorizontal: 12, paddingVertical: 10, gap: 8}}
+        style={{borderBottomWidth: 1, borderBottomColor: palette.border, maxHeight: 54, minHeight: 54}}>
+        {CATEGORIES.map(cat => {
+          const CatIcon = cat.Icon;
+          const chipOn = activeCategory === cat.id;
+          return (
+            <Pressable
+              key={cat.id}
+              onPress={() => setActiveCategory(cat.id)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: 14, paddingVertical: 8,
+                borderRadius: chipRadius, borderWidth: 1,
+                borderColor: chipOn ? palette.primary : palette.border,
+                backgroundColor: chipOn ? palette.primary : palette.background,
+              }}>
+              <CatIcon size={15} color={chipOn ? palette.primaryForeground : palette.foreground} />
+              <Text style={{fontSize: 12, fontWeight: '700', color: chipOn ? palette.primaryForeground : palette.foreground}}>
+                {cat.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {loading ? (
+        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
+          <ActivityIndicator color={palette.primary} size="large" />
+        </View>
+      ) : (
+        <FlatList
+          data={feedItems}
+          keyExtractor={item => item.key}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{paddingBottom: tabBarHeight + 16}}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={palette.primary}
+              colors={[palette.primary]}
+            />
+          }
+          onEndReached={onLoadMore}
+          onEndReachedThreshold={0.4}
+          ListEmptyComponent={
+            <View style={{alignItems: 'center', paddingTop: 80}}>
+              <Users size={48} color={palette.foregroundFaint} />
+              <ThemedText variant="body" style={{marginTop: 16, textAlign: 'center', paddingHorizontal: 32}}>
+                Follow people to see their posts here
+              </ThemedText>
               <Pressable
-                key={cat.id}
-                onPress={() => setActiveCategory(cat.id)}
-                onLongPress={() => parentNavigate(navigation, 'CategoryFeed', {categoryId: cat.id})}
+                onPress={() => parentNavigate(navigation, 'Search')}
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: chipRadius,
-                  borderWidth: 1,
-                  borderColor: chipOn ? palette.primary : palette.border,
-                  backgroundColor: chipOn ? palette.primary : palette.background,
+                  marginTop: 20, backgroundColor: palette.primary,
+                  borderRadius: 10, paddingVertical: 12, paddingHorizontal: 28,
                 }}>
-                <CatIcon size={15} color={chipOn ? palette.primaryForeground : fg} />
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: '700',
-                    color: chipOn ? palette.primaryForeground : palette.foreground,
-                  }}>
-                  {cat.label}
+                <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 14}}>
+                  Discover People
                 </Text>
               </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {/* Stories Row */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{paddingHorizontal: 14, paddingVertical: 14, gap: 16}}
-          style={{borderBottomWidth: 1, borderBottomColor: palette.border}}>
-          {STORIES.map(story => (
-            <Pressable
-              key={story.id}
-              style={{alignItems: 'center', gap: 5}}
-              onPress={() => {
-                if (story.isOwn) {
-                  parentNavigate(navigation, 'CreateFlow');
-                  return;
-                }
-                parentNavigate(navigation, 'StoryView', {userId: story.username});
-              }}>
-              {story.isOwn ? (
-                <View style={{position: 'relative'}}>
-                  <Image
-                    source={{uri: story.uri}}
-                    style={{
-                      width: 64,
-                      height: 64,
-                      borderRadius: 32,
-                      borderWidth: 2,
-                      borderColor: palette.border,
-                    }}
-                  />
-                  <View
-                    style={{
-                      position: 'absolute',
-                      bottom: 0,
-                      right: 0,
-                      width: 22,
-                      height: 22,
-                      borderRadius: 11,
-                      backgroundColor: palette.primary,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: 2,
-                      borderColor: palette.background,
-                    }}>
-                    <Plus size={13} color={palette.primaryForeground} strokeWidth={3} />
-                  </View>
-                </View>
-              ) : (
-                <StoryRing uri={story.uri} size={60} />
-              )}
-              <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>
-                {story.username}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        {/* Trending Reels */}
-        <View style={{paddingVertical: 16}}>
-          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, marginBottom: 12}}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-              <Zap size={16} color={palette.primary} fill={palette.primary} />
-              <ThemedText variant="heading" style={{fontSize: 14}}>Trending Reels</ThemedText>
-              <Flame size={16} color={palette.primary} />
             </View>
-            <ThemedText variant="primary" style={{fontSize: 11, fontWeight: '700'}}>See All</ThemedText>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{paddingHorizontal: 14, gap: 12}}>
-            {REELS.map(reel => (
-              <Pressable
-                key={reel.id}
-                onPress={() => parentNavigate(navigation, 'PostDetail', {postId: reel.id})}
-                style={{
-                  width: 150,
-                  height: 240,
-                  borderRadius: borderRadiusScale === 'bold' ? 18 : 12,
-                  overflow: 'hidden',
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                }}>
-                <Image source={{uri: reel.uri}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
-                <View
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    padding: 10,
-                    backgroundColor: palette.glassMid,
-                  }}>
-                  <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
-                    <Play size={10} color={palette.foreground} fill={palette.foreground} />
-                    <Text style={{color: palette.foreground, fontSize: 10, fontWeight: '700'}}>{reel.views}</Text>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator color={palette.primary} style={{marginVertical: 20}} />
+            ) : null
+          }
+          renderItem={({item}) => {
+            if (item.kind === 'stories') {
+              return (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{paddingHorizontal: 14, paddingVertical: 14, gap: 16}}
+                  style={{borderBottomWidth: 1, borderBottomColor: palette.border}}>
+                  {/* Own story */}
+                  <Pressable
+                    style={{alignItems: 'center', gap: 5}}
+                    onPress={() => parentNavigate(navigation, 'CreateFlow')}>
+                    <View style={{position: 'relative'}}>
+                      <Image
+                        source={{uri: myAvatar || `https://ui-avatars.com/api/?name=${dbUser?.displayName ?? 'You'}`}}
+                        style={{width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: palette.border}}
+                      />
+                      <View
+                        style={{
+                          position: 'absolute', bottom: 0, right: 0,
+                          width: 22, height: 22, borderRadius: 11,
+                          backgroundColor: palette.primary, alignItems: 'center',
+                          justifyContent: 'center', borderWidth: 2, borderColor: palette.background,
+                        }}>
+                        <Plus size={13} color={palette.primaryForeground} strokeWidth={3} />
+                      </View>
+                    </View>
+                    <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>Your Story</ThemedText>
+                  </Pressable>
+
+                  {/* Following stories */}
+                  {storyGroups.map(group => (
+                    <Pressable
+                      key={group.author._id}
+                      style={{alignItems: 'center', gap: 5}}
+                      onPress={() => parentNavigate(navigation, 'StoryView', {userId: group.author._id})}>
+                      <StoryRing
+                        uri={group.author.profilePicture || `https://ui-avatars.com/api/?name=${group.author.displayName}`}
+                        size={60}
+                      />
+                      <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>
+                        {group.author.username}
+                      </ThemedText>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              );
+            }
+
+            if (item.kind === 'suggestions') {
+              return (
+                <View style={{paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: palette.border}}>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, marginBottom: 12}}>
+                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                      <Users size={16} color={palette.primary} />
+                      <ThemedText variant="heading" style={{fontSize: 14}}>People You May Know</ThemedText>
+                    </View>
+                    <Pressable onPress={() => parentNavigate(navigation, 'Search')}>
+                      <ThemedText variant="primary" style={{fontSize: 11, fontWeight: '700'}}>See All</ThemedText>
+                    </Pressable>
                   </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{paddingHorizontal: 14, gap: 12}}>
+                    {suggestions.map(s => (
+                      <SuggestionCard
+                        key={s._id}
+                        user={s}
+                        onFollowToggle={() => {}}
+                        navigation={navigation}
+                        palette={palette}
+                        borderRadiusScale={borderRadiusScale}
+                      />
+                    ))}
+                  </ScrollView>
                 </View>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
+              );
+            }
 
-        {/* Post 1 */}
-        <PostCard post={POSTS[0]} actions={postActions(POSTS[0])} />
-
-        {/* Suggestions */}
-        <View style={{paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: palette.border}}>
-          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, marginBottom: 12}}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-              <Users size={16} color={palette.primary} />
-              <ThemedText variant="heading" style={{fontSize: 14}}>People You May Know</ThemedText>
-            </View>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{paddingHorizontal: 14, gap: 12}}>
-            {SUGGESTIONS.map(s => (
-              <Pressable
-                key={s.id}
-                onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: s.username})}>
-              <Card
-                style={{
-                  width: 160,
-                  padding: 14,
-                  alignItems: 'center',
-                }}>
-                <Image
-                  source={{uri: s.avatar}}
-                  style={{
-                    width: 72,
-                    height: 72,
-                    borderRadius: 36,
-                    borderWidth: 2,
-                    borderColor: palette.primary,
-                    marginBottom: 8,
-                  }}
+            if (item.kind === 'post') {
+              return (
+                <PostCard
+                  post={item.post}
+                  onLikeToggle={handleLikeToggle}
+                  navigation={navigation}
                 />
-                <ThemedText variant="label" style={{textAlign: 'center'}} numberOfLines={1}>{s.username}</ThemedText>
-                <ThemedText variant="caption" style={{textAlign: 'center', marginTop: 2}}>{s.mutual}</ThemedText>
-                <Pressable
-                  style={{
-                    marginTop: 10,
-                    backgroundColor: palette.primary,
-                    borderRadius: borderRadiusScale === 'bold' ? 10 : 6,
-                    paddingVertical: 8,
-                    width: '100%',
-                    alignItems: 'center',
-                  }}>
-                  <Text style={{color: palette.primaryForeground, fontSize: 12, fontWeight: '800'}}>Follow</Text>
-                </Pressable>
-              </Card>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
+              );
+            }
 
-        {/* Remaining Posts */}
-        {POSTS.slice(1).map(post => (
-          <PostCard key={post.id} post={post} actions={postActions(post)} />
-        ))}
-
-        <View style={{height: 20}} />
-      </ScrollView>
+            return null;
+          }}
+        />
+      )}
     </ThemedSafeScreen>
   );
 }
