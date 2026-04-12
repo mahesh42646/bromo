@@ -63,6 +63,7 @@ followRouter.get(
       if (!q) return res.json({ users: [] });
 
       const regex = new RegExp(q, "i");
+      const dbUser = req.dbUser;
       const excludeSelf = dbUser ? { _id: { $ne: dbUser._id } } : {};
       const users = await User.find({
         ...excludeSelf,
@@ -74,7 +75,6 @@ followRouter.get(
         .limit(20)
         .lean();
 
-      const dbUser = req.dbUser;
       let followingSet = new Set<string>();
       if (dbUser) {
         const follows = await Follow.find({
@@ -232,7 +232,7 @@ followRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const follower = req.dbUser!;
-      const targetId = req.params.userId;
+      const targetId = String(req.params.userId);
 
       if (String(follower._id) === targetId) {
         return res.status(400).json({ message: "Cannot follow yourself" });
@@ -290,7 +290,7 @@ followRouter.delete(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const follower = req.dbUser!;
-      const targetId = req.params.userId;
+      const targetId = String(req.params.userId);
 
       const follow = await Follow.findOne({ followerId: follower._id, followingId: targetId });
       if (!follow) return res.status(404).json({ message: "Not following" });

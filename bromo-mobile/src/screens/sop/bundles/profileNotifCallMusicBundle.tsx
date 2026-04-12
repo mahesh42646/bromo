@@ -1,14 +1,16 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Alert, FlatList, Image, Pressable, Switch, Text, View} from 'react-native';
+import {ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Switch, Text, View} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {Phone, Video as VideoIcon} from 'lucide-react-native';
+import {BarChart2, Eye, Heart, MessageCircle, Phone, Send, TrendingUp, Video as VideoIcon} from 'lucide-react-native';
 import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {getNotifications, markAllRead, markRead, type AppNotification} from '../../../api/notificationsApi';
+import {getPostAnalytics, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
+import {useAuth} from '../../../context/AuthContext';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
 export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
@@ -63,11 +65,152 @@ export function ManageContentScreen() {
   );
 }
 
-export function ContentInsightsScreen() {
+function fmtMs(ms: number): string {
+  if (ms <= 0) return '0s';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+function fmtCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function StatCard({icon, label, value, palette}: {icon: React.ReactNode; label: string; value: string; palette: ReturnType<typeof useTheme>['palette']}) {
   return (
-    <SopChrome title="Content insights">
-      <SopMeta label="Reach, profile visits, link taps." />
-    </SopChrome>
+    <View style={{flex: 1, backgroundColor: palette.input, borderRadius: 12, padding: 12, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: palette.border}}>
+      {icon}
+      <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900'}}>{value}</Text>
+      <Text style={{color: palette.mutedForeground, fontSize: 11, textAlign: 'center'}}>{label}</Text>
+    </View>
+  );
+}
+
+export function ContentInsightsScreen() {
+  const navigation = useNavigation<Nav>();
+  const {palette} = useTheme();
+  const {dbUser} = useAuth();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [analytics, setAnalytics] = useState<Record<string, PostAnalytics>>({});
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  useEffect(() => {
+    if (!dbUser?._id) return;
+    getUserPosts(dbUser._id, 'post', 1)
+      .then(res => setPosts(res.posts))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [dbUser?._id]);
+
+  const loadAnalytics = useCallback(async (postId: string) => {
+    if (analytics[postId]) { setSelected(postId); return; }
+    setLoadingAnalytics(true);
+    setSelected(postId);
+    try {
+      const data = await getPostAnalytics(postId);
+      setAnalytics(prev => ({...prev, [postId]: data}));
+    } catch {}
+    setLoadingAnalytics(false);
+  }, [analytics]);
+
+  const selectedAnalytics = selected ? analytics[selected] : null;
+  const selectedPost = selected ? posts.find(p => p._id === selected) : null;
+
+  return (
+    <View style={{flex: 1, backgroundColor: palette.background}}>
+      {/* Header */}
+      <View style={{flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: palette.border}}>
+        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{marginRight: 12}}>
+          <Text style={{color: palette.primary, fontSize: 15}}>‹</Text>
+        </Pressable>
+        <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900', flex: 1}}>Content Insights</Text>
+        <BarChart2 size={20} color={palette.primary} />
+      </View>
+
+      {loading ? (
+        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
+          <ActivityIndicator color={palette.primary} size="large" />
+        </View>
+      ) : (
+        <ScrollView>
+          {/* Selected post analytics */}
+          {selected && selectedPost && (
+            <View style={{margin: 14, padding: 14, backgroundColor: palette.input, borderRadius: 14, borderWidth: 1, borderColor: palette.border}}>
+              <View style={{flexDirection: 'row', gap: 10, marginBottom: 12}}>
+                <Image
+                  source={{uri: selectedPost.thumbnailUrl ?? selectedPost.mediaUrl}}
+                  style={{width: 56, height: 56, borderRadius: 8, backgroundColor: palette.border}}
+                />
+                <View style={{flex: 1}}>
+                  <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 13}} numberOfLines={2}>
+                    {selectedPost.caption || 'No caption'}
+                  </Text>
+                  <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 4}}>
+                    {selectedPost.type.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+
+              {loadingAnalytics ? (
+                <ActivityIndicator color={palette.primary} />
+              ) : selectedAnalytics ? (
+                <>
+                  <View style={{flexDirection: 'row', gap: 8, marginBottom: 8}}>
+                    <StatCard icon={<Eye size={16} color={palette.primary} />} label="Views" value={fmtCount(selectedAnalytics.viewsCount)} palette={palette} />
+                    <StatCard icon={<Heart size={16} color={palette.destructive} />} label="Likes" value={fmtCount(selectedAnalytics.likesCount)} palette={palette} />
+                    <StatCard icon={<MessageCircle size={16} color={palette.accent} />} label="Comments" value={fmtCount(selectedAnalytics.commentsCount)} palette={palette} />
+                    <StatCard icon={<Send size={16} color={palette.foreground} />} label="Shares" value={fmtCount(selectedAnalytics.sharesCount)} palette={palette} />
+                  </View>
+                  <View style={{flexDirection: 'row', gap: 8}}>
+                    <StatCard icon={<BarChart2 size={16} color={palette.primary} />} label="Reach %" value={`${selectedAnalytics.reachRate}%`} palette={palette} />
+                    <StatCard icon={<TrendingUp size={16} color={palette.primary} />} label="Engagement" value={`${selectedAnalytics.engagementRate}%`} palette={palette} />
+                    <StatCard icon={<Eye size={16} color={palette.mutedForeground} />} label="Avg Watch" value={fmtMs(selectedAnalytics.avgWatchTimeMs)} palette={palette} />
+                    <StatCard icon={<TrendingUp size={16} color={palette.accent} />} label="Trending" value={selectedAnalytics.trendingScore.toFixed(2)} palette={palette} />
+                  </View>
+                </>
+              ) : null}
+            </View>
+          )}
+
+          {/* Post list */}
+          <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, paddingHorizontal: 16, paddingBottom: 8}}>
+            YOUR POSTS — TAP FOR INSIGHTS
+          </Text>
+          {posts.length === 0 ? (
+            <Text style={{textAlign: 'center', color: palette.mutedForeground, paddingTop: 40}}>No posts yet</Text>
+          ) : (
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 14, gap: 3}}>
+              {posts.map(post => (
+                <Pressable
+                  key={post._id}
+                  onPress={() => loadAnalytics(post._id)}
+                  style={{
+                    width: '31.5%', aspectRatio: 1,
+                    borderRadius: 6, overflow: 'hidden',
+                    borderWidth: 2,
+                    borderColor: selected === post._id ? palette.primary : 'transparent',
+                  }}>
+                  <Image
+                    source={{uri: post.thumbnailUrl ?? post.mediaUrl}}
+                    style={{width: '100%', height: '100%'}}
+                    resizeMode="cover"
+                  />
+                  <View style={{position: 'absolute', bottom: 4, left: 4, flexDirection: 'row', alignItems: 'center', gap: 4}}>
+                    <Eye size={11} color="#fff" />
+                    <Text style={{color: '#fff', fontSize: 10, fontWeight: '700'}}>{fmtCount(post.viewsCount)}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <View style={{height: 32}} />
+        </ScrollView>
+      )}
+    </View>
   );
 }
 

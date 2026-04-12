@@ -26,6 +26,10 @@ export type Post = {
   likesCount: number;
   commentsCount: number;
   viewsCount: number;
+  impressionsCount: number;
+  sharesCount: number;
+  avgWatchTimeMs: number;
+  trendingScore: number;
   isLiked: boolean;
   isFollowing: boolean;
   createdAt: string;
@@ -39,6 +43,9 @@ export type Comment = {
   text: string;
   likesCount: number;
   parentId?: string;
+  replies?: Comment[];
+  repliesCount?: number;
+  hasMoreReplies?: boolean;
   createdAt: string;
 };
 
@@ -128,8 +135,40 @@ export async function toggleLike(postId: string): Promise<{liked: boolean; likes
   return res.json() as Promise<{liked: boolean; likesCount: number}>;
 }
 
-export async function recordView(postId: string): Promise<void> {
-  await authedFetch(`/posts/${postId}/view`, {method: 'POST'}).catch(() => null);
+export async function recordView(postId: string, watchMs = 0): Promise<void> {
+  await authedFetch(`/posts/${postId}/view`, {
+    method: 'POST',
+    body: JSON.stringify({watchMs: Math.round(watchMs)}),
+  }).catch(() => null);
+}
+
+export async function recordShare(postId: string): Promise<void> {
+  await authedFetch(`/posts/${postId}/share`, {method: 'POST'}).catch(() => null);
+}
+
+export async function likeComment(postId: string, commentId: string): Promise<{liked: boolean; likesCount: number}> {
+  const res = await authedFetch(`/posts/${postId}/comments/${commentId}/like`, {method: 'POST'});
+  if (!res.ok) throw new Error('Failed to like comment');
+  return res.json() as Promise<{liked: boolean; likesCount: number}>;
+}
+
+export type PostAnalytics = {
+  viewsCount: number;
+  impressionsCount: number;
+  likesCount: number;
+  commentsCount: number;
+  sharesCount: number;
+  avgWatchTimeMs: number;
+  trendingScore: number;
+  reachRate: number;
+  engagementRate: number;
+  ageHours: number;
+};
+
+export async function getPostAnalytics(postId: string): Promise<PostAnalytics> {
+  const res = await authedFetch(`/posts/${postId}/analytics`);
+  if (!res.ok) throw new Error('Failed to fetch analytics');
+  return res.json() as Promise<PostAnalytics>;
 }
 
 export async function getComments(postId: string, page = 1): Promise<CommentsResponse> {

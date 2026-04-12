@@ -23,6 +23,27 @@ import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 
 export const postsRouter = Router();
 
+/** Recompute trendingScore for a post (fire-and-forget — never throws). */
+function recomputeTrending(postId: string): void {
+  Post.findById(postId)
+    .select("likesCount commentsCount viewsCount sharesCount avgWatchTimeMs createdAt")
+    .lean()
+    .then((p) => {
+      if (!p) return;
+      const ageHours = Math.max(1, (Date.now() - new Date(p.createdAt).getTime()) / 3_600_000);
+      // Wilson score-like formula: weighted signals / time decay
+      const score =
+        (Number(p.likesCount) * 3 +
+          Number(p.commentsCount) * 5 +
+          Number(p.viewsCount) * 0.1 +
+          Number(p.sharesCount) * 4 +
+          Math.min(Number(p.avgWatchTimeMs) / 1000, 60) * 2) /
+        Math.pow(ageHours + 2, 1.5);
+      Post.updateOne({ _id: postId }, { $set: { trendingScore: score } }).catch(() => null);
+    })
+    .catch(() => null);
+}
+
 const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
 const PAGE_SIZE = 20;
 
@@ -46,6 +67,10 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
     likesCount: Number(p.likesCount) || 0,
     commentsCount: Number(p.commentsCount) || 0,
     viewsCount: Number(p.viewsCount) || 0,
+    impressionsCount: Number(p.impressionsCount) || 0,
+    sharesCount: Number(p.sharesCount) || 0,
+    avgWatchTimeMs: Number(p.avgWatchTimeMs) || 0,
+    trendingScore: Number(p.trendingScore) || 0,
     isLiked: likedSet.has(String(p._id)),
     author: author ? {
       ...author,
@@ -493,8 +518,9 @@ postsRouter.post(
           `${user.displayName} liked your post`,
         );
       }
-      // Like milestone check (fire-and-forget)
+      // Like milestone check + trending recompute (fire-and-forget)
       checkLikeMilestone(String(post?.authorId ?? ""), count, postId);
+      recomputeTrending(postId);
 
       return res.json({ liked: true, likesCount: count });
     } catch (err) {
@@ -509,11 +535,21 @@ postsRouter.post(
   "/:id/view",
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
-    // Single atomic query instead of find-then-update
+    const watchMs = Math.min(Math.max(0, Number((req.body as {watchMs?: unknown}).watchMs) || 0), 3_600_000);
+    const postId = String(req.params.id);
+
     Post.findOneAndUpdate(
-      { _id: req.params.id, isActive: true, isDeleted: { $ne: true } },
-      { $inc: { viewsCount: 1 } },
-    ).catch(() => null);
+      { _id: postId, isActive: true, isDeleted: { $ne: true } },
+      { $inc: { viewsCount: 1, impressionsCount: 1, totalWatchTimeMs: watchMs } },
+      { new: true },
+    ).then((p) => {
+      if (p && p.viewsCount > 0) {
+        const avg = p.totalWatchTimeMs / p.viewsCount;
+        Post.updateOne({ _id: postId }, { $set: { avgWatchTimeMs: avg } }).catch(() => null);
+      }
+      recomputeTrending(postId);
+    }).catch(() => null);
+
     return res.json({ ok: true });
   },
 );
@@ -532,7 +568,7 @@ postsRouter.get(
         return res.status(404).json({ message: "Post not found" });
       }
 
-      const comments = await Comment.find({
+      const rootComments = await Comment.find({
         postId: req.params.id,
         isActive: true,
         parentId: { $exists: false },
@@ -543,13 +579,48 @@ postsRouter.get(
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
-      const result = comments.map((c) => ({
-        ...c,
-        author: c.authorId,
-        authorId: undefined,
-      }));
+      if (rootComments.length === 0) {
+        return res.json({ comments: [], page, hasMore: false });
+      }
 
-      return res.json({ comments: result, page, hasMore: comments.length === 30 });
+      // Fetch top 3 replies per root comment (one query)
+      const rootIds = rootComments.map((c) => c._id);
+      const replies = await Comment.find({
+        postId: req.params.id,
+        isActive: true,
+        parentId: { $in: rootIds },
+      })
+        .sort({ createdAt: 1 })
+        .limit(rootComments.length * 10)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean();
+
+      const replyMap = new Map<string, typeof replies>();
+      for (const r of replies) {
+        const pid = String(r.parentId);
+        if (!replyMap.has(pid)) replyMap.set(pid, []);
+        replyMap.get(pid)!.push(r);
+      }
+
+      const result = rootComments.map((c) => {
+        const id = String(c._id);
+        const reps = (replyMap.get(id) ?? []).slice(0, 3).map((r) => ({
+          ...r,
+          author: r.authorId,
+          authorId: undefined,
+        }));
+        const totalReplies = replyMap.get(id)?.length ?? 0;
+        return {
+          ...c,
+          author: c.authorId,
+          authorId: undefined,
+          replies: reps,
+          repliesCount: totalReplies,
+          hasMoreReplies: totalReplies > 3,
+        };
+      });
+
+      return res.json({ comments: result, page, hasMore: rootComments.length === 30 });
     } catch (err) {
       console.error("[posts] comments error:", err);
       return res.status(500).json({ message: "Failed to fetch comments" });
@@ -647,9 +718,10 @@ postsRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
+      const hidePostId = String(req.params.id);
       await mongoose.connection.collection("post_hides").updateOne(
-        { postId: new mongoose.Types.ObjectId(req.params.id), userId: user._id },
-        { $setOnInsert: { postId: new mongoose.Types.ObjectId(req.params.id), userId: user._id, createdAt: new Date() } },
+        { postId: new mongoose.Types.ObjectId(hidePostId), userId: user._id },
+        { $setOnInsert: { postId: new mongoose.Types.ObjectId(hidePostId), userId: user._id, createdAt: new Date() } },
         { upsert: true },
       );
       return res.json({ hidden: true });
@@ -668,8 +740,9 @@ postsRouter.post(
     try {
       const user = req.dbUser!;
       const { reason = "other" } = req.body as { reason?: string };
+      const reportPostId = String(req.params.id);
       await mongoose.connection.collection("post_reports").updateOne(
-        { postId: new mongoose.Types.ObjectId(req.params.id), reporterId: user._id },
+        { postId: new mongoose.Types.ObjectId(reportPostId), reporterId: user._id },
         { $set: { reason, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
         { upsert: true },
       );
@@ -677,6 +750,105 @@ postsRouter.post(
     } catch (err) {
       console.error("[posts] report error:", err);
       return res.status(500).json({ message: "Failed to report post" });
+    }
+  },
+);
+
+// ── POST /posts/:id/share ───────────────────────────────────────────
+postsRouter.post(
+  "/:id/share",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    Post.findOneAndUpdate(
+      { _id: req.params.id, isActive: true, isDeleted: { $ne: true } },
+      { $inc: { sharesCount: 1 } },
+    ).then(() => recomputeTrending(String(req.params.id))).catch(() => null);
+    return res.json({ ok: true });
+  },
+);
+
+// ── POST /posts/:id/comments/:commentId/like ────────────────────────
+postsRouter.post(
+  "/:id/comments/:commentId/like",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const commentId = String(req.params.commentId);
+      const userId = req.dbUser!._id;
+      const col = mongoose.connection.collection("comment_likes");
+      const existing = await col.findOne({ commentId, userId });
+      if (existing) {
+        await col.deleteOne({ commentId, userId });
+        await Comment.updateOne({ _id: commentId }, { $inc: { likesCount: -1 } });
+        return res.json({ liked: false });
+      } else {
+        await col.insertOne({ commentId, userId, createdAt: new Date() });
+        const updated = await Comment.findByIdAndUpdate(commentId, { $inc: { likesCount: 1 } }, { new: true });
+        return res.json({ liked: true, likesCount: updated?.likesCount ?? 0 });
+      }
+    } catch (err) {
+      console.error("[posts] comment like error:", err);
+      return res.status(500).json({ message: "Failed to like comment" });
+    }
+  },
+);
+
+// ── GET /posts/:id/analytics ────────────────────────────────────────
+postsRouter.get(
+  "/:id/analytics",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const post = await Post.findById(req.params.id)
+        .select("viewsCount impressionsCount likesCount commentsCount sharesCount avgWatchTimeMs trendingScore authorId mediaType createdAt")
+        .lean();
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      if (String(post.authorId) !== String(req.dbUser!._id)) {
+        return res.status(403).json({ message: "Not your post" });
+      }
+      const ageHours = (Date.now() - new Date(post.createdAt).getTime()) / 3_600_000;
+      return res.json({
+        viewsCount: post.viewsCount,
+        impressionsCount: post.impressionsCount,
+        likesCount: post.likesCount,
+        commentsCount: post.commentsCount,
+        sharesCount: post.sharesCount,
+        avgWatchTimeMs: post.avgWatchTimeMs,
+        trendingScore: Number(post.trendingScore?.toFixed(4) ?? 0),
+        reachRate: post.impressionsCount > 0 ? Number((post.viewsCount / post.impressionsCount * 100).toFixed(1)) : 0,
+        engagementRate: post.viewsCount > 0
+          ? Number(((post.likesCount + post.commentsCount) / post.viewsCount * 100).toFixed(2))
+          : 0,
+        ageHours: Math.round(ageHours),
+      });
+    } catch (err) {
+      console.error("[posts] analytics error:", err);
+      return res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  },
+);
+
+// ── GET /posts/trending ─────────────────────────────────────────────
+postsRouter.get(
+  "/trending",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
+      const posts = await Post.find({ isActive: true, isDeleted: { $ne: true } })
+        .sort({ trendingScore: -1, createdAt: -1 })
+        .limit(limit)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean();
+      const result = posts.map((p) => ({
+        ...p,
+        author: p.authorId,
+        authorId: undefined,
+      }));
+      return res.json({ posts: result });
+    } catch (err) {
+      console.error("[posts] trending error:", err);
+      return res.status(500).json({ message: "Failed to fetch trending" });
     }
   },
 );

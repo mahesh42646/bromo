@@ -13,6 +13,14 @@ export interface PostDoc extends Document {
   likesCount: number;
   commentsCount: number;
   viewsCount: number;
+  /** Unique accounts who saw the post (impressions = raw events including repeats) */
+  impressionsCount: number;
+  sharesCount: number;
+  totalWatchTimeMs: number;
+  /** milliseconds — recomputed on each view update */
+  avgWatchTimeMs: number;
+  /** Decaying score: higher = trending. Recomputed on like/comment/view. */
+  trendingScore: number;
   expiresAt?: Date;
   isActive: boolean;
   /** Soft-removed from feeds; files may remain on disk until hard delete. */
@@ -36,6 +44,11 @@ const postSchema = new Schema<PostDoc>(
     likesCount: { type: Number, default: 0 },
     commentsCount: { type: Number, default: 0 },
     viewsCount: { type: Number, default: 0 },
+    impressionsCount: { type: Number, default: 0 },
+    sharesCount: { type: Number, default: 0 },
+    totalWatchTimeMs: { type: Number, default: 0 },
+    avgWatchTimeMs: { type: Number, default: 0 },
+    trendingScore: { type: Number, default: 0 },
     expiresAt: { type: Date },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false, index: true },
@@ -50,7 +63,8 @@ postSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 // Fast feed/reels lookup — covers the query filter + _id sort in one index scan
 postSchema.index({ type: 1, isActive: 1, isDeleted: 1, _id: -1 });
 postSchema.index({ authorId: 1, type: 1, isActive: 1, isDeleted: 1, _id: -1 });
-// Explore sort (viewsCount desc)
+// Explore sort (viewsCount desc) + trending
 postSchema.index({ type: 1, isActive: 1, isDeleted: 1, viewsCount: -1, createdAt: -1 });
+postSchema.index({ trendingScore: -1, createdAt: -1 });
 
 export const Post = mongoose.model<PostDoc>("Post", postSchema);

@@ -22,12 +22,15 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {searchUsers, getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getExplore, type Post} from '../api/postsApi';
+import {authedFetch} from '../api/authApi';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
 };
 
-const TRENDING_TOPICS = [
+type TrendingTopic = {id: string; tag: string; posts: string; category: string};
+
+const TRENDING_FALLBACK: TrendingTopic[] = [
   {id: '1', tag: '#Maharashtra', posts: '2.4M posts', category: 'Politics'},
   {id: '2', tag: '#StartupIndia', posts: '1.1M posts', category: 'Business'},
   {id: '3', tag: '#IPL2025', posts: '5.8M posts', category: 'Sports'},
@@ -138,9 +141,38 @@ export function SearchScreen() {
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [searchResults, setSearchResults] = useState<(SuggestedUser & {followStatus?: string})[]>([]);
   const [explorePosts, setExplorePosts] = useState<Post[]>([]);
+  const [trendingTopics, setTrendingTopics] = useState<TrendingTopic[]>(TRENDING_FALLBACK);
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [loadingExplore, setLoadingExplore] = useState(false);
+
+  // Load trending topics from real post tags
+  useEffect(() => {
+    authedFetch('/posts/trending?limit=20')
+      .then(r => r.ok ? r.json() : null)
+      .then((data: unknown) => {
+        const posts = (data as {posts?: Post[]})?.posts ?? [];
+        if (posts.length === 0) return;
+        // Aggregate tag counts from trending posts
+        const tagMap = new Map<string, number>();
+        for (const p of posts) {
+          for (const t of (p.tags ?? [])) {
+            tagMap.set(t, (tagMap.get(t) ?? 0) + p.viewsCount);
+          }
+        }
+        const sorted = [...tagMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+        if (sorted.length >= 3) {
+          setTrendingTopics(sorted.map(([tag], i) => ({
+            id: String(i),
+            tag: tag.startsWith('#') ? tag : `#${tag}`,
+            posts: `${formatCount(tagMap.get(tag) ?? 0)} views`,
+            category: 'Trending',
+          })));
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'people' && suggestions.length === 0) {
@@ -280,7 +312,7 @@ export function SearchScreen() {
                 <TrendingUp size={14} color={palette.primary} />
                 <ThemedText variant="heading" style={{fontSize: 14}}>Trending Now</ThemedText>
               </View>
-              {TRENDING_TOPICS.map((topic, index) => (
+              {trendingTopics.map((topic, index) => (
                 <Pressable
                   key={topic.id}
                   onPress={() => parentNavigate(navigation, 'HashtagDetail', {tag: topic.tag.replace(/^#/, '')})}
@@ -288,7 +320,7 @@ export function SearchScreen() {
                     flexDirection: 'row', alignItems: 'center',
                     justifyContent: 'space-between',
                     paddingVertical: 12,
-                    borderBottomWidth: index < TRENDING_TOPICS.length - 1 ? 1 : 0,
+                    borderBottomWidth: index < trendingTopics.length - 1 ? 1 : 0,
                     borderBottomColor: palette.border,
                   }}>
                   <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>

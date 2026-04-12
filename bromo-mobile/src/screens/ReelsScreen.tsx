@@ -1,4 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Easing} from 'react-native';
 import {NetworkVideo} from '../components/media/NetworkVideo';
 import {
   ActivityIndicator,
@@ -47,7 +48,7 @@ import {StoryRing} from '../components/ui/StoryRing';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {followUser} from '../api/followApi';
-import {getReels, toggleLike, recordView, type Post} from '../api/postsApi';
+import {getReels, toggleLike, recordView, recordShare, type Post} from '../api/postsApi';
 import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import type {ThemePalette} from '../config/platform-theme';
@@ -219,9 +220,14 @@ function ReelItem({
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(!isActive);
   const viewRecorded = useRef(false);
+  const watchStartMs = useRef(0);
+  const accumulatedWatchMs = useRef(0);
   const durationRef = useRef(0);
   const lastProgTick = useRef(0);
   const clearedSpinnerOnProgress = useRef(false);
+  // Rotating disc animation
+  const discRotation = useRef(new Animated.Value(0)).current;
+  const discAnim = useRef<Animated.CompositeAnimation | null>(null);
   const {borderRadiusScale} = contract.brandGuidelines;
   const avatarUri = item.author.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.author.displayName)}&background=random`;
 
@@ -236,14 +242,39 @@ function ReelItem({
     setPaused(!isActive);
   }, [isActive]);
 
-  // Record view once per active session
+  // Disc spin: start/stop with active state
   useEffect(() => {
-    if (isActive && !viewRecorded.current) {
-      viewRecorded.current = true;
-      recordView(item._id);
+    if (isActive && !paused) {
+      discAnim.current = Animated.loop(
+        Animated.timing(discRotation, {
+          toValue: 1, duration: 4000, easing: Easing.linear, useNativeDriver: true,
+        }),
+      );
+      discAnim.current.start();
+    } else {
+      discAnim.current?.stop();
     }
-    if (!isActive) {
-      viewRecorded.current = false;
+  }, [isActive, paused, discRotation]);
+
+  // Record view + accumulate watch time
+  useEffect(() => {
+    if (isActive) {
+      if (!viewRecorded.current) {
+        viewRecorded.current = true;
+        watchStartMs.current = Date.now();
+        recordView(item._id, 0);
+      } else {
+        watchStartMs.current = Date.now();
+      }
+    } else if (watchStartMs.current > 0) {
+      accumulatedWatchMs.current += Date.now() - watchStartMs.current;
+      watchStartMs.current = 0;
+      // Send accumulated watch time on deactivate
+      if (accumulatedWatchMs.current > 500) {
+        recordView(item._id, accumulatedWatchMs.current);
+        accumulatedWatchMs.current = 0;
+        viewRecorded.current = false;
+      }
     }
   }, [isActive, item._id]);
 
@@ -388,12 +419,17 @@ function ReelItem({
           <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{formatCount(item.commentsCount)}</Text>
         </Pressable>
 
-        <Pressable onPress={() => parentNavigate(navigation, 'ShareSend', {postId: item._id})} style={{alignItems: 'center', gap: 4}}>
+        <Pressable
+          onPress={() => {
+            recordShare(item._id);
+            parentNavigate(navigation, 'ShareSend', {postId: item._id});
+          }}
+          style={{alignItems: 'center', gap: 4}}>
           <Send size={28} color="#fff" />
-          <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{formatCount(item.viewsCount)}</Text>
+          <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{formatCount(item.sharesCount ?? 0)}</Text>
         </Pressable>
 
-        <Pressable onPress={() => setBookmarked(p => !p)}>
+        <Pressable onPress={() => setBookmarked(p => !p)} style={{alignItems: 'center', gap: 4}}>
           <Bookmark
             size={28}
             color={bookmarked ? palette.primary : '#fff'}
@@ -405,10 +441,15 @@ function ReelItem({
           <MoreHorizontal size={28} color="#fff" />
         </Pressable>
 
+        {/* Rotating music disc */}
         <Pressable onPress={() => parentNavigate(navigation, 'ReuseAudio', {audioId: item._id})}>
-          <View style={{width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#fff', overflow: 'hidden'}}>
+          <Animated.View style={{
+            width: 40, height: 40, borderRadius: 20,
+            borderWidth: 2, borderColor: '#fff', overflow: 'hidden',
+            transform: [{rotate: discRotation.interpolate({inputRange: [0, 1], outputRange: ['0deg', '360deg']})}],
+          }}>
             <Image source={{uri: avatarUri}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
-          </View>
+          </Animated.View>
         </Pressable>
       </View>
 
