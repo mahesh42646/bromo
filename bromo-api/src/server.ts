@@ -1,3 +1,4 @@
+import "./config/ffmpegInit.js";
 import {createServer} from "node:http";
 import { createApp } from "./app.js";
 import { connectDb } from "./db/connect.js";

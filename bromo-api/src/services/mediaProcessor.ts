@@ -1,14 +1,8 @@
+import "../config/ffmpegInit.js";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
 import path from "node:path";
 import fs from "node:fs";
 import { uploadsRoot } from "../utils/uploadFiles.js";
-
-// Use bundled ffmpeg binary (ffmpeg-static returns string | null)
-const ffmpegPath = typeof ffmpegStatic === "string" ? ffmpegStatic : null;
-if (ffmpegPath) {
-  ffmpeg.setFfmpegPath(ffmpegPath);
-}
 
 const UPLOAD_DIR = uploadsRoot();
 const HLS_DIR = path.resolve(process.cwd(), "uploads", "hls");

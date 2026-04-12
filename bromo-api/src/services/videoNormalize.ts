@@ -1,15 +1,11 @@
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
 import path from "node:path";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
+import { bundledFfmpegPath } from "../config/ffmpegInit.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
 import type { UploadCategory } from "../utils/uploadFiles.js";
 import { VIDEO_EXTENSIONS } from "../utils/uploadPolicy.js";
-
-const ffmpegPath = typeof ffmpegStatic === "string" ? ffmpegStatic : null;
-if (ffmpegPath) {
-  ffmpeg.setFfmpegPath(ffmpegPath);
-}
 
 const UPLOAD_DIR = uploadsRoot();
 
@@ -25,24 +21,59 @@ function absFromRel(rel: string): string {
   return path.join(UPLOAD_DIR, clean);
 }
 
-export function ffprobeFile(absPath: string): Promise<ProbeInfo> {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(absPath, (err, metadata) => {
-      if (err) return reject(err);
-      const streams = metadata.streams ?? [];
-      const v = streams.find((s) => s.codec_type === "video");
-      const a = streams.find((s) => s.codec_type === "audio");
-      const formatDur = Number(metadata.format?.duration ?? 0) || 0;
-      const streamDur = v?.duration != null ? Number(v.duration) : 0;
-      const formatDurationSec = Math.max(formatDur, streamDur, 0);
-      resolve({
-        hasVideoStream: Boolean(v),
-        hasAudioStream: Boolean(a),
-        formatDurationSec,
-        videoCodec: v?.codec_name,
-      });
-    });
+/**
+ * Probe container/streams using bundled `ffmpeg -i` stderr.
+ * Avoids requiring `ffprobe` on PATH (fluent-ffmpeg ffprobe needs it unless setFfprobePath).
+ */
+function probeMediaWithFfmpeg(absPath: string): ProbeInfo {
+  const bin = bundledFfmpegPath;
+  if (!bin) {
+    throw new Error("ffmpeg binary not available for this platform");
+  }
+  const r = spawnSync(bin, ["-hide_banner", "-i", absPath], {
+    encoding: "utf-8",
+    maxBuffer: 25 * 1024 * 1024,
+    windowsHide: true,
   });
+  const stderr = String(r.stderr ?? "");
+  if (r.error) {
+    throw r.error;
+  }
+  if (
+    /No such file or directory/i.test(stderr) ||
+    /Invalid data found when processing input/i.test(stderr) ||
+    /moov atom not found/i.test(stderr)
+  ) {
+    throw new Error(stderr.slice(0, 400));
+  }
+  if (!/Input\s+#0/i.test(stderr)) {
+    throw new Error(stderr.slice(0, 400));
+  }
+
+  const durMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  let formatDurationSec = 0;
+  if (durMatch) {
+    formatDurationSec =
+      Number(durMatch[1]) * 3600 + Number(durMatch[2]) * 60 + Number(durMatch[3]);
+  }
+
+  const hasVideoStream = /Stream\s+#\d+:\d+(?:\([^)]*\))?:\s*Video:/i.test(stderr);
+  const hasAudioStream = /Stream\s+#\d+:\d+(?:\([^)]*\))?:\s*Audio:/i.test(stderr);
+  const videoLine = stderr.match(
+    /Stream\s+#\d+:\d+(?:\([^)]*\))?:\s*Video:\s*([a-zA-Z0-9_]+)/i,
+  );
+  const videoCodec = videoLine?.[1]?.toLowerCase();
+
+  return {
+    hasVideoStream,
+    hasAudioStream,
+    formatDurationSec,
+    videoCodec,
+  };
+}
+
+export function ffprobeFile(absPath: string): Promise<ProbeInfo> {
+  return Promise.resolve(probeMediaWithFfmpeg(absPath));
 }
 
 /** H.264 + MP4/MOV/M4V — keep original bytes (no re-encode). */
@@ -121,7 +152,7 @@ export async function normalizeMediaAfterUpload(
   try {
     probe = await ffprobeFile(abs);
   } catch (e) {
-    console.error("[videoNormalize] ffprobe failed:", e);
+    console.error("[videoNormalize] probe failed:", e);
     try {
       fs.unlinkSync(abs);
     } catch {
