@@ -150,21 +150,21 @@ export function CommentsScreen() {
   const [search, setSearch] = useState('');
   const inputRef = useRef<TextInput>(null);
 
-  // Sheet animation
-  const sheetY = useRef(new Animated.Value(SNAP_HALF)).current;
+  // Sheet animation — use layout-based top (not transform) so bottom stays pinned
+  const sheetTop = useRef(new Animated.Value(SNAP_HALF)).current;
   const lastY = useRef(SNAP_HALF);
 
   const snapTo = useCallback((target: number) => {
     lastY.current = target;
-    Animated.spring(sheetY, {toValue: target, useNativeDriver: true, bounciness: 2, speed: 22}).start();
-  }, [sheetY]);
+    Animated.spring(sheetTop, {toValue: target, useNativeDriver: false, bounciness: 2, speed: 22}).start();
+  }, [sheetTop]);
 
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx),
       onPanResponderMove: (_e, g) => {
         const next = lastY.current + g.dy;
-        if (next >= SNAP_FULL) sheetY.setValue(next);
+        if (next >= SNAP_FULL) sheetTop.setValue(next);
       },
       onPanResponderRelease: (_e, g) => {
         const next = lastY.current + g.dy;
@@ -261,7 +261,7 @@ export function CommentsScreen() {
       style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.5)'}}
       onPress={() => navigation.goBack()}>
       <Animated.View
-        style={{position: 'absolute', left: 0, right: 0, bottom: 0, top: 0, transform: [{translateY: sheetY}]}}>
+        style={{position: 'absolute', left: 0, right: 0, bottom: 0, top: sheetTop}}>
         <Pressable onPress={e => e.stopPropagation()} style={{flex: 1}}>
           <View style={{
             flex: 1,

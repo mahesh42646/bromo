@@ -6,6 +6,7 @@ import type {RouteProp} from '@react-navigation/native';
 import {Check, Link, MoreHorizontal, Users} from 'lucide-react-native';
 import {useTheme} from '../../../context/ThemeContext';
 import {useAuth} from '../../../context/AuthContext';
+import {useMessaging} from '../../../messaging/MessagingContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
@@ -44,6 +45,7 @@ export function ShareSendScreen() {
   const route = useRoute<RouteProp<AppStackParamList, 'ShareSend'>>();
   const {palette} = useTheme();
   const {dbUser} = useAuth();
+  const {openThreadForUser} = useMessaging();
   const {postId} = route.params;
   const postLink = `https://bromo.app/p/${postId}`;
 
@@ -59,13 +61,23 @@ export function ShareSendScreen() {
       .finally(() => setLoading(false));
   }, [dbUser?._id]);
 
-  const sendDm = useCallback((user: SuggestedUser) => {
+  const sendDm = useCallback(async (user: SuggestedUser) => {
     setSent(prev => new Set(prev).add(user._id));
-    navigation.navigate('MessagesFlow' as never, {
-      screen: 'ChatThread',
-      params: {peerId: user._id, sharePostId: postId},
-    } as never);
-  }, [navigation, postId]);
+    try {
+      const convId = await openThreadForUser(
+        user._id,
+        user.displayName,
+        user.profilePicture ?? '',
+        user.username,
+      );
+      parentNavigate(navigation, 'MessagesFlow', {
+        screen: 'ChatThread',
+        params: {peerId: convId, sharePostId: postId},
+      });
+    } catch {
+      parentNavigate(navigation, 'MessagesFlow');
+    }
+  }, [navigation, postId, openThreadForUser]);
 
   const shareOther = useCallback(async () => {
     try {

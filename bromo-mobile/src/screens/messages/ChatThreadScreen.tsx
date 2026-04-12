@@ -57,7 +57,7 @@ const REACTION_PICK = ['❤️', '😂', '👍', '🔥', '😮'];
 export function ChatThreadScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<R>();
-  const {peerId} = route.params;
+  const {peerId, sharePostId, prefilledText} = route.params;
   const {palette, contract, isDark} = useTheme();
   const {
     peers,
@@ -78,7 +78,7 @@ export function ChatThreadScreen() {
   const messages = messagesByPeer[peerId] ?? [];
   const listRef = useRef<FlatList<RowItem>>(null);
 
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(prefilledText ?? '');
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [picker, setPicker] = useState<'gif' | 'sticker' | 'label' | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -86,6 +86,24 @@ export function ChatThreadScreen() {
   useEffect(() => {
     ensureThread(peerId);
   }, [ensureThread, peerId]);
+
+  // Auto-send shared post link on mount
+  useEffect(() => {
+    if (!sharePostId) return;
+    const id = newMsgId();
+    const msg: TextMessage = {
+      kind: 'text',
+      id,
+      peerId,
+      senderId: 'me',
+      createdAt: Date.now(),
+      delivery: 'sending',
+      reactions: [],
+      text: `https://bromo.app/p/${sharePostId}`,
+    };
+    sendMessage(peerId, msg);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     markRead(peerId);

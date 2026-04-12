@@ -1,10 +1,11 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Easing} from 'react-native';
 import {NetworkVideo} from '../components/media/NetworkVideo';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
+  Easing,
   FlatList,
   Image,
   Modal,

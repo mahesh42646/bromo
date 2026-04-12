@@ -104,9 +104,10 @@ postsRouter.get(
       // When the user follows nobody yet, fall back to explore (public posts),
       // so the feed is never empty on first open.
       const hasFollows = followingIds.length > 0;
+      const feedTypes = { type: { $in: ["post", "reel"] } } as const;
       const baseQuery = dbUser && hasFollows
-        ? { authorId: { $in: [...followingIds, dbUser._id] }, type: "post", ...VISIBLE_POST }
-        : { type: "post", ...VISIBLE_POST };
+        ? { authorId: { $in: [...followingIds, dbUser._id] }, ...feedTypes, ...VISIBLE_POST }
+        : { ...feedTypes, ...VISIBLE_POST };
 
       const query = cursor
         ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
@@ -339,8 +340,12 @@ postsRouter.get(
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
+      const id = String(req.params.id);
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(404).json({ message: "Post not found" });
+      }
       const dbUser = req.dbUser;
-      const post = await Post.findById(req.params.id)
+      const post = await Post.findById(id)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
       if (!post || !post.isActive || post.isDeleted) return res.status(404).json({ message: "Post not found" });

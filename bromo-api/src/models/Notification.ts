@@ -41,7 +41,7 @@ notificationSchema.index({ recipientId: 1, read: 1 });
 
 export const Notification = mongoose.model<NotificationDoc>("Notification", notificationSchema);
 
-/** Helper — create a notification only if actor ≠ recipient. */
+/** Helper — create a notification only if actor ≠ recipient (unless it's a milestone). */
 export async function createNotification(data: {
   recipientId: string | Types.ObjectId;
   actorId: string | Types.ObjectId;
@@ -49,7 +49,7 @@ export async function createNotification(data: {
   postId?: string | Types.ObjectId;
   message: string;
 }): Promise<void> {
-  if (String(data.recipientId) === String(data.actorId)) return;
+  if (data.type !== "milestone" && String(data.recipientId) === String(data.actorId)) return;
   try {
     await Notification.create(data);
   } catch {
@@ -64,15 +64,12 @@ export async function checkFollowerMilestone(
 ): Promise<void> {
   const milestones = [10, 50, 100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 1_000_000];
   if (milestones.includes(followersCount)) {
-    try {
-      await Notification.create({
-        recipientId: userId,
-        actorId: userId, // self-generated milestone
-        type: "milestone",
-        message: `🎉 You reached ${followersCount.toLocaleString()} followers!`,
-        read: false,
-      });
-    } catch {/* ignore */}
+    await createNotification({
+      recipientId: userId,
+      actorId: userId,
+      type: "milestone",
+      message: `🎉 You reached ${followersCount.toLocaleString()} followers!`,
+    });
   }
 }
 
@@ -84,15 +81,12 @@ export async function checkLikeMilestone(
 ): Promise<void> {
   const milestones = [10, 50, 100, 500, 1_000, 5_000, 10_000, 100_000];
   if (milestones.includes(likesCount)) {
-    try {
-      await Notification.create({
-        recipientId: authorId,
-        actorId: authorId,
-        type: "milestone",
-        postId,
-        message: `🔥 Your post reached ${likesCount.toLocaleString()} likes!`,
-        read: false,
-      });
-    } catch {/* ignore */}
+    await createNotification({
+      recipientId: authorId,
+      actorId: authorId,
+      type: "milestone",
+      postId,
+      message: `🔥 Your post reached ${likesCount.toLocaleString()} likes!`,
+    });
   }
 }

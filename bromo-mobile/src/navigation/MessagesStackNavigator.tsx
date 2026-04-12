@@ -5,7 +5,7 @@ import {ChatThreadScreen} from '@/screens/messages/ChatThreadScreen';
 
 export type MessagesStackParamList = {
   ChatList: undefined;
-  ChatThread: {peerId: string};
+  ChatThread: {peerId: string; sharePostId?: string; prefilledText?: string};
 };
 
 const Stack = createNativeStackNavigator<MessagesStackParamList>();
