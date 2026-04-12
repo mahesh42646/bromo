@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -47,6 +48,7 @@ import {Card} from '../components/ui/Card';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
+import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {getFeed, getStories, toggleLike, type Post, type StoryGroup} from '../api/postsApi';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {socketService} from '../services/socketService';
@@ -80,6 +82,34 @@ function timeAgo(dateStr: string): string {
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
 };
+
+function feedVideoSourceType(uri: string): 'm3u8' | 'mov' | 'webm' | 'mp4' {
+  const path = uri.split('?')[0]?.toLowerCase() ?? '';
+  if (path.endsWith('.m3u8')) return 'm3u8';
+  if (path.endsWith('.webm')) return 'webm';
+  if (path.endsWith('.mov')) return 'mov';
+  return 'mp4';
+}
+
+function FeedVideo({uri, posterUri}: {uri: string; posterUri?: string}) {
+  return (
+    <Video
+      source={{uri, type: feedVideoSourceType(uri)}}
+      style={{width: '100%', aspectRatio: 1, backgroundColor: '#000'}}
+      resizeMode="cover"
+      repeat
+      muted
+      paused={false}
+      poster={posterUri ? {source: {uri: posterUri}} : undefined}
+      posterResizeMode="cover"
+      ignoreSilentSwitch="ignore"
+      playInBackground={false}
+      playWhenInactive={false}
+      useTextureView={Platform.OS === 'android' ? false : undefined}
+      shutterColor="transparent"
+    />
+  );
+}
 
 type PostCardProps = {
   post: Post;
@@ -157,21 +187,13 @@ function PostCard({post, onLikeToggle, navigation}: PostCardProps) {
 
       <Pressable onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}>
         {post.mediaType === 'video' ? (
-          <Video
-            source={{uri: post.mediaUrl}}
-            style={{width: '100%', aspectRatio: 1}}
-            resizeMode="cover"
-            repeat
-            muted
-            paused={false}
-            poster={postThumbnailUri(post)}
-            ignoreSilentSwitch="ignore"
-            playInBackground={false}
-            playWhenInactive={false}
+          <FeedVideo
+            uri={resolveMediaUrl(post.mediaUrl)}
+            posterUri={postThumbnailUri(post) || undefined}
           />
         ) : (
           <Image
-            source={{uri: post.mediaUrl}}
+            source={{uri: resolveMediaUrl(post.mediaUrl)}}
             style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
           />
         )}

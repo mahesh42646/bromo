@@ -3,13 +3,20 @@ import {
   Alert,
   Animated,
   FlatList,
+  Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import {Camera, useCameraDevice, useCameraPermission} from 'react-native-vision-camera';
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  useMicrophonePermission,
+} from 'react-native-vision-camera';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
@@ -54,36 +61,52 @@ function LiveCameraFill({
   enableAudio: boolean;
   facing: 'front' | 'back';
 }) {
-  const {hasPermission, requestPermission} = useCameraPermission();
+  const {hasPermission: hasCam, requestPermission: requestCam} = useCameraPermission();
+  const {hasPermission: hasMic, requestPermission: requestMic} = useMicrophonePermission();
   const device = useCameraDevice(facing);
 
   useEffect(() => {
-    if (!hasPermission) void requestPermission();
-  }, [hasPermission, requestPermission]);
+    if (!hasCam) void requestCam();
+  }, [hasCam, requestCam]);
 
-  if (!hasPermission) {
+  useEffect(() => {
+    if (enableAudio && !hasMic) void requestMic();
+  }, [enableAudio, hasMic, requestMic]);
+
+  if (!hasCam) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, {alignItems: 'center', justifyContent: 'center', padding: 24}]}>
+      <View style={[StyleSheet.absoluteFillObject, {alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12}]}>
         <Text style={{color: '#fff', textAlign: 'center', fontWeight: '600'}}>
-          Allow camera access to go live
+          Camera access is required for live preview
         </Text>
+        <Pressable
+          onPress={() => void requestCam()}
+          style={{paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)'}}>
+          <Text style={{color: '#fff', fontWeight: '800'}}>Allow camera</Text>
+        </Pressable>
+        <Pressable onPress={() => Linking.openSettings()}>
+          <Text style={{color: '#93c5fd', fontWeight: '600'}}>Open Settings</Text>
+        </Pressable>
       </View>
     );
   }
   if (device == null) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, {alignItems: 'center', justifyContent: 'center'}]}>
-        <Text style={{color: '#fff', fontWeight: '600'}}>No camera available</Text>
+      <View style={[StyleSheet.absoluteFillObject, {alignItems: 'center', justifyContent: 'center', padding: 16}]}>
+        <Text style={{color: '#fff', fontWeight: '600', textAlign: 'center'}}>
+          {Platform.OS === 'ios' ? 'No camera device (simulator has limited camera).' : 'No camera found'}
+        </Text>
       </View>
     );
   }
+  const useAudio = Boolean(enableAudio && hasMic);
   return (
     <Camera
       style={StyleSheet.absoluteFill}
       device={device}
       isActive={active}
       video
-      audio={enableAudio}
+      audio={useAudio}
     />
   );
 }
@@ -417,9 +440,9 @@ export function LivePreviewScreen() {
 function makeStyles(p: ThemePalette) {
   return StyleSheet.create({
     root: {flex: 1, backgroundColor: p.background},
-    previewContainer: {flex: 1},
+    previewContainer: {flex: 1, minHeight: 400},
     closeBtn: {position: 'absolute', top: 8, right: 12, zIndex: 10, padding: 8},
-    cameraPlaceholder: {flex: 1, backgroundColor: '#000', overflow: 'hidden'},
+    cameraPlaceholder: {flex: 1, minHeight: 280, backgroundColor: '#000', overflow: 'hidden', position: 'relative'},
     flipCam: {
       position: 'absolute',
       right: 16,

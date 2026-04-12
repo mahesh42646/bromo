@@ -7,17 +7,15 @@ import {
 import { uploadSingle, uploadAvatar } from "../middleware/upload.js";
 import { User } from "../models/User.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
+import { getPublicApiOrigin, rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 
 export const mediaRouter = Router();
 
 const VIDEO_EXTS = new Set([".mp4", ".mov", ".m4v", ".3gp", ".webm"]);
 
-function buildUrl(req: FirebaseAuthedRequest, filename: string): string {
-  const proto = (Array.isArray(req.headers["x-forwarded-proto"])
-    ? req.headers["x-forwarded-proto"][0]
-    : req.headers["x-forwarded-proto"]) ?? req.protocol;
-  const host = req.get("host") ?? "";
-  return `${proto}://${host}/uploads/${filename}`;
+function buildUrl(_req: FirebaseAuthedRequest, filename: string): string {
+  if (filename.startsWith("http")) return rewritePublicMediaUrl(filename);
+  return `${getPublicApiOrigin()}/uploads/${filename}`;
 }
 
 // POST /media/upload — general file upload (posts, reels, chat media)
@@ -72,11 +70,7 @@ mediaRouter.post(
       return res.status(400).json({ message: "No file uploaded" });
     }
     try {
-      const proto = (Array.isArray(req.headers["x-forwarded-proto"])
-        ? req.headers["x-forwarded-proto"][0]
-        : req.headers["x-forwarded-proto"]) ?? req.protocol;
-      const host = req.get("host") ?? "";
-      const url = `${proto}://${host}/uploads/${req.file.filename}`;
+      const url = `${getPublicApiOrigin()}/uploads/${req.file.filename}`;
 
       if (req.dbUser) {
         req.dbUser.profilePicture = url;

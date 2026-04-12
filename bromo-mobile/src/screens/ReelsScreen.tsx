@@ -5,6 +5,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Platform,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -35,12 +36,21 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {followUser} from '../api/followApi';
 import {getReels, toggleLike, recordView, type Post} from '../api/postsApi';
 import {socketService} from '../services/socketService';
+import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
 };
 
 type Quality = 'auto' | 'low' | 'medium' | 'high';
+
+function reelVideoSourceType(uri: string): 'm3u8' | 'mov' | 'webm' | 'mp4' {
+  const path = uri.split('?')[0]?.toLowerCase() ?? '';
+  if (path.endsWith('.m3u8')) return 'm3u8';
+  if (path.endsWith('.webm')) return 'webm';
+  if (path.endsWith('.mov')) return 'mov';
+  return 'mp4';
+}
 
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -115,6 +125,9 @@ function ReelItem({
     setVideoLoading(false);
   };
 
+  const playUri = resolveMediaUrl(item.mediaUrl);
+  const thumbUri = resolveMediaUrl(item.thumbnailUrl ?? '') || playUri;
+
   // Quality → bitrate hint for react-native-video
   const bufferConfig = {
     minBufferMs: quality === 'low' ? 3000 : quality === 'medium' ? 5000 : 8000,
@@ -128,8 +141,8 @@ function ReelItem({
     <View style={{width: reelWidth, height: reelHeight, position: 'relative', backgroundColor: '#000'}}>
       {item.mediaType === 'video' && !videoError ? (
         <Video
-          source={{uri: item.mediaUrl}}
-          style={{width: '100%', height: '100%', position: 'absolute'}}
+          source={{uri: playUri, type: reelVideoSourceType(playUri)}}
+          style={{width: '100%', height: '100%', position: 'absolute', backgroundColor: '#000'}}
           resizeMode="cover"
           repeat
           paused={paused}
@@ -140,13 +153,15 @@ function ReelItem({
           onProgress={onVideoProgress}
           onError={onVideoError}
           bufferConfig={bufferConfig}
-          poster={item.thumbnailUrl || undefined}
+          poster={item.thumbnailUrl ? {source: {uri: thumbUri}} : undefined}
           posterResizeMode="cover"
           preventsDisplaySleepDuringVideoPlayback
+          useTextureView={Platform.OS === 'android' ? false : undefined}
+          shutterColor="transparent"
         />
       ) : (
         <Image
-          source={{uri: item.thumbnailUrl || item.mediaUrl}}
+          source={{uri: thumbUri}}
           style={{width: '100%', height: '100%', position: 'absolute'}}
           resizeMode="cover"
         />
@@ -182,11 +197,10 @@ function ReelItem({
         </View>
       )}
 
-      {/* Tap to pause/play */}
+      {/* Tap center: mute only (fullscreen tap used to pause and looked like a black/frozen reel). */}
       <Pressable
         style={{...StyleSheet.absoluteFillObject, zIndex: 1}}
-        onPress={() => setPaused(p => !p)}
-        onLongPress={() => setPaused(true)}
+        onPress={() => setMuted(m => !m)}
       />
 
       {/* Right side actions */}

@@ -18,6 +18,7 @@ import {
   emitStoryNew,
   emitNotification,
 } from "../services/socketService.js";
+import { getPublicApiOrigin, rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 
 export const postsRouter = Router();
 
@@ -31,8 +32,13 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
   const isFollowing = Boolean(
     dbUserId && authorOid && (isSelf || followingSet.has(authorOid)),
   );
+  const mediaUrl = typeof p.mediaUrl === "string" ? rewritePublicMediaUrl(p.mediaUrl) : p.mediaUrl;
+  const thumbnailUrl =
+    typeof p.thumbnailUrl === "string" ? rewritePublicMediaUrl(p.thumbnailUrl) : p.thumbnailUrl;
   return {
     ...p,
+    mediaUrl,
+    thumbnailUrl,
     likesCount: Number(p.likesCount) || 0,
     commentsCount: Number(p.commentsCount) || 0,
     viewsCount: Number(p.viewsCount) || 0,
@@ -46,13 +52,9 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
   };
 }
 
-function buildUrl(req: FirebaseAuthedRequest, filename: string): string {
-  if (filename.startsWith("http")) return filename;
-  const proto = (Array.isArray(req.headers["x-forwarded-proto"])
-    ? req.headers["x-forwarded-proto"][0]
-    : req.headers["x-forwarded-proto"]) ?? req.protocol;
-  const host = req.get("host") ?? "";
-  return `${proto}://${host}/uploads/${filename}`;
+function buildUrl(_req: FirebaseAuthedRequest, filename: string): string {
+  if (filename.startsWith("http")) return rewritePublicMediaUrl(filename);
+  return `${getPublicApiOrigin()}/uploads/${filename}`;
 }
 
 // ── GET /posts/feed ─────────────────────────────────────────────────
