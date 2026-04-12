@@ -1,18 +1,23 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {NetworkVideo} from '../components/media/NetworkVideo';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
   Image,
+  Modal,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
+  Switch,
   Text,
   View,
   type ViewabilityConfig,
   type ViewToken,
 } from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   BadgeCheck,
   Heart,
@@ -25,6 +30,14 @@ import {
   Volume2,
   VolumeX,
   Wifi,
+  Maximize2,
+  Repeat,
+  QrCode,
+  Info,
+  CheckCircle2,
+  XCircle,
+  Flag,
+  SlidersHorizontal,
 } from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NavigationProp} from '@react-navigation/native';
@@ -36,6 +49,7 @@ import {followUser} from '../api/followApi';
 import {getReels, toggleLike, recordView, type Post} from '../api/postsApi';
 import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
+import type {ThemePalette} from '../config/platform-theme';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
@@ -49,6 +63,130 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+type ReelFeedTab = 'forYou' | 'friends';
+
+function ReelMoreSheet({
+  visible,
+  onClose,
+  palette,
+  bottomInset,
+  autoScroll,
+  onAutoScroll,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  palette: ThemePalette;
+  bottomInset: number;
+  autoScroll: boolean;
+  onAutoScroll: (v: boolean) => void;
+}) {
+  const row = (icon: React.ReactNode, label: string, onPress?: () => void, danger?: boolean) => (
+    <Pressable
+      key={label}
+      onPress={() => {
+        onPress?.();
+        onClose();
+      }}
+      style={({pressed}) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        backgroundColor: pressed ? `${palette.foreground}12` : 'transparent',
+      })}>
+      {icon}
+      <Text style={{flex: 1, color: danger ? palette.destructive : palette.foreground, fontSize: 15, fontWeight: '500'}}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+
+  const groupStyle = {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden' as const,
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end'}} onPress={onClose}>
+        <Pressable
+          style={{
+            backgroundColor: palette.surface,
+            borderTopLeftRadius: 18,
+            borderTopRightRadius: 18,
+            paddingBottom: 12 + bottomInset,
+            maxHeight: '78%',
+          }}
+          onPress={e => e.stopPropagation()}>
+          <View style={{alignItems: 'center', paddingTop: 10, paddingBottom: 6}}>
+            <View style={{width: 40, height: 4, borderRadius: 2, backgroundColor: palette.border}} />
+          </View>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-around',
+              paddingVertical: 16,
+              paddingHorizontal: 12,
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: palette.border,
+            }}>
+            <Pressable
+              style={{alignItems: 'center', width: 88, paddingVertical: 8, borderRadius: 12, backgroundColor: palette.background}}
+              onPress={() => Alert.alert('Saved', 'Saved to your device (coming soon).')}>
+              <Bookmark size={22} color={palette.foreground} />
+              <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>Save</Text>
+            </Pressable>
+            <Pressable
+              style={{alignItems: 'center', width: 88, paddingVertical: 8, borderRadius: 12, backgroundColor: palette.background}}
+              onPress={() => Alert.alert('Remix', 'Remix will be available in a future update.')}>
+              <Repeat size={22} color={palette.foreground} />
+              <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>Remix</Text>
+            </Pressable>
+            <Pressable
+              style={{alignItems: 'center', width: 88, paddingVertical: 8, borderRadius: 12, backgroundColor: palette.background}}
+              onPress={() => Alert.alert('Sequence', 'Multi-clip sequences are coming soon.')}>
+              <Maximize2 size={22} color={palette.foreground} />
+              <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>Sequence</Text>
+            </Pressable>
+          </View>
+          <ScrollView style={{maxHeight: 420}} showsVerticalScrollIndicator={false}>
+            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border}]}>
+              {row(<Maximize2 size={20} color={palette.foreground} />, 'View full-screen', () =>
+                Alert.alert('Full screen', 'Rotate device or use system full-screen when supported.'),
+              )}
+              <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border}}>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, paddingVertical: 12, paddingHorizontal: 16}}>
+                  <Repeat size={20} color={palette.foreground} />
+                  <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500'}}>Auto-scroll</Text>
+                </View>
+                <Switch value={autoScroll} onValueChange={onAutoScroll} style={{marginRight: 12}} />
+              </View>
+            </View>
+            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, marginTop: 10}]}>
+              {row(<QrCode size={20} color={palette.foreground} />, 'QR code', () => Alert.alert('QR code', 'Share link as QR (coming soon).'))}
+            </View>
+            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, marginTop: 10}]}>
+              {row(<Info size={20} color={palette.foreground} />, "Why you're seeing this post", () =>
+                Alert.alert('Why this reel', 'Shown because it is public and matches what you watch.'),
+              )}
+              {row(<CheckCircle2 size={20} color={palette.foreground} />, 'Interested', () => Alert.alert('Thanks', "We'll show more like this."))}
+              {row(<XCircle size={20} color={palette.foreground} />, 'Not interested', () => Alert.alert('OK', "We'll tune your feed."))}
+              {row(<Flag size={20} color={palette.destructive} />, 'Report', () => Alert.alert('Report', 'Thanks — moderation tools are coming soon.'), true)}
+            </View>
+            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, marginTop: 10, marginBottom: 8}]}>
+              {row(<SlidersHorizontal size={20} color={palette.foreground} />, 'Manage content preferences', () =>
+                Alert.alert('Preferences', 'Open Settings → Content to tune recommendations (coming soon).'),
+              )}
+            </View>
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function ReelItem({
   item,
   isActive,
@@ -57,6 +195,9 @@ function ReelItem({
   navigation,
   onLike,
   quality,
+  autoScroll,
+  onAutoScrollChange,
+  onAutoAdvanceClip,
 }: {
   item: Post;
   isActive: boolean;
@@ -65,23 +206,33 @@ function ReelItem({
   navigation: Nav;
   onLike: (id: string) => void;
   quality: Quality;
+  autoScroll: boolean;
+  onAutoScrollChange: (v: boolean) => void;
+  onAutoAdvanceClip: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const {palette, contract} = useTheme();
   const [bookmarked, setBookmarked] = useState(false);
   const [muted, setMuted] = useState(false);
   const [following, setFollowing] = useState(item.isFollowing);
-  const [videoLoading, setVideoLoading] = useState(true);
+  const [coverSpinner, setCoverSpinner] = useState(true);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(!isActive);
   const viewRecorded = useRef(false);
+  const durationRef = useRef(0);
+  const lastProgTick = useRef(0);
   const {borderRadiusScale} = contract.brandGuidelines;
   const avatarUri = item.author.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.author.displayName)}&background=random`;
 
-  // Sync pause state when active changes
+  useEffect(() => {
+    setCoverSpinner(true);
+    setProgress(0);
+    durationRef.current = 0;
+  }, [item._id, item.mediaUrl]);
+
   useEffect(() => {
     setPaused(!isActive);
-    if (isActive) {
-      setVideoLoading(true);
-    }
   }, [isActive]);
 
   // Record view once per active session
@@ -105,14 +256,43 @@ function ReelItem({
   const playUri = resolveMediaUrl(item.mediaUrl);
   const thumbUri = resolveMediaUrl(item.thumbnailUrl ?? '') || playUri;
 
-  // Quality → bitrate hint for react-native-video
-  const bufferConfig = {
-    minBufferMs: quality === 'low' ? 3000 : quality === 'medium' ? 5000 : 8000,
-    maxBufferMs: quality === 'low' ? 10000 : quality === 'medium' ? 20000 : 30000,
-    bufferForPlaybackMs: quality === 'low' ? 1500 : 2500,
-    bufferForPlaybackAfterRebufferMs: quality === 'low' ? 3000 : 5000,
-    backBufferDurationMs: 30000,
-  };
+  const bufferConfig = useMemo(() => {
+    switch (quality) {
+      case 'low':
+        return {
+          minBufferMs: 800,
+          maxBufferMs: 12000,
+          bufferForPlaybackMs: 200,
+          bufferForPlaybackAfterRebufferMs: 400,
+          backBufferDurationMs: 8000,
+        };
+      case 'medium':
+        return {
+          minBufferMs: 1200,
+          maxBufferMs: 22000,
+          bufferForPlaybackMs: 320,
+          bufferForPlaybackAfterRebufferMs: 600,
+          backBufferDurationMs: 14000,
+        };
+      case 'high':
+        return {
+          minBufferMs: 2000,
+          maxBufferMs: 50000,
+          bufferForPlaybackMs: 500,
+          bufferForPlaybackAfterRebufferMs: 1200,
+          backBufferDurationMs: 24000,
+        };
+      default:
+        /** auto — start quickly; may rebuffer more on slow links */
+        return {
+          minBufferMs: 400,
+          maxBufferMs: 28000,
+          bufferForPlaybackMs: 200,
+          bufferForPlaybackAfterRebufferMs: 450,
+          backBufferDurationMs: 12000,
+        };
+    }
+  }, [quality]);
 
   return (
     <View style={{width: reelWidth, height: reelHeight, position: 'relative', backgroundColor: '#000'}}>
@@ -123,15 +303,37 @@ function ReelItem({
           posterUri={item.thumbnailUrl ? thumbUri : undefined}
           style={{width: '100%', height: '100%', position: 'absolute'}}
           resizeMode="cover"
-          repeat
+          repeat={!autoScroll}
           paused={paused}
           muted={muted}
           ignoreSilentSwitch="ignore"
           bufferConfig={bufferConfig}
           preventsDisplaySleepDuringVideoPlayback
           posterOverlayUntilReady
-          onDecoderReady={() => setVideoLoading(false)}
-          onPlaybackError={() => setVideoLoading(false)}
+          onDecoderReady={() => setCoverSpinner(false)}
+          onPlaybackError={() => setCoverSpinner(false)}
+          onLoad={d => {
+            const dur = typeof d.duration === 'number' && Number.isFinite(d.duration) ? d.duration : 0;
+            if (dur > 0) durationRef.current = dur;
+          }}
+          onProgress={d => {
+            const now = Date.now();
+            if (now - lastProgTick.current < 180) return;
+            lastProgTick.current = now;
+            let dur = durationRef.current;
+            if (dur <= 0) {
+              dur = d.seekableDuration || d.playableDuration || 0;
+              if (dur > 0) durationRef.current = dur;
+            }
+            if (dur > 0) {
+              setProgress(Math.min(1, Math.max(0, d.currentTime / dur)));
+            }
+          }}
+          onEnd={() => {
+            if (isActive && autoScroll) {
+              onAutoAdvanceClip();
+            }
+          }}
         />
       ) : (
         <Image
@@ -141,12 +343,21 @@ function ReelItem({
         />
       )}
 
-      {/* Loading indicator */}
-      {isActive && videoLoading && item.mediaType === 'video' && (
+      {/* First-frame / buffer cover (do not tie to isActive-only — that caused endless spinner after swipe back) */}
+      {isActive && coverSpinner && item.mediaType === 'video' && (
         <View style={{...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center'}} pointerEvents="none">
           <ActivityIndicator color="#fff" size="large" />
         </View>
       )}
+
+      {/* Progress (Instagram-style thin bar) */}
+      {item.mediaType === 'video' ? (
+        <View style={{position: 'absolute', bottom: 4, left: 0, right: 0, height: 2, zIndex: 12}} pointerEvents="none">
+          <View style={{height: 2, backgroundColor: 'rgba(255,255,255,0.22)'}}>
+            <View style={{height: 2, width: `${Math.round(progress * 1000) / 10}%`, backgroundColor: '#fff'}} />
+          </View>
+        </View>
+      ) : null}
 
       {/* Gradient overlay */}
       <View style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: 320, backgroundColor: palette.overlay}} />
@@ -218,7 +429,7 @@ function ReelItem({
           />
         </Pressable>
 
-        <Pressable>
+        <Pressable onPress={() => setMoreOpen(true)}>
           <MoreHorizontal size={28} color="#fff" />
         </Pressable>
 
@@ -274,6 +485,15 @@ function ReelItem({
           {muted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
         </Pressable>
       </View>
+
+      <ReelMoreSheet
+        visible={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        palette={palette}
+        bottomInset={insets.bottom}
+        autoScroll={autoScroll}
+        onAutoScroll={onAutoScrollChange}
+      />
     </View>
   );
 }
@@ -286,6 +506,8 @@ const VIEWABILITY_CONFIG: ViewabilityConfig = {
 export function ReelsScreen() {
   const navigation = useNavigation() as Nav;
   const {palette} = useTheme();
+  const insets = useSafeAreaInsets();
+  const [feedTab, setFeedTab] = useState<ReelFeedTab>('forYou');
   const [activeIndex, setActiveIndex] = useState(0);
   const win = Dimensions.get('window');
   const [reelHeight, setReelHeight] = useState(win.height);
@@ -297,10 +519,46 @@ export function ReelsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [quality, setQuality] = useState<Quality>('auto');
   const [showQualityPicker, setShowQualityPicker] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(false);
   const listRef = useRef<FlatList>(null);
   const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const loadingMoreRef = useRef(false);
+  const activeIndexRef = useRef(0);
+  const displayReelsLenRef = useRef(0);
+  const reelHeightRef = useRef(reelHeight);
+
+  const displayReels = useMemo(
+    () => (feedTab === 'friends' ? reels.filter(r => r.isFollowing) : reels),
+    [feedTab, reels],
+  );
+
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
+
+  useEffect(() => {
+    reelHeightRef.current = reelHeight;
+  }, [reelHeight]);
+
+  useEffect(() => {
+    displayReelsLenRef.current = displayReels.length;
+  }, [displayReels.length]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+    listRef.current?.scrollToOffset({offset: 0, animated: false});
+  }, [feedTab]);
+
+  const onAutoAdvanceClip = useCallback(() => {
+    const next = activeIndexRef.current + 1;
+    if (next >= displayReelsLenRef.current) return;
+    try {
+      listRef.current?.scrollToIndex({index: next, animated: true});
+    } catch {
+      listRef.current?.scrollToOffset({offset: next * reelHeightRef.current, animated: true});
+    }
+  }, []);
 
   const loadReels = useCallback(async (reset = false) => {
     const p = reset ? 1 : pageRef.current;
@@ -378,6 +636,7 @@ export function ReelsScreen() {
   const onViewableItemsChanged = useRef(({viewableItems}: {viewableItems: ViewToken[]}) => {
     const first = viewableItems[0];
     if (first?.index != null) {
+      activeIndexRef.current = first.index;
       setActiveIndex(first.index);
     }
   }).current;
@@ -396,10 +655,58 @@ export function ReelsScreen() {
     <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
+      {/* Reels / Friends (Instagram-style) */}
+      <View
+        style={{
+          position: 'absolute',
+          top: insets.top + 4,
+          left: 0,
+          right: 0,
+          zIndex: 25,
+          flexDirection: 'row',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 28,
+        }}
+        pointerEvents="box-none">
+        <Pressable onPress={() => setFeedTab('forYou')} hitSlop={10}>
+          <Text
+            style={{
+              color: '#fff',
+              fontSize: 16,
+              fontWeight: feedTab === 'forYou' ? '800' : '500',
+              opacity: feedTab === 'forYou' ? 1 : 0.55,
+            }}>
+            Reels
+          </Text>
+          {feedTab === 'forYou' ? (
+            <View style={{height: 2, marginTop: 4, borderRadius: 1, backgroundColor: palette.accent}} />
+          ) : (
+            <View style={{height: 2, marginTop: 4}} />
+          )}
+        </Pressable>
+        <Pressable onPress={() => setFeedTab('friends')} hitSlop={10}>
+          <Text
+            style={{
+              color: '#fff',
+              fontSize: 16,
+              fontWeight: feedTab === 'friends' ? '800' : '500',
+              opacity: feedTab === 'friends' ? 1 : 0.55,
+            }}>
+            Friends
+          </Text>
+          {feedTab === 'friends' ? (
+            <View style={{height: 2, marginTop: 4, borderRadius: 1, backgroundColor: palette.accent}} />
+          ) : (
+            <View style={{height: 2, marginTop: 4}} />
+          )}
+        </Pressable>
+      </View>
+
       <FlatList
         ref={listRef}
         style={{flex: 1}}
-        data={reels}
+        data={displayReels}
         keyExtractor={item => item._id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
@@ -425,10 +732,19 @@ export function ReelsScreen() {
         removeClippedSubviews
         viewabilityConfig={VIEWABILITY_CONFIG}
         onViewableItemsChanged={onViewableItemsChanged}
+        onScrollToIndexFailed={info => {
+          setTimeout(() => {
+            listRef.current?.scrollToIndex({index: info.index, animated: true, viewPosition: 0.5});
+          }, 350);
+        }}
         ListEmptyComponent={
-          <View style={{height: reelHeight, alignItems: 'center', justifyContent: 'center'}}>
-            <Text style={{color: '#fff', fontSize: 16, fontWeight: '600'}}>No reels yet</Text>
-            <Text style={{color: 'rgba(255,255,255,0.5)', marginTop: 8}}>Post your first reel!</Text>
+          <View style={{height: reelHeight, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24}}>
+            <Text style={{color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center'}}>
+              {feedTab === 'friends' ? 'No reels from people you follow yet' : 'No reels yet'}
+            </Text>
+            <Text style={{color: 'rgba(255,255,255,0.5)', marginTop: 8, textAlign: 'center'}}>
+              {feedTab === 'friends' ? 'Follow creators to see them here.' : 'Post your first reel!'}
+            </Text>
           </View>
         }
         ListFooterComponent={
@@ -447,12 +763,15 @@ export function ReelsScreen() {
             navigation={navigation}
             onLike={handleLike}
             quality={quality}
+            autoScroll={autoScroll}
+            onAutoScrollChange={setAutoScroll}
+            onAutoAdvanceClip={onAutoAdvanceClip}
           />
         )}
       />
 
       {/* Quality picker */}
-      <View style={{position: 'absolute', top: 16, left: 14, zIndex: 20}}>
+      <View style={{position: 'absolute', top: insets.top + 52, left: 14, zIndex: 20}}>
         <Pressable
           onPress={() => setShowQualityPicker(p => !p)}
           style={{

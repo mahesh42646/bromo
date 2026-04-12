@@ -53,6 +53,10 @@ export type NetworkVideoProps = {
   onDecoderReady?: () => void;
   /** Notified when playback fails (after logging to Metro). */
   onPlaybackError?: (detail: string) => void;
+  /** Passthrough from `react-native-video` (throttle in parent if needed). */
+  onLoad?: (d: OnLoadData) => void;
+  onProgress?: (d: OnProgressData) => void;
+  onEnd?: () => void;
 };
 
 /**
@@ -78,6 +82,9 @@ export function NetworkVideo({
   posterOverlayUntilReady = true,
   onDecoderReady,
   onPlaybackError,
+  onLoad: onLoadProp,
+  onProgress: onProgressProp,
+  onEnd,
 }: NetworkVideoProps) {
   const [ready, setReady] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -102,8 +109,7 @@ export function NetworkVideo({
     decoderReadyFired.current = false;
   }, [uri]);
 
-  // Safety net: if onReadyForDisplay never fires (e.g. Android surface timing),
-  // force-unblock the poster overlay after 6s so users aren't stuck on a black screen.
+  // Safety net: if ready callbacks never fire, unblock poster / parent loading UI.
   useEffect(() => {
     if (!uri?.trim()) return;
     const t = setTimeout(() => {
@@ -111,28 +117,35 @@ export function NetworkVideo({
         decoderReadyFired.current = true;
         setReady(true);
       }
-    }, 6000);
+    }, 3500);
     return () => clearTimeout(t);
   }, [uri]);
 
-  const onLoad = useCallback((_d: OnLoadData) => {
-    if (__DEV__) {
-      console.info(logPrefix, 'onLoad', uri);
-    }
-  }, [logPrefix, uri]);
+  const onLoad = useCallback(
+    (d: OnLoadData) => {
+      if (__DEV__) {
+        console.info(logPrefix, 'onLoad', uri);
+      }
+      onLoadProp?.(d);
+      /** Metadata is ready; unblocks loaders even when `onReadyForDisplay` is delayed (common on Android). */
+      fireDecoderReady();
+    },
+    [fireDecoderReady, logPrefix, onLoadProp, uri],
+  );
 
   const onReadyForDisplay = useCallback(() => {
     fireDecoderReady();
   }, [fireDecoderReady]);
 
   const onProgress = useCallback(
-    (_d: OnProgressData) => {
+    (d: OnProgressData) => {
+      onProgressProp?.(d);
       if (!progressed.current) {
         progressed.current = true;
         fireDecoderReady();
       }
     },
-    [fireDecoderReady],
+    [fireDecoderReady, onProgressProp],
   );
 
   const onBuffer = useCallback(({isBuffering}: {isBuffering: boolean}) => {
@@ -199,6 +212,7 @@ export function NetworkVideo({
         onProgress={onProgress}
         onBuffer={onBuffer}
         onError={onError}
+        onEnd={onEnd}
         // TextureView renders in the RN view hierarchy (not behind it like SurfaceView).
         // SurfaceView (default) punches through the RN layer → everything above it is black.
         viewType={Platform.OS === 'android' ? ViewType.TEXTURE : undefined}
