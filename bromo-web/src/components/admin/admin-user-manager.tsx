@@ -45,7 +45,7 @@ type ContentPost = {
 
 function isVideoUrl(url: string): boolean {
   const u = url.split("?")[0]?.toLowerCase() ?? "";
-  return [".mp4", ".mov", ".webm", ".m4v", ".3gp"].some((x) => u.endsWith(x));
+  return [".mp4", ".mov", ".webm", ".m4v", ".3gp", ".mkv", ".avi", ".mpeg", ".mpg"].some((x) => u.endsWith(x));
 }
 
 export function AdminUserManager({ userId }: { userId: string }) {

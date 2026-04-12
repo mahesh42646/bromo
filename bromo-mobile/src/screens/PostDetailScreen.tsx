@@ -151,6 +151,13 @@ export function PostDetailScreen() {
             muted={false}
             paused={false}
             posterOverlayUntilReady
+            bufferConfig={{
+              minBufferMs: 2500,
+              maxBufferMs: 25000,
+              bufferForPlaybackMs: 1500,
+              bufferForPlaybackAfterRebufferMs: 2800,
+              backBufferDurationMs: 25000,
+            }}
           />
         ) : (
           <Image

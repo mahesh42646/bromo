@@ -175,11 +175,20 @@ export async function uploadMedia(
     body: form,
   });
 
+  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
     throw new Error((body as {message?: string}).message ?? 'Upload failed');
   }
-  return res.json() as Promise<{url: string; thumbnailUrl?: string}>;
+  const url = (body as {url?: unknown}).url;
+  if (typeof url !== 'string' || !url.trim()) {
+    throw new Error('Upload succeeded but no file URL was returned. Try again or use MP4/MOV.');
+  }
+  return {
+    url: url.trim(),
+    thumbnailUrl: typeof (body as {thumbnailUrl?: unknown}).thumbnailUrl === 'string'
+      ? (body as {thumbnailUrl: string}).thumbnailUrl.trim() || undefined
+      : undefined,
+  };
 }
 
 // Re-export apiBase for use by other modules

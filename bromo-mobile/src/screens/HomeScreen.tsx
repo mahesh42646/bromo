@@ -171,6 +171,13 @@ function PostCard({post, onLikeToggle, navigation, isVideoVisible = false}: Post
             muted
             paused={!isVideoVisible}
             posterOverlayUntilReady
+            bufferConfig={{
+              minBufferMs: 2500,
+              maxBufferMs: 20000,
+              bufferForPlaybackMs: 1200,
+              bufferForPlaybackAfterRebufferMs: 2200,
+              backBufferDurationMs: 20000,
+            }}
           />
         ) : (
           <Image

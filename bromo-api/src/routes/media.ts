@@ -1,4 +1,5 @@
 import { Router, type Response, type NextFunction } from "express";
+import fs from "node:fs";
 import path from "node:path";
 import {
   requireFirebaseToken,
@@ -11,11 +12,13 @@ import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 import {
   publicUrlForUploadRelative,
   relativeUploadPathFromAbs,
+  normalizeUploadCategory,
 } from "../utils/uploadFiles.js";
+import { validateUploadForCategory } from "../utils/uploadPolicy.js";
 
 export const mediaRouter = Router();
 
-const VIDEO_EXTS = new Set([".mp4", ".mov", ".m4v", ".3gp", ".webm"]);
+const VIDEO_EXTS = new Set([".mp4", ".mov", ".m4v", ".3gp", ".webm", ".mkv", ".avi", ".mpeg", ".mpg"]);
 
 function urlFromStoredOrRelative(stored: string): string {
   if (stored.startsWith("http")) return rewritePublicMediaUrl(stored);
@@ -46,7 +49,19 @@ mediaRouter.post(
     if (!req.file?.path) {
       return res.status(400).json({ message: "No file uploaded" });
     }
+    const cat = normalizeUploadCategory((req.query as { category?: string }).category);
+    const policyErr = validateUploadForCategory(cat, req.file.mimetype, req.file.originalname);
+    if (policyErr) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch {
+        /* ignore */
+      }
+      console.warn("[media] upload rejected after store:", policyErr, req.file.path);
+      return res.status(400).json({ message: policyErr });
+    }
     const rel = relativeUploadPathFromAbs(req.file.path);
+    console.info("[media] upload ok", cat, rel, req.file.mimetype);
     const url = urlFromStoredOrRelative(rel);
     const ext = path.extname(req.file.filename).toLowerCase();
 
@@ -80,6 +95,15 @@ mediaRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     if (!req.file?.path) {
       return res.status(400).json({ message: "No file uploaded" });
+    }
+    const avatarPolicy = validateUploadForCategory("profile", req.file.mimetype, req.file.originalname);
+    if (avatarPolicy) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch {
+        /* ignore */
+      }
+      return res.status(400).json({ message: avatarPolicy });
     }
     try {
       const rel = relativeUploadPathFromAbs(req.file.path);

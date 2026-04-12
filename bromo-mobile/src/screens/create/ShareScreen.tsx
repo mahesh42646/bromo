@@ -90,6 +90,14 @@ export function ShareScreen() {
     }
     setPhase('posting');
     try {
+      if (draft.mode === 'reel' && asset.type !== 'video') {
+        setPhase('review');
+        Alert.alert(
+          'Reels need video',
+          'Pick a video file (MP4, MOV, etc.). Photos in HEIC/JPEG cannot be uploaded as reels.',
+        );
+        return;
+      }
       const uploadCategory =
         draft.mode === 'reel' ? 'reels' : draft.mode === 'story' ? 'stories' : 'posts';
       const {url, thumbnailUrl} = await uploadMedia(asset.uri, {

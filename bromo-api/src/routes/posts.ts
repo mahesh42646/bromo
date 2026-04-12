@@ -375,6 +375,10 @@ postsRouter.post(
         return res.status(400).json({ message: "mediaUrl, mediaType and type are required" });
       }
 
+      if (type === "reel" && mediaType !== "video") {
+        return res.status(400).json({ message: "Reels must use video media (not HEIC/photos)." });
+      }
+
       const expiresAt = type === "story" ? new Date(Date.now() + 24 * 60 * 60 * 1000) : undefined;
 
       const post = await Post.create({

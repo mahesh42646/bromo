@@ -52,9 +52,23 @@ type RouteProps = RouteProp<CreateStackParamList, 'CreateHub'>;
 
 type GridItem = {kind: 'camera'} | {kind: 'asset'; uri: string; type: 'image' | 'video'};
 
+function extFromPickerName(name: string | undefined): string {
+  if (!name) return '';
+  const base = name.split('?')[0]?.split('/').pop()?.toLowerCase() ?? '';
+  const i = base.lastIndexOf('.');
+  return i >= 0 ? base.slice(i + 1) : '';
+}
+
 function mapAsset(a: Asset): MediaAsset | null {
   if (!a.uri) return null;
-  const isVideo = a.type === 'video';
+  const fn = (a.fileName ?? '').toLowerCase();
+  const uriTail = a.uri.split('?')[0]?.toLowerCase() ?? '';
+  const ext = extFromPickerName(a.fileName) || extFromPickerName(a.uri.split('/').pop() ?? '');
+  let isVideo = a.type === 'video';
+  /** HEIC/HEIF are never video files — picker sometimes mis-tags Live Photos. */
+  if (isVideo && (ext === 'heic' || ext === 'heif' || fn.endsWith('.heic') || fn.endsWith('.heif') || uriTail.endsWith('.heic') || uriTail.endsWith('.heif'))) {
+    isVideo = false;
+  }
   return {
     uri: a.uri,
     type: isVideo ? 'video' : 'image',
