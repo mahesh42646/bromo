@@ -1,7 +1,9 @@
+import type {CreateMode} from '../create/createTypes';
+
 /** Screens registered on the main app stack (post-login). */
 export type AppStackParamList = {
   Main: undefined;
-  CreateFlow: undefined;
+  CreateFlow: {mode?: CreateMode} | undefined;
   MessagesFlow: undefined;
   Profile: undefined;
 

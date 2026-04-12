@@ -12,6 +12,7 @@ import { postsRouter } from "./routes/posts.js";
 import { followRouter } from "./routes/follow.js";
 import { mediaRouter } from "./routes/media.js";
 import { chatRouter } from "./routes/chat.js";
+import { liveRouter } from "./routes/live.js";
 import { initFirebase } from "./config/firebase.js";
 
 export function createApp() {
@@ -56,6 +57,7 @@ export function createApp() {
   app.use("/users", followRouter);
   app.use("/media", mediaRouter);
   app.use("/chat", chatRouter);
+  app.use("/live", liveRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });

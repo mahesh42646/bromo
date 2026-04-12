@@ -10,6 +10,14 @@ import { Like } from "../models/Like.js";
 import { Comment } from "../models/Comment.js";
 import { Follow } from "../models/Follow.js";
 import { User } from "../models/User.js";
+import {
+  emitPostNew,
+  emitPostLike,
+  emitPostComment,
+  emitPostDelete,
+  emitStoryNew,
+  emitNotification,
+} from "../services/socketService.js";
 
 export const postsRouter = Router();
 
@@ -40,7 +48,9 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
 
 function buildUrl(req: FirebaseAuthedRequest, filename: string): string {
   if (filename.startsWith("http")) return filename;
-  const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
+  const proto = (Array.isArray(req.headers["x-forwarded-proto"])
+    ? req.headers["x-forwarded-proto"][0]
+    : req.headers["x-forwarded-proto"]) ?? req.protocol;
   const host = req.get("host") ?? "";
   return `${proto}://${host}/uploads/${filename}`;
 }
@@ -53,7 +63,8 @@ postsRouter.get(
     try {
       const dbUser = req.dbUser;
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const skip = (page - 1) * PAGE_SIZE;
+      const cursor = req.query.cursor as string | undefined;
+      const skip = cursor ? 0 : (page - 1) * PAGE_SIZE;
 
       let followingIds: mongoose.Types.ObjectId[] = [];
       if (dbUser) {
@@ -64,13 +75,17 @@ postsRouter.get(
         followingIds = follows.map((f) => f.followingId);
       }
 
-      const query = dbUser
+      const baseQuery = dbUser
         ? { authorId: { $in: [...followingIds, dbUser._id] }, type: "post", isActive: true }
         : { type: "post", isActive: true };
 
+      const query = cursor
+        ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
+        : baseQuery;
+
       const posts = await Post.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
+        .sort({ _id: -1 })
+        .skip(cursor ? 0 : skip)
         .limit(PAGE_SIZE)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
@@ -86,10 +101,10 @@ postsRouter.get(
       }
 
       const followingSet = new Set(followingIds.map(String));
-
       const result = posts.map((p) => normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)));
+      const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
 
-      return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
+      return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE, nextCursor });
     } catch (err) {
       console.error("[posts] feed error:", err);
       return res.status(500).json({ message: "Failed to fetch feed" });
@@ -104,11 +119,17 @@ postsRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const dbUser = req.dbUser;
+      const cursor = req.query.cursor as string | undefined;
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const skip = (page - 1) * PAGE_SIZE;
+      const skip = cursor ? 0 : (page - 1) * PAGE_SIZE;
 
-      const posts = await Post.find({ type: "reel", isActive: true })
-        .sort({ createdAt: -1 })
+      const baseQuery = { type: "reel" as const, isActive: true };
+      const query = cursor
+        ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
+        : baseQuery;
+
+      const posts = await Post.find(query)
+        .sort({ _id: -1 })
         .skip(skip)
         .limit(PAGE_SIZE)
         .populate("authorId", AUTHOR_SELECT)
@@ -134,8 +155,9 @@ postsRouter.get(
       const result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
+      const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
 
-      return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
+      return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE, nextCursor });
     } catch (err) {
       console.error("[posts] reels error:", err);
       return res.status(500).json({ message: "Failed to fetch reels" });
@@ -338,9 +360,10 @@ postsRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
-      const { type, mediaUrl, mediaType, caption, location, music, tags } = req.body as {
+      const { type, mediaUrl, thumbnailUrl, mediaType, caption, location, music, tags } = req.body as {
         type: "post" | "reel" | "story";
         mediaUrl: string;
+        thumbnailUrl?: string;
         mediaType: "image" | "video";
         caption?: string;
         location?: string;
@@ -358,6 +381,7 @@ postsRouter.post(
         authorId: user._id,
         type,
         mediaUrl,
+        thumbnailUrl: thumbnailUrl ?? "",
         mediaType,
         caption: caption?.trim() ?? "",
         location: location?.trim() ?? "",
@@ -372,9 +396,16 @@ postsRouter.post(
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
-      return res.status(201).json({
-        post: { ...populated, author: populated?.authorId, authorId: undefined },
-      });
+      const result = { ...populated, author: populated?.authorId, authorId: undefined };
+
+      // Real-time: broadcast new post/reel/story
+      if (type === "story") {
+        emitStoryNew(String(user._id));
+      } else {
+        emitPostNew(result as object);
+      }
+
+      return res.status(201).json({ post: result });
     } catch (err) {
       console.error("[posts] create error:", err);
       return res.status(500).json({ message: "Failed to create post" });
@@ -397,6 +428,7 @@ postsRouter.delete(
       post.isActive = false;
       await post.save();
       await User.findByIdAndUpdate(user._id, { $inc: { postsCount: -1 } });
+      emitPostDelete(String(req.params.id));
       return res.json({ message: "Post deleted" });
     } catch (err) {
       console.error("[posts] delete error:", err);
@@ -412,18 +444,34 @@ postsRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
-      const postId = req.params.id;
+      const postId = String(req.params.id);
 
       const existing = await Like.findOne({ targetId: postId, userId: user._id, targetType: "post" });
       if (existing) {
         await existing.deleteOne();
-        await Post.findByIdAndUpdate(postId, { $inc: { likesCount: -1 } });
-        return res.json({ liked: false });
+        const updated = await Post.findByIdAndUpdate(postId, { $inc: { likesCount: -1 } }, {new: true});
+        const count = updated?.likesCount ?? 0;
+        emitPostLike(postId, count, false, String(user._id));
+        return res.json({ liked: false, likesCount: count });
       }
 
       await Like.create({ targetId: postId, userId: user._id, targetType: "post" });
       const post = await Post.findByIdAndUpdate(postId, { $inc: { likesCount: 1 } }, { new: true });
-      return res.json({ liked: true, likesCount: post?.likesCount ?? 0 });
+      const count = post?.likesCount ?? 0;
+      emitPostLike(postId, count, true, String(user._id));
+
+      // Notify post author
+      if (post && String(post.authorId) !== String(user._id)) {
+        emitNotification(
+          String(post.authorId),
+          "like",
+          String(user._id),
+          postId,
+          `${user.displayName} liked your post`,
+        );
+      }
+
+      return res.json({ liked: true, likesCount: count });
     } catch (err) {
       console.error("[posts] like error:", err);
       return res.status(500).json({ message: "Failed to toggle like" });
@@ -486,26 +534,40 @@ postsRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
+      const postId = String(req.params.id);
       const { text, parentId } = req.body as { text: string; parentId?: string };
 
       if (!text?.trim()) return res.status(400).json({ message: "Comment text required" });
 
       const comment = await Comment.create({
-        postId: req.params.id,
+        postId,
         authorId: user._id,
         text: text.trim(),
         parentId: parentId || undefined,
       });
 
-      await Post.findByIdAndUpdate(req.params.id, { $inc: { commentsCount: 1 } });
+      const updated = await Post.findByIdAndUpdate(postId, { $inc: { commentsCount: 1 } }, {new: true});
+      const commentsCount = updated?.commentsCount ?? 0;
 
       const populated = await Comment.findById(comment._id)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
-      return res.status(201).json({
-        comment: { ...populated, author: populated?.authorId, authorId: undefined },
-      });
+      const result = { ...populated, author: populated?.authorId, authorId: undefined };
+      emitPostComment(postId, commentsCount, result as object);
+
+      // Notify post author
+      if (updated && String(updated.authorId) !== String(user._id)) {
+        emitNotification(
+          String(updated.authorId),
+          "comment",
+          String(user._id),
+          postId,
+          `${user.displayName} commented: ${text.trim().slice(0, 50)}`,
+        );
+      }
+
+      return res.status(201).json({ comment: result });
     } catch (err) {
       console.error("[posts] add comment error:", err);
       return res.status(500).json({ message: "Failed to add comment" });

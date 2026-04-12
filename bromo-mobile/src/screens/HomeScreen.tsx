@@ -47,6 +47,7 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {getFeed, getStories, toggleLike, type Post, type StoryGroup} from '../api/postsApi';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
+import {socketService} from '../services/socketService';
 
 type IconComp = ComponentType<{size?: number; color?: string}>;
 
@@ -348,6 +349,33 @@ export function HomeScreen() {
     });
   }, []);
 
+  // Real-time feed: listen for new posts, likes, and story arrivals
+  useEffect(() => {
+    const unsubLike = socketService.on('post:like', ({postId, likesCount, liked}) => {
+      setPosts(prev =>
+        prev.map(p => p._id === postId ? {...p, likesCount, isLiked: liked} : p),
+      );
+    });
+    const unsubDelete = socketService.on('post:delete', ({postId}) => {
+      setPosts(prev => prev.filter(p => p._id !== postId));
+    });
+    const unsubComment = socketService.on('post:comment', ({postId, commentsCount}) => {
+      setPosts(prev =>
+        prev.map(p => p._id === postId ? {...p, commentsCount} : p),
+      );
+    });
+    const unsubStory = socketService.on('story:new', () => {
+      // Refresh story bar on new story from following
+      getStories().then(r => setStoryGroups(r.stories)).catch(() => null);
+    });
+    return () => {
+      unsubLike();
+      unsubDelete();
+      unsubComment();
+      unsubStory();
+    };
+  }, []);
+
   const collapseSearch = useCallback(() => {
     setSearchExpanded(false);
     setHomeSearchQuery('');
@@ -540,7 +568,7 @@ export function HomeScreen() {
                   {/* Own story */}
                   <Pressable
                     style={{alignItems: 'center', gap: 5}}
-                    onPress={() => parentNavigate(navigation, 'CreateFlow')}>
+                    onPress={() => parentNavigate(navigation, 'CreateFlow', {mode: 'story'})}>
                     <View style={{position: 'relative'}}>
                       <Image
                         source={{uri: myAvatar || `https://ui-avatars.com/api/?name=${dbUser?.displayName ?? 'You'}`}}

@@ -12,7 +12,8 @@ import {
   View,
 } from 'react-native';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
-import {useFocusEffect, useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
+import type {RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {
@@ -47,6 +48,7 @@ import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import type {ThemePalette} from '../../config/platform-theme';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'CreateHub'>;
+type RouteProps = RouteProp<CreateStackParamList, 'CreateHub'>;
 
 type GridItem = {kind: 'camera'} | {kind: 'asset'; uri: string; type: 'image' | 'video'};
 
@@ -70,6 +72,7 @@ const MODES: {id: CreateMode; label: string}[] = [
 
 export function CreateHubScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProps>();
   const {palette} = useTheme();
   const styles = makeStyles(palette);
   const {draft, setMode, setAssets, reset, setLiveMeta} = useCreateDraft();
@@ -89,7 +92,10 @@ export function CreateHubScreen() {
       if (didBootstrap.current) return;
       didBootstrap.current = true;
       reset();
-    }, [reset]),
+      // Apply mode if passed from parent navigation (e.g. story "+" tap)
+      const initialMode = route.params?.mode;
+      if (initialMode) setMode(initialMode);
+    }, [reset, route.params?.mode, setMode]),
   );
 
   useEffect(() => {
@@ -155,7 +161,8 @@ export function CreateHubScreen() {
   const openLibraryFull = useCallback(() => {
     launchImageLibrary(
       {
-        mediaType: draft.mode === 'post' ? 'mixed' : 'video',
+        // story can be image or video; reel is video-only; post is both
+        mediaType: draft.mode === 'reel' ? 'video' : 'mixed',
         selectionLimit: draft.mode === 'post' && multiSelect ? 10 : 1,
       },
       res => {
@@ -179,6 +186,21 @@ export function CreateHubScreen() {
           return n;
         });
         setPreviewUri(uri);
+        return;
+      }
+      // On iOS, CameraRoll returns ph:// URIs for videos which react-native-video
+      // cannot play directly. Use the image picker to get a proper file:// URI.
+      if (type === 'video' && uri.startsWith('ph://')) {
+        launchImageLibrary({mediaType: 'video', selectionLimit: 1}, res => {
+          if (res.didCancel || res.errorCode) return;
+          const a = res.assets?.[0];
+          if (!a) return;
+          const m = mapAsset(a);
+          if (m) {
+            setAssets([m]);
+            navigation.navigate('MediaEditor');
+          }
+        });
         return;
       }
       setAssets([{uri, type}]);

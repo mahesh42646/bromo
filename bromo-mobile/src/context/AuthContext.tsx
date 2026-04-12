@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import auth, {type FirebaseAuthTypes} from '@react-native-firebase/auth';
+import {socketService} from '../services/socketService';
 import {GoogleSignin} from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -86,16 +87,21 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
           if ('needsRegistration' in result) {
             setDbUser(null);
             AsyncStorage.removeItem(K_DB_USER);
+            socketService.disconnect();
           } else {
             setDbUser(result.user);
             AsyncStorage.setItem(K_DB_USER, JSON.stringify(result.user));
+            // Connect socket after successful auth
+            socketService.connect().catch(() => null);
           }
         } catch {
           // keep cached value if network fails
+          socketService.connect().catch(() => null);
         }
       } else {
         setDbUser(null);
         AsyncStorage.removeItem(K_DB_USER);
+        socketService.disconnect();
       }
       if (initializing) {
         setInitializing(false);

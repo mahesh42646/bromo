@@ -90,12 +90,13 @@ export function ShareScreen() {
     }
     setPhase('posting');
     try {
-      const {url} = await uploadMedia(asset.uri, {type: asset.type, fileName: asset.fileName});
+      const {url, thumbnailUrl} = await uploadMedia(asset.uri, {type: asset.type, fileName: asset.fileName});
       const mediaType = asset.type === 'video' ? 'video' : 'image';
       const postType = draft.mode === 'reel' ? 'reel' : draft.mode === 'story' ? 'story' : 'post';
       await createPost({
         type: postType,
         mediaUrl: url,
+        thumbnailUrl,
         mediaType,
         caption: [draft.caption, ...draft.hashtags].filter(Boolean).join(' ') || undefined,
         location: draft.location?.name,

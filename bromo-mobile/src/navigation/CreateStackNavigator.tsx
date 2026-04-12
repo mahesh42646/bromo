@@ -15,9 +15,10 @@ import {
   MusicPickerScreen,
   VideoTrimScreen,
 } from '@/screens/sop/bundles/feedExploreBundle';
+import type {CreateMode} from '@/create/createTypes';
 
 export type CreateStackParamList = {
-  CreateHub: undefined;
+  CreateHub: {mode?: CreateMode} | undefined;
   MediaEditor: undefined;
   Composer: undefined;
   ShareFinal: undefined;

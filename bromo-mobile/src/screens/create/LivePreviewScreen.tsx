@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
+  Alert,
   Animated,
   FlatList,
   Pressable,
@@ -28,6 +29,8 @@ import {useTheme} from '../../context/ThemeContext';
 import type {ThemePalette} from '../../config/platform-theme';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
+import {socketService} from '../../services/socketService';
+import {authedFetch, apiBase} from '../../api/authApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'LivePreview'>;
 
@@ -38,18 +41,8 @@ type LiveComment = {
   isHost?: boolean;
 };
 
-const SIMULATED_COMMENTS: LiveComment[] = [
-  {id: 'lc1', username: 'priya_vibes', text: 'Hey! Just joined '},
-  {id: 'lc2', username: 'tech_marathi', text: 'Looks amazing!'},
-  {id: 'lc3', username: 'shop_local', text: 'Can you show the product?'},
-  {id: 'lc4', username: 'foodie_india', text: ''},
-  {id: 'lc5', username: 'travel_squad', text: 'Love this stream!'},
-  {id: 'lc6', username: 'creator_hub', text: 'When is the drop?'},
-  {id: 'lc7', username: 'music_addict', text: 'Great quality!'},
-  {id: 'lc8', username: 'fashion_daily', text: 'Share the link please'},
-];
-
 type LivePhase = 'preview' | 'live' | 'ended';
+type LiveStreamInfo = {streamId: string; rtmpUrl: string; hlsUrl: string};
 
 export function LivePreviewScreen() {
   const navigation = useNavigation<Nav>();
@@ -64,9 +57,12 @@ export function LivePreviewScreen() {
   const [myComment, setMyComment] = useState('');
   const [duration, setDuration] = useState(0);
   const [titleLocal, setTitleLocal] = useState(draft.liveTitle);
+  const [streamInfo, setStreamInfo] = useState<LiveStreamInfo | null>(null);
+  const [starting, setStarting] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const commentsRef = useRef<FlatList>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Pulse animation for LIVE badge
   useEffect(() => {
@@ -82,28 +78,38 @@ export function LivePreviewScreen() {
     }
   }, [phase, pulseAnim]);
 
-  // Simulate viewers + comments during live
+  // Duration timer while live
   useEffect(() => {
-    if (phase !== 'live') return;
-    const viewerInterval = setInterval(() => {
-      setViewers(v => {
-        const delta = Math.floor(Math.random() * 8) - 2;
-        return Math.max(1, v + delta);
-      });
-    }, 3000);
-    const commentInterval = setInterval(() => {
-      setComments(prev => {
-        if (prev.length >= SIMULATED_COMMENTS.length) return prev;
-        return [...prev, SIMULATED_COMMENTS[prev.length]];
-      });
-    }, 4000);
-    const timer = setInterval(() => setDuration(d => d + 1), 1000);
-    return () => {
-      clearInterval(viewerInterval);
-      clearInterval(commentInterval);
-      clearInterval(timer);
-    };
+    if (phase === 'live') {
+      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+      };
+    }
   }, [phase]);
+
+  // Real-time comments + viewer count via socket
+  useEffect(() => {
+    if (phase !== 'live' || !streamInfo) return;
+
+    const unsub = socketService.on('live:comment', data => {
+      if (data.streamId !== streamInfo.streamId) return;
+      setComments(prev => [
+        ...prev,
+        {id: `${Date.now()}`, username: String((data as {userId?: unknown}).userId ?? 'viewer'), text: data.text},
+      ]);
+    });
+
+    const unsubViewers = socketService.on('live:viewer_count', data => {
+      if (data.streamId !== streamInfo.streamId) return;
+      setViewers(data.viewerCount);
+    });
+
+    return () => {
+      unsub();
+      unsubViewers();
+    };
+  }, [phase, streamInfo]);
 
   useEffect(() => {
     if (comments.length > 0) {
@@ -111,15 +117,42 @@ export function LivePreviewScreen() {
     }
   }, [comments.length]);
 
-  const goLive = useCallback(() => {
-    setLiveMeta({liveTitle: titleLocal});
-    setViewers(Math.floor(Math.random() * 5) + 1);
-    setPhase('live');
+  const goLive = useCallback(async () => {
+    setStarting(true);
+    try {
+      setLiveMeta({liveTitle: titleLocal});
+      const res = await authedFetch('/live/start', {
+        method: 'POST',
+        body: JSON.stringify({title: titleLocal}),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as {message?: string}).message ?? 'Failed to start live');
+      }
+      const data = await res.json() as LiveStreamInfo;
+      setStreamInfo(data);
+      setPhase('live');
+
+      // Note: in a production app, you would push an RTMP stream to data.rtmpUrl
+      // using a native RTMP publisher (react-native-rtmp-publisher or similar).
+      // The RTMP URL is: data.rtmpUrl
+      console.log('[Live] RTMP push URL:', data.rtmpUrl);
+      console.log('[Live] Viewer HLS URL:', data.hlsUrl);
+    } catch (err) {
+      Alert.alert('Failed to go live', err instanceof Error ? err.message : 'Try again');
+    } finally {
+      setStarting(false);
+    }
   }, [titleLocal, setLiveMeta]);
 
-  const endLive = useCallback(() => {
+  const endLive = useCallback(async () => {
+    if (streamInfo) {
+      try {
+        await authedFetch(`/live/${streamInfo.streamId}/end`, {method: 'POST'});
+      } catch {}
+    }
     setPhase('ended');
-  }, []);
+  }, [streamInfo]);
 
   const closeAll = useCallback(() => {
     reset();
@@ -127,13 +160,14 @@ export function LivePreviewScreen() {
   }, [navigation, reset]);
 
   const sendComment = useCallback(() => {
-    if (!myComment.trim()) return;
+    if (!myComment.trim() || !streamInfo) return;
+    socketService.sendLiveComment(streamInfo.streamId, myComment.trim());
     setComments(prev => [
       ...prev,
       {id: `my_${Date.now()}`, username: 'you', text: myComment.trim(), isHost: true},
     ]);
     setMyComment('');
-  }, [myComment]);
+  }, [myComment, streamInfo]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -192,6 +226,9 @@ export function LivePreviewScreen() {
           <View style={styles.cameraPlaceholder}>
             <Radio size={48} color={palette.accent} />
             <Text style={styles.cameraText}>Camera preview</Text>
+            <Text style={[styles.cameraSubtext, {color: palette.foregroundMuted}]}>
+              Install react-native-rtmp-publisher for live camera feed
+            </Text>
           </View>
 
           <View style={styles.previewForm}>
@@ -217,9 +254,12 @@ export function LivePreviewScreen() {
               <ChevronDown size={14} color={palette.foregroundMuted} />
             </Pressable>
 
-            <Pressable style={styles.goLiveBtn} onPress={goLive}>
+            <Pressable
+              style={[styles.goLiveBtn, starting && {opacity: 0.6}]}
+              onPress={goLive}
+              disabled={starting}>
               <Radio size={20} color="#fff" />
-              <Text style={styles.goLiveTxt}>Go live</Text>
+              <Text style={styles.goLiveTxt}>{starting ? 'Starting...' : 'Go live'}</Text>
             </Pressable>
           </View>
         </View>
@@ -231,9 +271,15 @@ export function LivePreviewScreen() {
   return (
     <ThemedSafeScreen style={styles.root}>
       <View style={styles.liveContainer}>
-        {/* Camera background placeholder */}
+        {/* Camera background (requires react-native-rtmp-publisher native module) */}
         <View style={styles.liveCameraBg}>
-          <Text style={styles.liveCameraText}>LIVE Camera Feed</Text>
+          <Radio size={32} color={palette.accent} />
+          <Text style={styles.liveCameraText}>LIVE</Text>
+          {streamInfo && (
+            <Text style={[styles.liveCameraSubText, {color: palette.foregroundMuted}]} numberOfLines={2}>
+              RTMP: {streamInfo.rtmpUrl}
+            </Text>
+          )}
         </View>
 
         {/* Top bar */}
@@ -286,20 +332,24 @@ export function LivePreviewScreen() {
               placeholder="Comment..."
               placeholderTextColor={palette.foregroundSubtle}
               style={styles.commentInput}
+              onSubmitEditing={sendComment}
             />
             <Pressable onPress={sendComment} style={styles.sendBtn}>
               <Send size={18} color={palette.accent} />
             </Pressable>
           </View>
           <View style={styles.liveActions}>
-            <Pressable style={styles.liveActionBtn} onPress={() => setLikes(l => l + 1)}>
+            <Pressable style={styles.liveActionBtn} onPress={() => {
+              setLikes(l => l + 1);
+              if (streamInfo) socketService.sendLiveLike(streamInfo.streamId);
+            }}>
               <Heart size={22} color={palette.destructive} fill={likes > 0 ? palette.destructive : 'transparent'} />
             </Pressable>
             <Pressable style={styles.liveActionBtn}>
               <ShoppingBag size={22} color={palette.foreground} />
             </Pressable>
             <Pressable style={styles.liveActionBtn}>
-              <Zap size={22} color={palette.warning} />
+              <Zap size={22} color={palette.warning ?? '#f59e0b'} />
             </Pressable>
             <Pressable style={styles.liveActionBtn}>
               <Share2 size={22} color={palette.foreground} />
@@ -316,8 +366,9 @@ function makeStyles(p: ThemePalette) {
     root: {flex: 1, backgroundColor: p.background},
     previewContainer: {flex: 1},
     closeBtn: {position: 'absolute', top: 8, right: 12, zIndex: 10, padding: 8},
-    cameraPlaceholder: {flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: p.background, gap: 12},
-    cameraText: {color: p.foregroundFaint, fontSize: 16},
+    cameraPlaceholder: {flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: p.background, gap: 12, paddingHorizontal: 24},
+    cameraText: {color: p.foreground, fontSize: 18, fontWeight: '700'},
+    cameraSubtext: {fontSize: 12, textAlign: 'center', lineHeight: 18},
     previewForm: {padding: 20, gap: 14},
     titleInput: {backgroundColor: p.card, borderRadius: 12, padding: 14, color: p.foreground, fontSize: 16, borderWidth: 1, borderColor: p.surfaceHigh},
     audienceBtn: {flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: p.card, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: p.surfaceHigh},
@@ -325,12 +376,13 @@ function makeStyles(p: ThemePalette) {
     goLiveBtn: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: p.accent, paddingVertical: 16, borderRadius: 14},
     goLiveTxt: {color: p.accentForeground, fontWeight: '900', fontSize: 17},
     liveContainer: {flex: 1},
-    liveCameraBg: {...StyleSheet.absoluteFillObject, backgroundColor: p.surface, alignItems: 'center', justifyContent: 'center'},
-    liveCameraText: {color: p.border, fontSize: 18, fontWeight: '700'},
+    liveCameraBg: {...StyleSheet.absoluteFillObject, backgroundColor: p.surface, alignItems: 'center', justifyContent: 'center', gap: 8},
+    liveCameraText: {color: p.foreground, fontSize: 22, fontWeight: '900'},
+    liveCameraSubText: {fontSize: 10, textAlign: 'center', paddingHorizontal: 20},
     liveTopBar: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 10, zIndex: 5},
     liveBadgeRow: {flexDirection: 'row', alignItems: 'center', gap: 8},
     liveBadge: {backgroundColor: p.destructive, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6},
-    liveBadgeTxt: {color: p.destructiveForeground, fontWeight: '900', fontSize: 12},
+    liveBadgeTxt: {color: p.destructiveForeground ?? '#fff', fontWeight: '900', fontSize: 12},
     liveTimer: {color: p.foreground, fontWeight: '700', fontSize: 14},
     viewerBadge: {flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: p.overlay, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, marginLeft: 'auto'},
     viewerCount: {color: p.foreground, fontWeight: '800', fontSize: 13},

@@ -1,3 +1,4 @@
+import auth from '@react-native-firebase/auth';
 import {authedFetch, apiBase} from './authApi';
 import {buildMediaUploadPart} from '../lib/mediaUploadPart';
 
@@ -42,6 +43,7 @@ export type FeedResponse = {
   posts: Post[];
   page: number;
   hasMore: boolean;
+  nextCursor?: string | null;
 };
 
 export type CommentsResponse = {
@@ -94,6 +96,7 @@ export async function getPost(id: string): Promise<{post: Post}> {
 export async function createPost(data: {
   type: 'post' | 'reel' | 'story';
   mediaUrl: string;
+  thumbnailUrl?: string;
   mediaType: 'image' | 'video';
   caption?: string;
   location?: string;
@@ -152,8 +155,7 @@ export async function deleteComment(postId: string, commentId: string): Promise<
 export async function uploadMedia(
   localUri: string,
   meta?: {type: 'image' | 'video'; fileName?: string | null},
-): Promise<{url: string}> {
-  const auth = (await import('@react-native-firebase/auth')).default;
+): Promise<{url: string; thumbnailUrl?: string}> {
   const user = auth().currentUser;
   if (!user) throw new Error('Not authenticated');
   const token = await user.getIdToken(false);
@@ -173,7 +175,7 @@ export async function uploadMedia(
     const body = await res.json().catch(() => ({}));
     throw new Error((body as {message?: string}).message ?? 'Upload failed');
   }
-  return res.json() as Promise<{url: string}>;
+  return res.json() as Promise<{url: string; thumbnailUrl?: string}>;
 }
 
 // Re-export apiBase for use by other modules
