@@ -47,5 +47,10 @@ const postSchema = new Schema<PostDoc>(
 postSchema.index({ authorId: 1, createdAt: -1 });
 postSchema.index({ type: 1, createdAt: -1 });
 postSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Fast feed/reels lookup — covers the query filter + _id sort in one index scan
+postSchema.index({ type: 1, isActive: 1, isDeleted: 1, _id: -1 });
+postSchema.index({ authorId: 1, type: 1, isActive: 1, isDeleted: 1, _id: -1 });
+// Explore sort (viewsCount desc)
+postSchema.index({ type: 1, isActive: 1, isDeleted: 1, viewsCount: -1, createdAt: -1 });
 
 export const Post = mongoose.model<PostDoc>("Post", postSchema);

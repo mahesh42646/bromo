@@ -66,16 +66,19 @@ postsRouter.get(
       const cursor = req.query.cursor as string | undefined;
       const skip = cursor ? 0 : (page - 1) * PAGE_SIZE;
 
+      // Fetch following list in parallel with nothing yet — resolved immediately
       let followingIds: mongoose.Types.ObjectId[] = [];
       if (dbUser) {
-        const follows = await Follow.find({
-          followerId: dbUser._id,
-          status: "accepted",
-        }).select("followingId");
+        const follows = await Follow.find({ followerId: dbUser._id, status: "accepted" })
+          .select("followingId")
+          .lean();
         followingIds = follows.map((f) => f.followingId);
       }
 
-      const baseQuery = dbUser
+      // When the user follows nobody yet, fall back to explore (public posts),
+      // so the feed is never empty on first open.
+      const hasFollows = followingIds.length > 0;
+      const baseQuery = dbUser && hasFollows
         ? { authorId: { $in: [...followingIds, dbUser._id] }, type: "post", ...VISIBLE_POST }
         : { type: "post", ...VISIBLE_POST };
 
@@ -83,27 +86,29 @@ postsRouter.get(
         ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
         : baseQuery;
 
-      const posts = await Post.find(query)
-        .sort({ _id: -1 })
-        .skip(cursor ? 0 : skip)
-        .limit(PAGE_SIZE)
-        .populate("authorId", AUTHOR_SELECT)
-        .lean();
+      // Run posts query + likes query in parallel
+      const [posts, likes] = await Promise.all([
+        Post.find(query)
+          .sort({ _id: -1 })
+          .skip(cursor ? 0 : skip)
+          .limit(PAGE_SIZE)
+          .populate("authorId", AUTHOR_SELECT)
+          .lean(),
+        dbUser
+          ? Like.find({ userId: dbUser._id, targetType: "post" })
+              .select("targetId")
+              .lean()
+          : Promise.resolve([]),
+      ]);
 
-      const likedSet = new Set<string>();
-      if (dbUser) {
-        const likes = await Like.find({
-          userId: dbUser._id,
-          targetType: "post",
-          targetId: { $in: posts.map((p) => p._id) },
-        }).select("targetId");
-        likes.forEach((l) => likedSet.add(String(l.targetId)));
-      }
-
+      const likedSet = new Set(likes.map((l) => String(l.targetId)));
       const followingSet = new Set(followingIds.map(String));
-      const result = posts.map((p) => normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)));
+      const result = posts.map((p) =>
+        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+      );
       const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
 
+      res.setHeader("Cache-Control", "private, no-store");
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE, nextCursor });
     } catch (err) {
       console.error("[posts] feed error:", err);
@@ -128,35 +133,31 @@ postsRouter.get(
         ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
         : baseQuery;
 
-      const posts = await Post.find(query)
-        .sort({ _id: -1 })
-        .skip(skip)
-        .limit(PAGE_SIZE)
-        .populate("authorId", AUTHOR_SELECT)
-        .lean();
+      // Fetch posts + likes + follows all in parallel — was 3 sequential round-trips
+      const [posts, likes, follows] = await Promise.all([
+        Post.find(query)
+          .sort({ _id: -1 })
+          .skip(skip)
+          .limit(PAGE_SIZE)
+          .populate("authorId", AUTHOR_SELECT)
+          .lean(),
+        dbUser
+          ? Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean()
+          : Promise.resolve([]),
+        dbUser
+          ? Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
+          : Promise.resolve([]),
+      ]);
 
-      const likedSet = new Set<string>();
-      let followingSet = new Set<string>();
-      if (dbUser) {
-        const likes = await Like.find({
-          userId: dbUser._id,
-          targetType: "post",
-          targetId: { $in: posts.map((p) => p._id) },
-        }).select("targetId");
-        likes.forEach((l) => likedSet.add(String(l.targetId)));
-
-        const follows = await Follow.find({
-          followerId: dbUser._id,
-          status: "accepted",
-        }).select("followingId");
-        followingSet = new Set(follows.map((f) => String(f.followingId)));
-      }
+      const likedSet = new Set(likes.map((l) => String(l.targetId)));
+      const followingSet = new Set(follows.map((f) => String(f.followingId)));
 
       const result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
       const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
 
+      res.setHeader("Cache-Control", "private, no-store");
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE, nextCursor });
     } catch (err) {
       console.error("[posts] reels error:", err);
@@ -175,47 +176,36 @@ postsRouter.get(
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = (page - 1) * PAGE_SIZE;
 
-      let excludeIds: mongoose.Types.ObjectId[] = [];
-      if (dbUser) {
-        const follows = await Follow.find({
-          followerId: dbUser._id,
-          status: "accepted",
-        }).select("followingId");
-        excludeIds = [...follows.map((f) => f.followingId), dbUser._id];
-      }
+      // Single Follow query shared for both exclude-ids and followingSet
+      const follows = dbUser
+        ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
+        : [];
+      const followingIds = follows.map((f) => f.followingId);
+      const excludeIds = dbUser ? [...followingIds, dbUser._id] : [];
 
       const query = excludeIds.length
         ? { type: { $in: ["post", "reel"] }, ...VISIBLE_POST, authorId: { $nin: excludeIds } }
         : { type: { $in: ["post", "reel"] }, ...VISIBLE_POST };
 
-      const posts = await Post.find(query)
-        .sort({ viewsCount: -1, createdAt: -1 })
-        .skip(skip)
-        .limit(PAGE_SIZE)
-        .populate("authorId", AUTHOR_SELECT)
-        .lean();
+      const [posts, likes] = await Promise.all([
+        Post.find(query)
+          .sort({ viewsCount: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(PAGE_SIZE)
+          .populate("authorId", AUTHOR_SELECT)
+          .lean(),
+        dbUser
+          ? Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean()
+          : Promise.resolve([]),
+      ]);
 
-      let followingSet = new Set<string>();
-      const likedSet = new Set<string>();
-      if (dbUser) {
-        const follows = await Follow.find({
-          followerId: dbUser._id,
-          status: "accepted",
-        }).select("followingId");
-        followingSet = new Set(follows.map((f) => String(f.followingId)));
-
-        const likes = await Like.find({
-          userId: dbUser._id,
-          targetType: "post",
-          targetId: { $in: posts.map((p) => p._id) },
-        }).select("targetId");
-        likes.forEach((l) => likedSet.add(String(l.targetId)));
-      }
-
+      const followingSet = new Set(followingIds.map(String));
+      const likedSet = new Set(likes.map((l) => String(l.targetId)));
       const result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
 
+      res.setHeader("Cache-Control", "private, no-store");
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
     } catch (err) {
       console.error("[posts] explore error:", err);
@@ -509,15 +499,12 @@ postsRouter.post(
   "/:id/view",
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
-    try {
-      const p = await Post.findById(req.params.id).select("isDeleted isActive");
-      if (p && p.isActive && !p.isDeleted) {
-        await Post.findByIdAndUpdate(req.params.id, { $inc: { viewsCount: 1 } });
-      }
-      return res.json({ ok: true });
-    } catch {
-      return res.json({ ok: true });
-    }
+    // Single atomic query instead of find-then-update
+    Post.findOneAndUpdate(
+      { _id: req.params.id, isActive: true, isDeleted: { $ne: true } },
+      { $inc: { viewsCount: 1 } },
+    ).catch(() => null);
+    return res.json({ ok: true });
   },
 );
 

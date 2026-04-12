@@ -27,6 +27,39 @@ function formatVideoError(e: unknown): string {
   }
 }
 
+type BufferConfig = {
+  minBufferMs?: number;
+  maxBufferMs?: number;
+  bufferForPlaybackMs?: number;
+  bufferForPlaybackAfterRebufferMs?: number;
+  backBufferDurationMs?: number;
+};
+
+/** Fast-start presets — Instagram-like: start after ~1 s of buffered data. */
+const BUFFER_PRESETS: Record<string, BufferConfig> = {
+  reel: {
+    minBufferMs: 2000,
+    maxBufferMs: 15000,
+    bufferForPlaybackMs: 800,       // start playing after 0.8 s buffered (vs default 2.5 s)
+    bufferForPlaybackAfterRebufferMs: 1500,
+    backBufferDurationMs: 0,        // don't keep back-buffer; save memory
+  },
+  feed: {
+    minBufferMs: 3000,
+    maxBufferMs: 12000,
+    bufferForPlaybackMs: 1200,
+    bufferForPlaybackAfterRebufferMs: 2000,
+    backBufferDurationMs: 1000,
+  },
+  story: {
+    minBufferMs: 1500,
+    maxBufferMs: 10000,
+    bufferForPlaybackMs: 600,
+    bufferForPlaybackAfterRebufferMs: 1200,
+    backBufferDurationMs: 0,
+  },
+};
+
 export type NetworkVideoProps = {
   uri: string;
   posterUri?: string;
@@ -37,13 +70,7 @@ export type NetworkVideoProps = {
   resizeMode?: 'contain' | 'cover' | 'stretch' | 'none';
   /** Included in Metro logs to locate the surface (e.g. feed, reel, story). */
   context?: string;
-  bufferConfig?: {
-    minBufferMs?: number;
-    maxBufferMs?: number;
-    bufferForPlaybackMs?: number;
-    bufferForPlaybackAfterRebufferMs?: number;
-    backBufferDurationMs?: number;
-  };
+  bufferConfig?: BufferConfig;
   ignoreSilentSwitch?: 'ignore' | 'obey';
   rate?: number;
   preventsDisplaySleepDuringVideoPlayback?: boolean;
@@ -86,6 +113,7 @@ export function NetworkVideo({
   onProgress: onProgressProp,
   onEnd,
 }: NetworkVideoProps) {
+  const resolvedBufferConfig = bufferConfig ?? BUFFER_PRESETS[context] ?? BUFFER_PRESETS.feed;
   const [ready, setReady] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [buffering, setBuffering] = useState(false);
@@ -101,6 +129,10 @@ export function NetworkVideo({
     onDecoderReady?.();
   }, [onDecoderReady]);
 
+  /** Ref avoids stale timeout + prevents re-arming the safety timer every parent re-render. */
+  const fireDecoderReadyRef = useRef(fireDecoderReady);
+  fireDecoderReadyRef.current = fireDecoderReady;
+
   useEffect(() => {
     setReady(false);
     setErrorText(null);
@@ -109,15 +141,12 @@ export function NetworkVideo({
     decoderReadyFired.current = false;
   }, [uri]);
 
-  // Safety net: if ready callbacks never fire, unblock poster / parent loading UI.
+  // Safety net: if ready callbacks never fire, unblock poster / parent loading UI after 1 s.
   useEffect(() => {
     if (!uri?.trim()) return;
     const t = setTimeout(() => {
-      if (!decoderReadyFired.current) {
-        decoderReadyFired.current = true;
-        setReady(true);
-      }
-    }, 3500);
+      fireDecoderReadyRef.current();
+    }, 1000);
     return () => clearTimeout(t);
   }, [uri]);
 
@@ -198,8 +227,11 @@ export function NetworkVideo({
       <Video
         source={{
           uri,
-          // v6: bufferConfig belongs in source (component-level prop is deprecated)
-          ...(bufferConfig ? {bufferConfig} : {}),
+          headers: {
+            'User-Agent': 'BromoMobile/1 (react-native-video)',
+          },
+          // v6: bufferConfig lives inside source
+          bufferConfig: resolvedBufferConfig,
         }}
         style={StyleSheet.absoluteFill}
         resizeMode={resizeMode}

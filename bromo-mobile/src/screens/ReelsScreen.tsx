@@ -42,6 +42,7 @@ import {
 import {useNavigation} from '@react-navigation/native';
 import type {NavigationProp} from '@react-navigation/native';
 import {useTheme} from '../context/ThemeContext';
+import {useAuth} from '../context/AuthContext';
 import {StoryRing} from '../components/ui/StoryRing';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
@@ -194,7 +195,6 @@ function ReelItem({
   reelWidth,
   navigation,
   onLike,
-  quality,
   autoScroll,
   onAutoScrollChange,
   onAutoAdvanceClip,
@@ -205,7 +205,6 @@ function ReelItem({
   reelWidth: number;
   navigation: Nav;
   onLike: (id: string) => void;
-  quality: Quality;
   autoScroll: boolean;
   onAutoScrollChange: (v: boolean) => void;
   onAutoAdvanceClip: () => void;
@@ -222,6 +221,7 @@ function ReelItem({
   const viewRecorded = useRef(false);
   const durationRef = useRef(0);
   const lastProgTick = useRef(0);
+  const clearedSpinnerOnProgress = useRef(false);
   const {borderRadiusScale} = contract.brandGuidelines;
   const avatarUri = item.author.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.author.displayName)}&background=random`;
 
@@ -229,6 +229,7 @@ function ReelItem({
     setCoverSpinner(true);
     setProgress(0);
     durationRef.current = 0;
+    clearedSpinnerOnProgress.current = false;
   }, [item._id, item.mediaUrl]);
 
   useEffect(() => {
@@ -256,48 +257,16 @@ function ReelItem({
   const playUri = resolveMediaUrl(item.mediaUrl);
   const thumbUri = resolveMediaUrl(item.thumbnailUrl ?? '') || playUri;
 
-  const bufferConfig = useMemo(() => {
-    switch (quality) {
-      case 'low':
-        return {
-          minBufferMs: 800,
-          maxBufferMs: 12000,
-          bufferForPlaybackMs: 200,
-          bufferForPlaybackAfterRebufferMs: 400,
-          backBufferDurationMs: 8000,
-        };
-      case 'medium':
-        return {
-          minBufferMs: 1200,
-          maxBufferMs: 22000,
-          bufferForPlaybackMs: 320,
-          bufferForPlaybackAfterRebufferMs: 600,
-          backBufferDurationMs: 14000,
-        };
-      case 'high':
-        return {
-          minBufferMs: 2000,
-          maxBufferMs: 50000,
-          bufferForPlaybackMs: 500,
-          bufferForPlaybackAfterRebufferMs: 1200,
-          backBufferDurationMs: 24000,
-        };
-      default:
-        /** auto — start quickly; may rebuffer more on slow links */
-        return {
-          minBufferMs: 400,
-          maxBufferMs: 28000,
-          bufferForPlaybackMs: 200,
-          bufferForPlaybackAfterRebufferMs: 450,
-          backBufferDurationMs: 12000,
-        };
-    }
-  }, [quality]);
+  /** Stable so `NetworkVideo` safety timer / native callbacks are not reset every progress tick. */
+  const hideCoverSpinner = useCallback(() => {
+    setCoverSpinner(false);
+  }, []);
 
   return (
     <View style={{width: reelWidth, height: reelHeight, position: 'relative', backgroundColor: '#000'}}>
       {item.mediaType === 'video' ? (
         <NetworkVideo
+          key={item._id}
           context="reel"
           uri={playUri}
           posterUri={item.thumbnailUrl ? thumbUri : undefined}
@@ -307,16 +276,19 @@ function ReelItem({
           paused={paused}
           muted={muted}
           ignoreSilentSwitch="ignore"
-          bufferConfig={bufferConfig}
           preventsDisplaySleepDuringVideoPlayback
           posterOverlayUntilReady
-          onDecoderReady={() => setCoverSpinner(false)}
-          onPlaybackError={() => setCoverSpinner(false)}
+          onDecoderReady={hideCoverSpinner}
+          onPlaybackError={hideCoverSpinner}
           onLoad={d => {
             const dur = typeof d.duration === 'number' && Number.isFinite(d.duration) ? d.duration : 0;
             if (dur > 0) durationRef.current = dur;
           }}
           onProgress={d => {
+            if (!clearedSpinnerOnProgress.current && d.currentTime > 0.02) {
+              clearedSpinnerOnProgress.current = true;
+              hideCoverSpinner();
+            }
             const now = Date.now();
             if (now - lastProgTick.current < 180) return;
             lastProgTick.current = now;
@@ -506,6 +478,7 @@ const VIEWABILITY_CONFIG: ViewabilityConfig = {
 export function ReelsScreen() {
   const navigation = useNavigation() as Nav;
   const {palette} = useTheme();
+  const {ready: authReady} = useAuth();
   const insets = useSafeAreaInsets();
   const [feedTab, setFeedTab] = useState<ReelFeedTab>('forYou');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -584,10 +557,14 @@ export function ReelsScreen() {
     }
   }, []);
 
+  // Wait for Firebase auth to restore session before hitting the API.
+  // Without this guard, the first call fires before auth().currentUser is set
+  // → "Not authenticated" error → empty reel list forever (no retry).
   useEffect(() => {
+    if (!authReady) return;
     setLoading(true);
     loadReels(true).finally(() => setLoading(false));
-  }, [loadReels]);
+  }, [authReady, loadReels]);
 
   // Real-time: new reels & like updates via socket
   useEffect(() => {
@@ -728,8 +705,8 @@ export function ReelsScreen() {
         // Instagram-style: render 1 ahead, keep 3 in window, unload rest
         initialNumToRender={1}
         maxToRenderPerBatch={2}
-        windowSize={5}
-        removeClippedSubviews
+        windowSize={4}
+        removeClippedSubviews={false}
         viewabilityConfig={VIEWABILITY_CONFIG}
         onViewableItemsChanged={onViewableItemsChanged}
         onScrollToIndexFailed={info => {
@@ -762,7 +739,6 @@ export function ReelsScreen() {
             reelWidth={reelWidth}
             navigation={navigation}
             onLike={handleLike}
-            quality={quality}
             autoScroll={autoScroll}
             onAutoScrollChange={setAutoScroll}
             onAutoAdvanceClip={onAutoAdvanceClip}

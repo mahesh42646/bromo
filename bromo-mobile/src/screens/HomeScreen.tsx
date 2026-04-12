@@ -171,13 +171,6 @@ function PostCard({post, onLikeToggle, navigation, isVideoVisible = false}: Post
             muted
             paused={!isVideoVisible}
             posterOverlayUntilReady
-            bufferConfig={{
-              minBufferMs: 2500,
-              maxBufferMs: 20000,
-              bufferForPlaybackMs: 1200,
-              bufferForPlaybackAfterRebufferMs: 2200,
-              backBufferDurationMs: 20000,
-            }}
           />
         ) : (
           <Image
@@ -293,7 +286,7 @@ function SuggestionCard({user, onFollowToggle, navigation, palette, borderRadius
 
 export function HomeScreen() {
   const {palette, contract, isDark} = useTheme();
-  const {dbUser} = useAuth();
+  const {dbUser, ready: authReady} = useAuth();
   const navigation = useNavigation() as Nav;
   const tabBarHeight = useBottomTabBarHeight();
   const [activeCategory, setActiveCategory] = useState('home');
@@ -357,12 +350,15 @@ export function HomeScreen() {
     }
   }, [page]);
 
+  // Wait for Firebase auth to restore session before hitting the API.
   useEffect(() => {
+    if (!authReady) return;
     if (initialLoadDone.current) return;
     initialLoadDone.current = true;
     setLoading(true);
     loadData(true).finally(() => setLoading(false));
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

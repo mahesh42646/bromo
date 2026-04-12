@@ -43,10 +43,11 @@ class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
 
   override func bundleURL() -> URL? {
 #if DEBUG
+    // Optional LAN override from bundled `bromo-config.json` (see `npm run metro:sync-ip`).
+    // Leave `metroHost` empty to use React Native's default packager URL (avoids stale IPs).
     if let host = Self.metroHostFromBundledConfig(), !host.isEmpty,
-       let url = URL(string: "http://\(host):8081/index.bundle?platform=ios&dev=true&minify=false")
-    {
-      return url
+       let override = URL(string: "http://\(host):8081/index.bundle?platform=ios&dev=true&minify=false") {
+      return override
     }
     return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
 #else

@@ -76,12 +76,27 @@ export function createApp() {
     });
     next();
   });
+  const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
+  const VIDEO_STATIC_EXTS = new Set([".mp4", ".mov", ".webm", ".mkv", ".avi", ".mpeg", ".mpg", ".m4v"]);
+
   app.use(
     "/uploads",
     express.static(uploadsRoot, {
+      // ETag + Last-Modified enabled by default in express.static — good.
+      // Cache-Control: immutable for content-addressed media; 7d for avatars/thumbnails.
       setHeaders(res, absPath) {
         res.setHeader("Content-Type", contentTypeForUpload(absPath));
         res.setHeader("Accept-Ranges", "bytes");
+        const ext = path.extname(absPath).toLowerCase();
+        if (VIDEO_STATIC_EXTS.has(ext)) {
+          // Videos: cache 7 days in CDN/proxy, 1 day in client OS cache
+          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+        } else if (IMAGE_EXTS.has(ext)) {
+          // Images / thumbnails: cache 24h client, 7d proxy
+          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+        } else {
+          res.setHeader("Cache-Control", "public, max-age=3600");
+        }
       },
     }),
   );
