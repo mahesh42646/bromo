@@ -35,7 +35,7 @@ export function EditProfileScreen() {
   const [saving, setSaving] = useState(false);
 
   const pickAvatar = () => {
-    launchImageLibrary({mediaType: 'photo', quality: 0.85, selectionLimit: 1}, async res => {
+    launchImageLibrary({mediaType: 'photo', quality: 1, selectionLimit: 1}, async res => {
       const asset = res.assets?.[0];
       if (!asset?.uri) return;
       setUploading(true);

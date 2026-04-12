@@ -17,7 +17,8 @@ export type Post = {
   type: 'post' | 'reel' | 'story';
   mediaUrl: string;
   mediaType: 'image' | 'video';
-  thumbnailUrl: string;
+  /** Server-generated for video; use for grids and `<Image>` previews */
+  thumbnailUrl?: string;
   caption: string;
   location: string;
   music: string;

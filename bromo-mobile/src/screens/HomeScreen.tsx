@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import Video from 'react-native-video';
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
 import {useNavigation} from '@react-navigation/native';
 import {
@@ -45,6 +46,7 @@ import {SearchBar} from '../components/ui/SearchBar';
 import {Card} from '../components/ui/Card';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
+import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {getFeed, getStories, toggleLike, type Post, type StoryGroup} from '../api/postsApi';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {socketService} from '../services/socketService';
@@ -154,10 +156,25 @@ function PostCard({post, onLikeToggle, navigation}: PostCardProps) {
       ) : null}
 
       <Pressable onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}>
-        <Image
-          source={{uri: post.mediaUrl}}
-          style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
-        />
+        {post.mediaType === 'video' ? (
+          <Video
+            source={{uri: post.mediaUrl}}
+            style={{width: '100%', aspectRatio: 1}}
+            resizeMode="cover"
+            repeat
+            muted
+            paused={false}
+            poster={postThumbnailUri(post)}
+            ignoreSilentSwitch="ignore"
+            playInBackground={false}
+            playWhenInactive={false}
+          />
+        ) : (
+          <Image
+            source={{uri: post.mediaUrl}}
+            style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
+          />
+        )}
       </Pressable>
 
       <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12}}>
@@ -588,20 +605,30 @@ export function HomeScreen() {
                   </Pressable>
 
                   {/* Following stories */}
-                  {storyGroups.map(group => (
+                  {storyGroups.map(group => {
+                    const first = group.stories?.[0];
+                    const ringUri =
+                      first != null
+                        ? first.mediaType === 'video'
+                          ? first.thumbnailUrl || first.mediaUrl
+                          : first.mediaUrl
+                        : group.author.profilePicture ||
+                          `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}`;
+                    return (
                     <Pressable
                       key={group.author._id}
                       style={{alignItems: 'center', gap: 5}}
                       onPress={() => parentNavigate(navigation, 'StoryView', {userId: group.author._id})}>
                       <StoryRing
-                        uri={group.author.profilePicture || `https://ui-avatars.com/api/?name=${group.author.displayName}`}
+                        uri={ringUri}
                         size={60}
                       />
                       <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>
                         {group.author.username}
                       </ThemedText>
                     </Pressable>
-                  ))}
+                    );
+                  })}
                 </ScrollView>
               );
             }

@@ -5,6 +5,8 @@ import {CreateStackNavigator} from './CreateStackNavigator';
 import {MessagesStackNavigator} from './MessagesStackNavigator';
 import {ProfileScreen} from '../screens/ProfileScreen';
 import type {AppStackParamList} from './appStackParamList';
+import {useAuth} from '../context/AuthContext';
+import {MessagingProvider} from '../messaging/MessagingContext';
 import {
   AboutAppScreen,
   AccountSettingsScreen,
@@ -81,7 +83,9 @@ import {
 const Stack = createNativeStackNavigator<AppStackParamList>();
 
 export function MainAppNavigator() {
+  const {dbUser} = useAuth();
   return (
+    <MessagingProvider myDbUserId={dbUser?._id ?? null}>
     <Stack.Navigator screenOptions={{headerShown: false}}>
       <Stack.Screen name="Main" component={TabNavigator} />
       <Stack.Screen
@@ -160,5 +164,6 @@ export function MainAppNavigator() {
       <Stack.Screen name="AudioDetail" component={AudioDetailScreen} />
       <Stack.Screen name="AutoDm" component={AutoDmScreen} />
     </Stack.Navigator>
+    </MessagingProvider>
   );
 }

@@ -1,10 +1,21 @@
+import type {NavigatorScreenParams} from '@react-navigation/native';
 import type {CreateMode} from '../create/createTypes';
+import type {MessagesStackParamList} from './MessagesStackNavigator';
+
+/** Bottom tabs inside `Main`. */
+export type MainTabParamList = {
+  Home: undefined;
+  Search: undefined;
+  Create: undefined;
+  Reels: undefined;
+  Store: undefined;
+};
 
 /** Screens registered on the main app stack (post-login). */
 export type AppStackParamList = {
-  Main: undefined;
+  Main: NavigatorScreenParams<MainTabParamList> | undefined;
   CreateFlow: {mode?: CreateMode} | undefined;
-  MessagesFlow: undefined;
+  MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
   Profile: undefined;
 
   CategoryFeed: {categoryId: string};

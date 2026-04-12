@@ -19,7 +19,9 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {getUserProfile, followUser, unfollowUser, type UserProfile} from '../api/followApi';
 import {getUserPosts, type Post} from '../api/postsApi';
-import {createConversation} from '../api/chatApi';
+import {useMessaging} from '../messaging/MessagingContext';
+import {parentNavigate} from '../navigation/parentNavigate';
+import {postThumbnailUri} from '../lib/postMediaDisplay';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'OtherUserProfile'>;
@@ -36,22 +38,11 @@ export function OtherUserProfileScreen() {
   const {userId} = route.params;
   const {palette, contract} = useTheme();
   const {dbUser} = useAuth();
+  const {openThreadForUser} = useMessaging();
   const {borderRadiusScale} = contract.brandGuidelines;
   const btnR = borderRadiusScale === 'bold' ? 999 : 8;
   const isSelf = dbUser?._id === userId;
   const [startingChat, setStartingChat] = useState(false);
-
-  const openChat = useCallback(async () => {
-    setStartingChat(true);
-    try {
-      const {conversation} = await createConversation(userId);
-      navigation.getParent()?.navigate('MessagesFlow', {initialConvId: conversation._id});
-    } catch {
-      navigation.getParent()?.navigate('MessagesFlow');
-    } finally {
-      setStartingChat(false);
-    }
-  }, [userId, navigation]);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -59,6 +50,27 @@ export function OtherUserProfileScreen() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [followStatus, setFollowStatus] = useState<'none' | 'following' | 'requested'>('none');
+
+  const openChat = useCallback(async () => {
+    if (!profile) return;
+    setStartingChat(true);
+    try {
+      const convId = await openThreadForUser(
+        userId,
+        profile.displayName,
+        profile.profilePicture ?? '',
+        profile.username,
+      );
+      parentNavigate(navigation, 'MessagesFlow', {
+        screen: 'ChatThread',
+        params: {peerId: convId},
+      });
+    } catch {
+      parentNavigate(navigation, 'MessagesFlow');
+    } finally {
+      setStartingChat(false);
+    }
+  }, [userId, navigation, openThreadForUser, profile]);
 
   const load = useCallback(async () => {
     try {
@@ -217,7 +229,7 @@ export function OtherUserProfileScreen() {
           {/* Action buttons */}
           {isSelf ? (
             <Pressable
-              onPress={() => navigation.navigate('EditProfile')}
+              onPress={() => parentNavigate(navigation, 'EditProfile')}
               style={{
                 marginTop: 12, paddingVertical: 9, borderRadius: btnR,
                 backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border,
@@ -277,7 +289,7 @@ export function OtherUserProfileScreen() {
                 key={post._id}
                 onPress={() => navigation.navigate('PostDetail', {postId: post._id})}
                 style={{width: colWidth, aspectRatio: 1, padding: 1}}>
-                <Image source={{uri: post.mediaUrl}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
+                <Image source={{uri: postThumbnailUri(post)}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
                 {post.mediaType === 'video' ? (
                   <View style={{position: 'absolute', top: 6, right: 6}}>
                     <Play size={14} color="#fff" fill="#fff" />

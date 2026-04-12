@@ -49,6 +49,7 @@ import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
+import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resetToAuth} from '../navigation/rootNavigation';
 import {getUserPosts, type Post} from '../api/postsApi';
 
@@ -266,7 +267,7 @@ export function ProfileScreen() {
     );
   };
 
-  const nav = (screen: string, params?: object) => {
+  const nav = (screen: string, params?: Record<string, unknown>) => {
     setMenuOpen(false);
     parentNavigate(navigation, screen, params);
   };
@@ -559,7 +560,7 @@ export function ProfileScreen() {
                 key={post._id}
                 onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
                 style={styles.gridTile}>
-                <Image source={{uri: post.mediaUrl}} style={styles.gridImg} />
+                <Image source={{uri: postThumbnailUri(post)}} style={styles.gridImg} />
                 {(post.type === 'reel' || post.mediaType === 'video') && (
                   <View style={styles.reelIcon}>
                     <Play size={12} color={palette.foreground} fill={palette.foreground} />

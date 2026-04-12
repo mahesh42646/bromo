@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {Camera, useCameraDevice, useCameraPermission} from 'react-native-vision-camera';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
@@ -30,7 +31,7 @@ import type {ThemePalette} from '../../config/platform-theme';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import {socketService} from '../../services/socketService';
-import {authedFetch, apiBase} from '../../api/authApi';
+import {authedFetch} from '../../api/authApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'LivePreview'>;
 
@@ -43,6 +44,49 @@ type LiveComment = {
 
 type LivePhase = 'preview' | 'live' | 'ended';
 type LiveStreamInfo = {streamId: string; rtmpUrl: string; hlsUrl: string};
+
+function LiveCameraFill({
+  active,
+  enableAudio,
+  facing,
+}: {
+  active: boolean;
+  enableAudio: boolean;
+  facing: 'front' | 'back';
+}) {
+  const {hasPermission, requestPermission} = useCameraPermission();
+  const device = useCameraDevice(facing);
+
+  useEffect(() => {
+    if (!hasPermission) void requestPermission();
+  }, [hasPermission, requestPermission]);
+
+  if (!hasPermission) {
+    return (
+      <View style={[StyleSheet.absoluteFillObject, {alignItems: 'center', justifyContent: 'center', padding: 24}]}>
+        <Text style={{color: '#fff', textAlign: 'center', fontWeight: '600'}}>
+          Allow camera access to go live
+        </Text>
+      </View>
+    );
+  }
+  if (device == null) {
+    return (
+      <View style={[StyleSheet.absoluteFillObject, {alignItems: 'center', justifyContent: 'center'}]}>
+        <Text style={{color: '#fff', fontWeight: '600'}}>No camera available</Text>
+      </View>
+    );
+  }
+  return (
+    <Camera
+      style={StyleSheet.absoluteFill}
+      device={device}
+      isActive={active}
+      video
+      audio={enableAudio}
+    />
+  );
+}
 
 export function LivePreviewScreen() {
   const navigation = useNavigation<Nav>();
@@ -59,6 +103,7 @@ export function LivePreviewScreen() {
   const [titleLocal, setTitleLocal] = useState(draft.liveTitle);
   const [streamInfo, setStreamInfo] = useState<LiveStreamInfo | null>(null);
   const [starting, setStarting] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const commentsRef = useRef<FlatList>(null);
@@ -224,11 +269,12 @@ export function LivePreviewScreen() {
           </Pressable>
 
           <View style={styles.cameraPlaceholder}>
-            <Radio size={48} color={palette.accent} />
-            <Text style={styles.cameraText}>Camera preview</Text>
-            <Text style={[styles.cameraSubtext, {color: palette.foregroundMuted}]}>
-              Install react-native-rtmp-publisher for live camera feed
-            </Text>
+            <LiveCameraFill active enableAudio={false} facing={cameraFacing} />
+            <Pressable
+              style={styles.flipCam}
+              onPress={() => setCameraFacing(f => (f === 'front' ? 'back' : 'front'))}>
+              <Text style={{color: '#fff', fontWeight: '800', fontSize: 12}}>Flip</Text>
+            </Pressable>
           </View>
 
           <View style={styles.previewForm}>
@@ -273,13 +319,20 @@ export function LivePreviewScreen() {
       <View style={styles.liveContainer}>
         {/* Camera background (requires react-native-rtmp-publisher native module) */}
         <View style={styles.liveCameraBg}>
-          <Radio size={32} color={palette.accent} />
-          <Text style={styles.liveCameraText}>LIVE</Text>
-          {streamInfo && (
-            <Text style={[styles.liveCameraSubText, {color: palette.foregroundMuted}]} numberOfLines={2}>
-              RTMP: {streamInfo.rtmpUrl}
-            </Text>
-          )}
+          <LiveCameraFill active enableAudio facing={cameraFacing} />
+          <View style={styles.liveOverlay} pointerEvents="none">
+            <Text style={styles.liveCameraText}>LIVE</Text>
+            {streamInfo ? (
+              <Text style={[styles.liveCameraSubText, {color: palette.foregroundMuted}]} numberOfLines={2}>
+                RTMP: {streamInfo.rtmpUrl}
+              </Text>
+            ) : null}
+          </View>
+          <Pressable
+            style={styles.flipCamLive}
+            onPress={() => setCameraFacing(f => (f === 'front' ? 'back' : 'front'))}>
+            <Text style={{color: '#fff', fontWeight: '800', fontSize: 12}}>Flip</Text>
+          </Pressable>
         </View>
 
         {/* Top bar */}
@@ -366,7 +419,17 @@ function makeStyles(p: ThemePalette) {
     root: {flex: 1, backgroundColor: p.background},
     previewContainer: {flex: 1},
     closeBtn: {position: 'absolute', top: 8, right: 12, zIndex: 10, padding: 8},
-    cameraPlaceholder: {flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: p.background, gap: 12, paddingHorizontal: 24},
+    cameraPlaceholder: {flex: 1, backgroundColor: '#000', overflow: 'hidden'},
+    flipCam: {
+      position: 'absolute',
+      right: 16,
+      bottom: 24,
+      zIndex: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+    },
     cameraText: {color: p.foreground, fontSize: 18, fontWeight: '700'},
     cameraSubtext: {fontSize: 12, textAlign: 'center', lineHeight: 18},
     previewForm: {padding: 20, gap: 14},
@@ -376,7 +439,24 @@ function makeStyles(p: ThemePalette) {
     goLiveBtn: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: p.accent, paddingVertical: 16, borderRadius: 14},
     goLiveTxt: {color: p.accentForeground, fontWeight: '900', fontSize: 17},
     liveContainer: {flex: 1},
-    liveCameraBg: {...StyleSheet.absoluteFillObject, backgroundColor: p.surface, alignItems: 'center', justifyContent: 'center', gap: 8},
+    liveCameraBg: {...StyleSheet.absoluteFillObject, backgroundColor: '#000'},
+    liveOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 16,
+    },
+    flipCamLive: {
+      position: 'absolute',
+      right: 16,
+      top: 56,
+      zIndex: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+    },
     liveCameraText: {color: p.foreground, fontSize: 22, fontWeight: '900'},
     liveCameraSubText: {fontSize: 10, textAlign: 'center', paddingHorizontal: 20},
     liveTopBar: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 10, zIndex: 5},
