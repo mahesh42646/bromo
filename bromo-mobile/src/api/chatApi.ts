@@ -1,4 +1,5 @@
 import {authedFetch, apiBase} from './authApi';
+import {buildMediaUploadPart, type MediaKind} from '../lib/mediaUploadPart';
 
 export type ConversationParticipant = {
   _id: string;
@@ -107,29 +108,28 @@ export async function markConversationRead(conversationId: string): Promise<void
   await authedFetch(`/chat/conversations/${conversationId}/read`, {method: 'POST'}).catch(() => null);
 }
 
-export async function uploadChatMedia(localUri: string): Promise<{url: string}> {
+export async function uploadChatMedia(
+  localUri: string,
+  meta?: {kind?: MediaKind; fileName?: string | null},
+): Promise<{url: string}> {
   const auth = (await import('@react-native-firebase/auth')).default;
   const user = auth().currentUser;
   if (!user) throw new Error('Not authenticated');
   const token = await user.getIdToken(false);
   const base = apiBase();
 
-  const filename = localUri.split('/').pop() ?? 'media.jpg';
-  const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-    webp: 'image/webp', mp4: 'video/mp4', mov: 'video/quicktime',
-    gif: 'image/gif', aac: 'audio/aac', m4a: 'audio/mp4',
-  };
-
+  const part = buildMediaUploadPart(localUri, meta?.kind ?? 'image', meta?.fileName);
   const form = new FormData();
-  form.append('file', {uri: localUri, type: mimeMap[ext] ?? 'application/octet-stream', name: filename} as unknown as Blob);
+  form.append('file', {uri: part.uri, type: part.type, name: part.name} as unknown as Blob);
 
   const res = await fetch(`${base}/media/upload`, {
     method: 'POST',
     headers: {Authorization: `Bearer ${token}`},
     body: form,
   });
-  if (!res.ok) throw new Error('Upload failed');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Upload failed');
+  }
   return res.json() as Promise<{url: string}>;
 }

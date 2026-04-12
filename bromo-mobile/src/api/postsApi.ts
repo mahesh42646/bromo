@@ -1,4 +1,5 @@
 import {authedFetch, apiBase} from './authApi';
+import {buildMediaUploadPart} from '../lib/mediaUploadPart';
 
 export type PostAuthor = {
   _id: string;
@@ -148,27 +149,19 @@ export async function deleteComment(postId: string, commentId: string): Promise<
   if (!res.ok) throw new Error('Failed to delete comment');
 }
 
-export async function uploadMedia(localUri: string): Promise<{url: string}> {
+export async function uploadMedia(
+  localUri: string,
+  meta?: {type: 'image' | 'video'; fileName?: string | null},
+): Promise<{url: string}> {
   const auth = (await import('@react-native-firebase/auth')).default;
   const user = auth().currentUser;
   if (!user) throw new Error('Not authenticated');
   const token = await user.getIdToken(false);
   const base = apiBase();
 
-  const filename = localUri.split('/').pop() ?? 'media.jpg';
-  const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    webp: 'image/webp',
-    mp4: 'video/mp4',
-    mov: 'video/quicktime',
-    gif: 'image/gif',
-  };
-
+  const part = buildMediaUploadPart(localUri, meta?.type ?? 'image', meta?.fileName);
   const form = new FormData();
-  form.append('file', {uri: localUri, type: mimeMap[ext] ?? 'image/jpeg', name: filename} as unknown as Blob);
+  form.append('file', {uri: part.uri, type: part.type, name: part.name} as unknown as Blob);
 
   const res = await fetch(`${base}/media/upload`, {
     method: 'POST',

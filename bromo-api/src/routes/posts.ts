@@ -18,6 +18,11 @@ const PAGE_SIZE = 20;
 
 function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, followingSet: Set<string>, dbUserId?: string) {
   const author = p.authorId as Record<string, unknown> | null;
+  const authorOid = author ? String((author as {_id: unknown})._id) : "";
+  const isSelf = Boolean(dbUserId && authorOid && authorOid === dbUserId);
+  const isFollowing = Boolean(
+    dbUserId && authorOid && (isSelf || followingSet.has(authorOid)),
+  );
   return {
     ...p,
     likesCount: Number(p.likesCount) || 0,
@@ -28,7 +33,7 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
       ...author,
       followersCount: Number(author.followersCount) || 0,
     } : null,
-    isFollowing: dbUserId ? followingSet.has(String((author as {_id: unknown} | null)?._id)) : false,
+    isFollowing,
     authorId: undefined,
   };
 }
@@ -110,6 +115,7 @@ postsRouter.get(
         .lean();
 
       const likedSet = new Set<string>();
+      let followingSet = new Set<string>();
       if (dbUser) {
         const likes = await Like.find({
           userId: dbUser._id,
@@ -117,10 +123,17 @@ postsRouter.get(
           targetId: { $in: posts.map((p) => p._id) },
         }).select("targetId");
         likes.forEach((l) => likedSet.add(String(l.targetId)));
+
+        const follows = await Follow.find({
+          followerId: dbUser._id,
+          status: "accepted",
+        }).select("followingId");
+        followingSet = new Set(follows.map((f) => String(f.followingId)));
       }
 
-      const emptyFollowing = new Set<string>();
-      const result = posts.map((p) => normalizePost(p as unknown as Record<string, unknown>, likedSet, emptyFollowing));
+      const result = posts.map((p) =>
+        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+      );
 
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
     } catch (err) {
@@ -160,8 +173,26 @@ postsRouter.get(
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
-      const emptySet = new Set<string>();
-      const result = posts.map((p) => normalizePost(p as unknown as Record<string, unknown>, emptySet, emptySet));
+      let followingSet = new Set<string>();
+      const likedSet = new Set<string>();
+      if (dbUser) {
+        const follows = await Follow.find({
+          followerId: dbUser._id,
+          status: "accepted",
+        }).select("followingId");
+        followingSet = new Set(follows.map((f) => String(f.followingId)));
+
+        const likes = await Like.find({
+          userId: dbUser._id,
+          targetType: "post",
+          targetId: { $in: posts.map((p) => p._id) },
+        }).select("targetId");
+        likes.forEach((l) => likedSet.add(String(l.targetId)));
+      }
+
+      const result = posts.map((p) =>
+        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+      );
 
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
     } catch (err) {

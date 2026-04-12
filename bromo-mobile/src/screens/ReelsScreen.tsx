@@ -1,4 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
+import Video from 'react-native-video';
 import {
   ActivityIndicator,
   Dimensions,
@@ -29,7 +30,8 @@ import {useTheme} from '../context/ThemeContext';
 import {StoryRing} from '../components/ui/StoryRing';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {getReels, toggleLike, followUser, type Post} from '../api/postsApi';
+import {followUser} from '../api/followApi';
+import {getReels, toggleLike, type Post} from '../api/postsApi';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
@@ -63,6 +65,10 @@ function ReelItem({
   const {borderRadiusScale} = contract.brandGuidelines;
   const avatarUri = item.author.profilePicture || `https://ui-avatars.com/api/?name=${item.author.displayName}`;
 
+  useEffect(() => {
+    setFollowing(item.isFollowing);
+  }, [item._id, item.isFollowing]);
+
   const handleFollow = async () => {
     try {
       await followUser(item.author._id);
@@ -72,10 +78,20 @@ function ReelItem({
 
   return (
     <View style={{width: reelWidth, height: reelHeight, position: 'relative'}}>
-      <Image
-        source={{uri: item.mediaUrl}}
-        style={{width: '100%', height: '100%', resizeMode: 'cover'}}
-      />
+      {item.mediaType === 'video' ? (
+        <Video
+          source={{uri: item.mediaUrl}}
+          style={{width: '100%', height: '100%'}}
+          resizeMode="cover"
+          repeat
+          paused={!isActive}
+          muted={muted}
+          ignoreSilentSwitch="ignore"
+          playWhenInactive={false}
+        />
+      ) : (
+        <Image source={{uri: item.mediaUrl}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
+      )}
 
       <View style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: 300, backgroundColor: palette.overlay}} />
 

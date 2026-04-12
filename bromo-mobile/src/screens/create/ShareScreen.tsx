@@ -90,7 +90,7 @@ export function ShareScreen() {
     }
     setPhase('posting');
     try {
-      const {url} = await uploadMedia(asset.uri);
+      const {url} = await uploadMedia(asset.uri, {type: asset.type, fileName: asset.fileName});
       const mediaType = asset.type === 'video' ? 'video' : 'image';
       const postType = draft.mode === 'reel' ? 'reel' : draft.mode === 'story' ? 'story' : 'post';
       await createPost({
