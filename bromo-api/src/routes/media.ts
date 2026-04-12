@@ -7,21 +7,33 @@ import {
 import { uploadSingle, uploadAvatar } from "../middleware/upload.js";
 import { User } from "../models/User.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
-import { getPublicApiOrigin, rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
+import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
+import {
+  publicUrlForUploadRelative,
+  relativeUploadPathFromAbs,
+} from "../utils/uploadFiles.js";
 
 export const mediaRouter = Router();
 
 const VIDEO_EXTS = new Set([".mp4", ".mov", ".m4v", ".3gp", ".webm"]);
 
-function buildUrl(_req: FirebaseAuthedRequest, filename: string): string {
-  if (filename.startsWith("http")) return rewritePublicMediaUrl(filename);
-  return `${getPublicApiOrigin()}/uploads/${filename}`;
+function urlFromStoredOrRelative(stored: string): string {
+  if (stored.startsWith("http")) return rewritePublicMediaUrl(stored);
+  return publicUrlForUploadRelative(stored.replace(/^\/+/, ""));
+}
+
+function requireDbUser(req: FirebaseAuthedRequest, res: Response, next: NextFunction) {
+  if (!req.dbUser) {
+    return res.status(401).json({ message: "Register to upload media" });
+  }
+  return next();
 }
 
 // POST /media/upload — general file upload (posts, reels, chat media)
 mediaRouter.post(
   "/upload",
   requireFirebaseToken,
+  requireDbUser,
   (req: FirebaseAuthedRequest, res: Response, next: NextFunction) => {
     uploadSingle(req as never, res, (err: unknown) => {
       if (err instanceof Error) {
@@ -31,25 +43,24 @@ mediaRouter.post(
     });
   },
   async (req: FirebaseAuthedRequest, res: Response) => {
-    if (!req.file) {
+    if (!req.file?.path) {
       return res.status(400).json({ message: "No file uploaded" });
     }
-    const url = buildUrl(req, req.file.filename);
+    const rel = relativeUploadPathFromAbs(req.file.path);
+    const url = urlFromStoredOrRelative(rel);
     const ext = path.extname(req.file.filename).toLowerCase();
 
-    // Generate thumbnail for video uploads
     let thumbnailUrl: string | undefined;
     if (VIDEO_EXTS.has(ext)) {
       try {
-        const thumbFilename = await generateVideoThumbnail(req.file.filename);
-        thumbnailUrl = buildUrl(req, thumbFilename);
+        const thumbRel = await generateVideoThumbnail(rel);
+        thumbnailUrl = urlFromStoredOrRelative(thumbRel);
       } catch (err) {
         console.error("[media] thumbnail generation failed:", err);
-        // Non-fatal — upload still succeeds
       }
     }
 
-    return res.json({url, thumbnailUrl, filename: req.file.filename});
+    return res.json({ url, thumbnailUrl, filename: rel });
   },
 );
 
@@ -57,6 +68,7 @@ mediaRouter.post(
 mediaRouter.post(
   "/avatar",
   requireFirebaseToken,
+  requireDbUser,
   (req: FirebaseAuthedRequest, res: Response, next: NextFunction) => {
     uploadAvatar(req as never, res, (err: unknown) => {
       if (err instanceof Error) {
@@ -66,11 +78,12 @@ mediaRouter.post(
     });
   },
   async (req: FirebaseAuthedRequest, res: Response) => {
-    if (!req.file) {
+    if (!req.file?.path) {
       return res.status(400).json({ message: "No file uploaded" });
     }
     try {
-      const url = `${getPublicApiOrigin()}/uploads/${req.file.filename}`;
+      const rel = relativeUploadPathFromAbs(req.file.path);
+      const url = urlFromStoredOrRelative(rel);
 
       if (req.dbUser) {
         req.dbUser.profilePicture = url;

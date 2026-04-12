@@ -29,6 +29,8 @@ export type Post = {
   isLiked: boolean;
   isFollowing: boolean;
   createdAt: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 };
 
 export type Comment = {
@@ -155,18 +157,19 @@ export async function deleteComment(postId: string, commentId: string): Promise<
 
 export async function uploadMedia(
   localUri: string,
-  meta?: {type: 'image' | 'video'; fileName?: string | null},
+  meta?: {type: 'image' | 'video'; fileName?: string | null; category?: 'posts' | 'reels' | 'stories' | 'public'},
 ): Promise<{url: string; thumbnailUrl?: string}> {
   const user = auth().currentUser;
   if (!user) throw new Error('Not authenticated');
   const token = await user.getIdToken(false);
   const base = apiBase();
+  const category = meta?.category ?? 'posts';
 
   const part = buildMediaUploadPart(localUri, meta?.type ?? 'image', meta?.fileName);
   const form = new FormData();
   form.append('file', {uri: part.uri, type: part.type, name: part.name} as unknown as Blob);
 
-  const res = await fetch(`${base}/media/upload`, {
+  const res = await fetch(`${base}/media/upload?category=${encodeURIComponent(category)}`, {
     method: 'POST',
     headers: {Authorization: `Bearer ${token}`},
     body: form,

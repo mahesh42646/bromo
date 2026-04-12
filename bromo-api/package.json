@@ -8,8 +8,7 @@
     "start": "node --import tsx/esm server.ts",
     "start:prod": "node dist/server.js",
     "build": "tsc -p tsconfig.json",
-    "seed:admin": "node --import tsx/esm scripts/seed-admin.ts",
-    "purge:video-posts": "node --import tsx/esm scripts/purge-video-posts-platform.ts"
+    "seed:admin": "node --import tsx/esm scripts/seed-admin.ts"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",

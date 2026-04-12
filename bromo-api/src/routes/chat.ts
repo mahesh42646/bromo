@@ -29,11 +29,12 @@ chatRouter.get(
         .populate("participants", USER_SELECT)
         .lean();
 
+      type PopParticipant = { _id: mongoose.Types.ObjectId; username: string; displayName: string; profilePicture: string };
       const result = conversations.map((c) => {
-        const other = (c.participants as { _id: mongoose.Types.ObjectId; username: string; displayName: string; profilePicture: string }[]).filter(
-          (p) => String(p._id) !== String(user._id),
-        );
-        const unread = (c.unreadCounts as Map<string, number>)?.get?.(String(user._id)) ?? 0;
+        const parts = c.participants as unknown as PopParticipant[];
+        const other = parts.filter((p) => String(p._id) !== String(user._id));
+        const unreadMap = c.unreadCounts as unknown as Record<string, number> | undefined;
+        const unread = unreadMap?.[String(user._id)] ?? 0;
         return { ...c, otherParticipants: other, unreadCount: unread };
       });
 

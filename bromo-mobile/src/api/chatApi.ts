@@ -122,7 +122,7 @@ export async function uploadChatMedia(
   const form = new FormData();
   form.append('file', {uri: part.uri, type: part.type, name: part.name} as unknown as Blob);
 
-  const res = await fetch(`${base}/media/upload`, {
+  const res = await fetch(`${base}/media/upload?category=public`, {
     method: 'POST',
     headers: {Authorization: `Bearer ${token}`},
     body: form,

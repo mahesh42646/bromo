@@ -2,6 +2,7 @@ import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
 import path from "node:path";
 import fs from "node:fs";
+import { uploadsRoot } from "../utils/uploadFiles.js";
 
 // Use bundled ffmpeg binary (ffmpeg-static returns string | null)
 const ffmpegPath = typeof ffmpegStatic === "string" ? ffmpegStatic : null;
@@ -9,22 +10,31 @@ if (ffmpegPath) {
   ffmpeg.setFfmpegPath(ffmpegPath);
 }
 
-const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
+const UPLOAD_DIR = uploadsRoot();
 const HLS_DIR = path.resolve(process.cwd(), "uploads", "hls");
 
 if (!fs.existsSync(HLS_DIR)) {
   fs.mkdirSync(HLS_DIR, {recursive: true});
 }
 
-/** Generate a thumbnail JPEG from a video file. Returns the thumbnail filename. */
-export async function generateVideoThumbnail(videoFilename: string): Promise<string> {
-  const videoPath = path.join(UPLOAD_DIR, videoFilename);
+/**
+ * Generate a thumbnail JPEG next to the video.
+ * @param videoRelativePath POSIX path under `uploads/` (e.g. `userId/posts/abc.mp4`)
+ * @returns POSIX relative path under `uploads/` for the thumbnail JPEG
+ */
+export async function generateVideoThumbnail(videoRelativePath: string): Promise<string> {
+  const clean = videoRelativePath.replace(/^\/+/, "").split("/").join(path.sep);
+  const videoPath = path.join(UPLOAD_DIR, clean);
+  const outDir = path.dirname(videoPath);
   const thumbFilename = `thumb_${Date.now()}.jpg`;
-  const thumbPath = path.join(UPLOAD_DIR, thumbFilename);
+  const thumbAbs = path.join(outDir, thumbFilename);
 
   return new Promise((resolve, reject) => {
     ffmpeg(videoPath)
-      .on("end", () => resolve(thumbFilename))
+      .on("end", () => {
+        const rel = path.relative(UPLOAD_DIR, thumbAbs).split(path.sep).join("/");
+        resolve(rel);
+      })
       .on("error", (err) => {
         console.error("[mediaProcessor] thumbnail error:", err.message);
         reject(err);
@@ -33,7 +43,7 @@ export async function generateVideoThumbnail(videoFilename: string): Promise<str
         count: 1,
         timemarks: ["00:00:01.000"],
         filename: thumbFilename,
-        folder: UPLOAD_DIR,
+        folder: outDir,
         size: "720x?",
       });
   });
@@ -50,8 +60,9 @@ type HlsResult = {
  * Returns relative paths for the master playlist.
  */
 export async function transcodeToHls(videoFilename: string): Promise<HlsResult> {
-  const videoPath = path.join(UPLOAD_DIR, videoFilename);
-  const baseName = path.parse(videoFilename).name;
+  const clean = videoFilename.replace(/^\/+/, "").split("/").join(path.sep);
+  const videoPath = path.join(UPLOAD_DIR, clean);
+  const baseName = path.parse(clean).name;
   const hlsFolder = path.join(HLS_DIR, baseName);
 
   if (!fs.existsSync(hlsFolder)) {
@@ -126,7 +137,8 @@ function transcodeVariant(
 
 /** Get video duration in seconds */
 export async function getVideoDuration(videoFilename: string): Promise<number> {
-  const videoPath = path.join(UPLOAD_DIR, videoFilename);
+  const clean = videoFilename.replace(/^\/+/, "").split("/").join(path.sep);
+  const videoPath = path.join(UPLOAD_DIR, clean);
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(videoPath, (err, metadata) => {
       if (err) return reject(err);

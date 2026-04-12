@@ -15,6 +15,9 @@ export interface PostDoc extends Document {
   viewsCount: number;
   expiresAt?: Date;
   isActive: boolean;
+  /** Soft-removed from feeds; files may remain on disk until hard delete. */
+  isDeleted: boolean;
+  deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +38,8 @@ const postSchema = new Schema<PostDoc>(
     viewsCount: { type: Number, default: 0 },
     expiresAt: { type: Date },
     isActive: { type: Boolean, default: true },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date },
   },
   { timestamps: true },
 );

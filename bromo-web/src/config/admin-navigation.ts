@@ -19,6 +19,7 @@ import {
   ShoppingCart,
   SlidersHorizontal,
   UserCog,
+  UserSearch,
   Users,
   Wrench,
 } from "lucide-react";
@@ -66,6 +67,13 @@ export const ADMIN_NAVIGATION: AdminNavGroup[] = [
         description:
           "End-user directory, segmentation, and lifecycle for the consumer-facing product.",
         icon: Users,
+      },
+      {
+        title: "User management",
+        href: "/admin/users/manage",
+        description:
+          "Open a member by ID to review profile, media, soft or permanent deletes, and restores.",
+        icon: UserSearch,
       },
       {
         title: "Roles & permissions",

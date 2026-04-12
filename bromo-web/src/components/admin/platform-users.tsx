@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   Ban,
@@ -12,6 +13,7 @@ import {
   UserCheck,
   Users,
   UserX,
+  ExternalLink,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -340,6 +342,13 @@ export function PlatformUsers() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
+                        <Link
+                          href={`/admin/users/manage/${user._id}`}
+                          title="Manage profile & content"
+                          className="text-muted-foreground hover:text-accent rounded-lg p-1.5 transition-colors"
+                        >
+                          <ExternalLink className="size-4" />
+                        </Link>
                         <button
                           onClick={() => void toggleActive(user)}
                           title={user.isActive ? "Deactivate" : "Activate"}

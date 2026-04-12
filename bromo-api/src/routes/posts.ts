@@ -18,12 +18,15 @@ import {
   emitStoryNew,
   emitNotification,
 } from "../services/socketService.js";
-import { getPublicApiOrigin, rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
+import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 
 export const postsRouter = Router();
 
 const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
 const PAGE_SIZE = 20;
+
+/** Public listings: active and not soft-deleted. */
+const VISIBLE_POST = { isActive: true, isDeleted: { $ne: true } } as const;
 
 function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, followingSet: Set<string>, dbUserId?: string) {
   const author = p.authorId as Record<string, unknown> | null;
@@ -52,11 +55,6 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
   };
 }
 
-function buildUrl(_req: FirebaseAuthedRequest, filename: string): string {
-  if (filename.startsWith("http")) return rewritePublicMediaUrl(filename);
-  return `${getPublicApiOrigin()}/uploads/${filename}`;
-}
-
 // ── GET /posts/feed ─────────────────────────────────────────────────
 postsRouter.get(
   "/feed",
@@ -78,8 +76,8 @@ postsRouter.get(
       }
 
       const baseQuery = dbUser
-        ? { authorId: { $in: [...followingIds, dbUser._id] }, type: "post", isActive: true }
-        : { type: "post", isActive: true };
+        ? { authorId: { $in: [...followingIds, dbUser._id] }, type: "post", ...VISIBLE_POST }
+        : { type: "post", ...VISIBLE_POST };
 
       const query = cursor
         ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
@@ -125,7 +123,7 @@ postsRouter.get(
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = cursor ? 0 : (page - 1) * PAGE_SIZE;
 
-      const baseQuery = { type: "reel" as const, isActive: true };
+      const baseQuery = { type: "reel" as const, ...VISIBLE_POST };
       const query = cursor
         ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
         : baseQuery;
@@ -187,8 +185,8 @@ postsRouter.get(
       }
 
       const query = excludeIds.length
-        ? { type: { $in: ["post", "reel"] }, isActive: true, authorId: { $nin: excludeIds } }
-        : { type: { $in: ["post", "reel"] }, isActive: true };
+        ? { type: { $in: ["post", "reel"] }, ...VISIBLE_POST, authorId: { $nin: excludeIds } }
+        : { type: { $in: ["post", "reel"] }, ...VISIBLE_POST };
 
       const posts = await Post.find(query)
         .sort({ viewsCount: -1, createdAt: -1 })
@@ -244,7 +242,7 @@ postsRouter.get(
 
       const stories = await Post.find({
         type: "story",
-        isActive: true,
+        ...VISIBLE_POST,
         authorId: { $in: authorIds },
         expiresAt: { $gt: new Date() },
       })
@@ -287,7 +285,7 @@ postsRouter.get(
       const posts = await Post.find({
         authorId: userId,
         type,
-        isActive: true,
+        ...VISIBLE_POST,
       })
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -329,7 +327,7 @@ postsRouter.get(
       const post = await Post.findById(req.params.id)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
-      if (!post || !post.isActive) return res.status(404).json({ message: "Post not found" });
+      if (!post || !post.isActive || post.isDeleted) return res.status(404).json({ message: "Post not found" });
 
       let isLiked = false;
       if (dbUser) {
@@ -390,6 +388,7 @@ postsRouter.post(
         music: music?.trim() ?? "",
         tags: tags ?? [],
         expiresAt,
+        isDeleted: false,
       });
 
       await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
@@ -427,6 +426,11 @@ postsRouter.delete(
       if (String(post.authorId) !== String(user._id)) {
         return res.status(403).json({ message: "Not authorized" });
       }
+      if (post.isDeleted) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      post.isDeleted = true;
+      post.deletedAt = new Date();
       post.isActive = false;
       await post.save();
       await User.findByIdAndUpdate(user._id, { $inc: { postsCount: -1 } });
@@ -449,12 +453,27 @@ postsRouter.post(
       const postId = String(req.params.id);
 
       const existing = await Like.findOne({ targetId: postId, userId: user._id, targetType: "post" });
+      const targetPost = await Post.findById(postId).select("authorId isDeleted isActive");
+      if (!targetPost?.isActive || targetPost.isDeleted) {
+        if (!existing) return res.status(404).json({ message: "Post not found" });
+      }
+
       if (existing) {
         await existing.deleteOne();
-        const updated = await Post.findByIdAndUpdate(postId, { $inc: { likesCount: -1 } }, {new: true});
-        const count = updated?.likesCount ?? 0;
+        let count = 0;
+        if (targetPost?.isActive && !targetPost.isDeleted) {
+          const updated = await Post.findByIdAndUpdate(postId, { $inc: { likesCount: -1 } }, { new: true });
+          count = updated?.likesCount ?? 0;
+        } else {
+          const snap = await Post.findById(postId).select("likesCount").lean();
+          count = Number(snap?.likesCount) || 0;
+        }
         emitPostLike(postId, count, false, String(user._id));
         return res.json({ liked: false, likesCount: count });
+      }
+
+      if (!targetPost?.isActive || targetPost.isDeleted) {
+        return res.status(404).json({ message: "Post not found" });
       }
 
       await Like.create({ targetId: postId, userId: user._id, targetType: "post" });
@@ -487,7 +506,10 @@ postsRouter.post(
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
-      await Post.findByIdAndUpdate(req.params.id, { $inc: { viewsCount: 1 } });
+      const p = await Post.findById(req.params.id).select("isDeleted isActive");
+      if (p && p.isActive && !p.isDeleted) {
+        await Post.findByIdAndUpdate(req.params.id, { $inc: { viewsCount: 1 } });
+      }
       return res.json({ ok: true });
     } catch {
       return res.json({ ok: true });
@@ -503,6 +525,11 @@ postsRouter.get(
     try {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = (page - 1) * 30;
+
+      const post = await Post.findById(req.params.id).select("isDeleted isActive");
+      if (!post?.isActive || post.isDeleted) {
+        return res.status(404).json({ message: "Post not found" });
+      }
 
       const comments = await Comment.find({
         postId: req.params.id,
@@ -540,6 +567,11 @@ postsRouter.post(
       const { text, parentId } = req.body as { text: string; parentId?: string };
 
       if (!text?.trim()) return res.status(400).json({ message: "Comment text required" });
+
+      const postCheck = await Post.findById(postId).select("authorId isDeleted isActive");
+      if (!postCheck?.isActive || postCheck.isDeleted) {
+        return res.status(404).json({ message: "Post not found" });
+      }
 
       const comment = await Comment.create({
         postId,
