@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,7 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import Video from 'react-native-video';
+import {NetworkVideo} from '../components/media/NetworkVideo';
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
 import {useNavigation} from '@react-navigation/native';
 import {
@@ -82,34 +81,6 @@ function timeAgo(dateStr: string): string {
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
 };
-
-function feedVideoSourceType(uri: string): 'm3u8' | 'mov' | 'webm' | 'mp4' {
-  const path = uri.split('?')[0]?.toLowerCase() ?? '';
-  if (path.endsWith('.m3u8')) return 'm3u8';
-  if (path.endsWith('.webm')) return 'webm';
-  if (path.endsWith('.mov')) return 'mov';
-  return 'mp4';
-}
-
-function FeedVideo({uri, posterUri}: {uri: string; posterUri?: string}) {
-  return (
-    <Video
-      source={{uri, type: feedVideoSourceType(uri)}}
-      style={{width: '100%', aspectRatio: 1, backgroundColor: '#000'}}
-      resizeMode="cover"
-      repeat
-      muted
-      paused={false}
-      poster={posterUri ? {source: {uri: posterUri}} : undefined}
-      posterResizeMode="cover"
-      ignoreSilentSwitch="ignore"
-      playInBackground={false}
-      playWhenInactive={false}
-      useTextureView={Platform.OS === 'android' ? false : undefined}
-      shutterColor="transparent"
-    />
-  );
-}
 
 type PostCardProps = {
   post: Post;
@@ -187,9 +158,15 @@ function PostCard({post, onLikeToggle, navigation}: PostCardProps) {
 
       <Pressable onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}>
         {post.mediaType === 'video' ? (
-          <FeedVideo
+          <NetworkVideo
+            context="feed"
             uri={resolveMediaUrl(post.mediaUrl)}
             posterUri={postThumbnailUri(post) || undefined}
+            style={{width: '100%', aspectRatio: 1}}
+            repeat
+            muted
+            paused={false}
+            posterOverlayUntilReady
           />
         ) : (
           <Image

@@ -35,7 +35,8 @@ import {
   X,
 } from 'lucide-react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
-import RNVVideo from 'react-native-video';
+import {NetworkVideo} from '../../components/media/NetworkVideo';
+import {resolveMediaUrl} from '../../lib/resolveMediaUrl';
 import {useTheme} from '../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import type {ChatMessage, TextMessage} from '../../messaging/messageTypes';
@@ -395,12 +396,15 @@ export function ChatThreadScreen() {
       case 'video':
         inner = (
           <View>
-            <RNVVideo
-              source={{uri: m.uri}}
+            <NetworkVideo
+              context="chat"
+              uri={resolveMediaUrl(m.uri)}
               style={{width: 220, height: 140, borderRadius: bubbleR}}
               resizeMode="cover"
               paused
               muted
+              repeat={false}
+              posterOverlayUntilReady={false}
             />
             <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4}}>
               <Text style={{fontSize: 10, color: fg, opacity: 0.75}}>{formatBubbleTime(m.createdAt)}</Text>

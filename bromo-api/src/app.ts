@@ -1,5 +1,25 @@
 import express from "express";
 import path from "node:path";
+
+const uploadsRoot = path.resolve(process.cwd(), "uploads");
+
+function contentTypeForUpload(absPath: string): string {
+  const ext = path.extname(absPath).toLowerCase();
+  const map: Record<string, string> = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".m4v": "video/x-m4v",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+  };
+  return map[ext] ?? "application/octet-stream";
+}
 import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
@@ -43,7 +63,24 @@ export function createApp() {
   app.use(express.json({ limit: "10mb" }));
   app.use(cookieParser());
   app.use(morgan("dev"));
-  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+  app.use("/uploads", (req, res, next) => {
+    const started = Date.now();
+    res.on("finish", () => {
+      if (res.statusCode >= 400) {
+        console.warn(`[uploads] ${res.statusCode} ${req.method} ${req.originalUrl} (${Date.now() - started}ms)`);
+      }
+    });
+    next();
+  });
+  app.use(
+    "/uploads",
+    express.static(uploadsRoot, {
+      setHeaders(res, absPath) {
+        res.setHeader("Content-Type", contentTypeForUpload(absPath));
+        res.setHeader("Accept-Ranges", "bytes");
+      },
+    }),
+  );
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true });

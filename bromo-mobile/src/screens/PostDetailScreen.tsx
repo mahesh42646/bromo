@@ -17,6 +17,9 @@ import {useTheme} from '../context/ThemeContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {getPost, toggleLike, type Post} from '../api/postsApi';
+import {NetworkVideo} from '../components/media/NetworkVideo';
+import {resolveMediaUrl} from '../lib/resolveMediaUrl';
+import {postThumbnailUri} from '../lib/postMediaDisplay';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'PostDetail'>;
@@ -49,7 +52,9 @@ export function PostDetailScreen() {
   useEffect(() => {
     getPost(postId)
       .then(res => setPost(res.post))
-      .catch(() => {})
+      .catch(err => {
+        console.error('[PostDetail] getPost failed', postId, err);
+      })
       .finally(() => setLoading(false));
   }, [postId]);
 
@@ -136,11 +141,24 @@ export function PostDetailScreen() {
         </Pressable>
 
         {/* Media */}
-        <Image
-          source={{uri: post.mediaUrl}}
-          style={{width: '100%', aspectRatio: 1}}
-          resizeMode="cover"
-        />
+        {post.mediaType === 'video' ? (
+          <NetworkVideo
+            context="post-detail"
+            uri={resolveMediaUrl(post.mediaUrl)}
+            posterUri={postThumbnailUri(post) || undefined}
+            style={{width: '100%', aspectRatio: 1}}
+            repeat
+            muted={false}
+            paused={false}
+            posterOverlayUntilReady
+          />
+        ) : (
+          <Image
+            source={{uri: resolveMediaUrl(post.mediaUrl)}}
+            style={{width: '100%', aspectRatio: 1}}
+            resizeMode="cover"
+          />
+        )}
 
         {/* Actions */}
         <View style={{

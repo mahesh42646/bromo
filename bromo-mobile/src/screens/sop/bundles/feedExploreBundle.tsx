@@ -3,7 +3,7 @@ import {Alert, Image, Pressable, Share, Text, View} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {Play, Users} from 'lucide-react-native';
+import {Users} from 'lucide-react-native';
 import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
@@ -50,19 +50,7 @@ export function ShareSendScreen() {
   );
 }
 
-export function StoryViewScreen() {
-  const route = useRoute<RouteProp<AppStackParamList, 'StoryView'>>();
-  const {palette} = useTheme();
-  return (
-    <SopChrome title="Story" scroll={false}>
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: palette.surface}}>
-        <Text style={{color: palette.foreground, fontWeight: '800'}}>@{route.params.userId}</Text>
-        <Text style={{color: palette.mutedForeground, marginTop: 8}}>24h story — full-screen (simulated)</Text>
-        <Play size={48} color={palette.foreground} style={{marginTop: 24}} />
-      </View>
-    </SopChrome>
-  );
-}
+export {StoryViewScreen} from '../../StoryViewScreen';
 
 export function SearchResultsScreen() {
   const route = useRoute<RouteProp<AppStackParamList, 'SearchResults'>>();

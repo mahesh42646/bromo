@@ -1,11 +1,10 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import Video, {type OnLoadData, type OnProgressData} from 'react-native-video';
+import {NetworkVideo} from '../components/media/NetworkVideo';
 import {
   ActivityIndicator,
   Dimensions,
   FlatList,
   Image,
-  Platform,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -44,14 +43,6 @@ type Nav = NavigationProp<Record<string, object | undefined>> & {
 
 type Quality = 'auto' | 'low' | 'medium' | 'high';
 
-function reelVideoSourceType(uri: string): 'm3u8' | 'mov' | 'webm' | 'mp4' {
-  const path = uri.split('?')[0]?.toLowerCase() ?? '';
-  if (path.endsWith('.m3u8')) return 'm3u8';
-  if (path.endsWith('.webm')) return 'webm';
-  if (path.endsWith('.mov')) return 'mov';
-  return 'mp4';
-}
-
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
@@ -79,7 +70,6 @@ function ReelItem({
   const [bookmarked, setBookmarked] = useState(false);
   const [muted, setMuted] = useState(false);
   const [following, setFollowing] = useState(item.isFollowing);
-  const [videoError, setVideoError] = useState(false);
   const [videoLoading, setVideoLoading] = useState(true);
   const [paused, setPaused] = useState(!isActive);
   const viewRecorded = useRef(false);
@@ -90,7 +80,7 @@ function ReelItem({
   useEffect(() => {
     setPaused(!isActive);
     if (isActive) {
-      setVideoError(false);
+      setVideoLoading(true);
     }
   }, [isActive]);
 
@@ -112,19 +102,6 @@ function ReelItem({
     } catch {}
   };
 
-  const onVideoLoad = (_data: OnLoadData) => {
-    setVideoLoading(false);
-  };
-
-  const onVideoProgress = (_data: OnProgressData) => {
-    if (videoLoading) setVideoLoading(false);
-  };
-
-  const onVideoError = () => {
-    setVideoError(true);
-    setVideoLoading(false);
-  };
-
   const playUri = resolveMediaUrl(item.mediaUrl);
   const thumbUri = resolveMediaUrl(item.thumbnailUrl ?? '') || playUri;
 
@@ -139,25 +116,22 @@ function ReelItem({
 
   return (
     <View style={{width: reelWidth, height: reelHeight, position: 'relative', backgroundColor: '#000'}}>
-      {item.mediaType === 'video' && !videoError ? (
-        <Video
-          source={{uri: playUri, type: reelVideoSourceType(playUri)}}
-          style={{width: '100%', height: '100%', position: 'absolute', backgroundColor: '#000'}}
+      {item.mediaType === 'video' ? (
+        <NetworkVideo
+          context="reel"
+          uri={playUri}
+          posterUri={item.thumbnailUrl ? thumbUri : undefined}
+          style={{width: '100%', height: '100%', position: 'absolute'}}
           resizeMode="cover"
           repeat
           paused={paused}
           muted={muted}
           ignoreSilentSwitch="ignore"
-          playWhenInactive={false}
-          onLoad={onVideoLoad}
-          onProgress={onVideoProgress}
-          onError={onVideoError}
           bufferConfig={bufferConfig}
-          poster={item.thumbnailUrl ? {source: {uri: thumbUri}} : undefined}
-          posterResizeMode="cover"
           preventsDisplaySleepDuringVideoPlayback
-          useTextureView={Platform.OS === 'android' ? false : undefined}
-          shutterColor="transparent"
+          posterOverlayUntilReady
+          onDecoderReady={() => setVideoLoading(false)}
+          onPlaybackError={() => setVideoLoading(false)}
         />
       ) : (
         <Image
@@ -168,16 +142,9 @@ function ReelItem({
       )}
 
       {/* Loading indicator */}
-      {isActive && videoLoading && item.mediaType === 'video' && !videoError && (
-        <View style={{...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center'}}>
+      {isActive && videoLoading && item.mediaType === 'video' && (
+        <View style={{...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center'}} pointerEvents="none">
           <ActivityIndicator color="#fff" size="large" />
-        </View>
-      )}
-
-      {/* Video error fallback */}
-      {videoError && (
-        <View style={{...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111'}}>
-          <Text style={{color: '#888', fontSize: 13}}>Video unavailable</Text>
         </View>
       )}
 
@@ -185,7 +152,7 @@ function ReelItem({
       <View style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: 320, backgroundColor: palette.overlay}} />
 
       {/* Pause indicator */}
-      {!isActive && !videoError && (
+      {!isActive && (
         <View
           style={{
             position: 'absolute', top: '50%', left: '50%',
