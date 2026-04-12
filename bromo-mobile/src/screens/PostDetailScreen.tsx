@@ -4,7 +4,6 @@ import {
   Image,
   Pressable,
   ScrollView,
-  Share,
   StatusBar,
   Text,
   View,
@@ -66,9 +65,9 @@ export function PostDetailScreen() {
     });
   }, [post, postId]);
 
-  const handleShare = useCallback(async () => {
-    await Share.share({message: `Check out this post on Bromo!`});
-  }, []);
+  const handleShare = useCallback(() => {
+    navigation.navigate('ShareSend', {postId});
+  }, [navigation, postId]);
 
   if (loading) {
     return (

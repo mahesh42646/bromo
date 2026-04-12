@@ -1,13 +1,15 @@
-import React from 'react';
-import {Alert, Image, Pressable, Share, Text, View} from 'react-native';
+import React, {useCallback, useEffect, useState} from 'react';
+import {ActivityIndicator, Alert, FlatList, Image, Pressable, Share, Text, TouchableOpacity, View} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {Users} from 'lucide-react-native';
+import {Check, Link, MoreHorizontal, Users} from 'lucide-react-native';
 import {useTheme} from '../../../context/ThemeContext';
+import {useAuth} from '../../../context/AuthContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
+import {getFollowing, type SuggestedUser} from '../../../api/followApi';
 import {parentNavigate} from '../../../navigation/parentNavigate';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
@@ -38,15 +40,128 @@ export {PostDetailScreen} from '../../PostDetailScreen';
 export {CommentsScreen} from '../../CommentsScreen';
 
 export function ShareSendScreen() {
+  const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<AppStackParamList, 'ShareSend'>>();
   const {palette} = useTheme();
+  const {dbUser} = useAuth();
+  const {postId} = route.params;
+  const postLink = `https://bromo.app/p/${postId}`;
+
+  const [following, setFollowing] = useState<SuggestedUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sent, setSent] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!dbUser?._id) { setLoading(false); return; }
+    getFollowing(dbUser._id, 1)
+      .then(res => setFollowing(res.users))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [dbUser?._id]);
+
+  const sendDm = useCallback((user: SuggestedUser) => {
+    setSent(prev => new Set(prev).add(user._id));
+    navigation.navigate('MessagesFlow' as never, {
+      screen: 'ChatThread',
+      params: {peerId: user._id, sharePostId: postId},
+    } as never);
+  }, [navigation, postId]);
+
+  const shareOther = useCallback(async () => {
+    try {
+      await Share.share({message: postLink, url: postLink, title: 'Check this out on BROMO'});
+    } catch {}
+  }, [postLink]);
+
+  const copyLink = useCallback(async () => {
+    try {
+      const Clipboard = require('@react-native-clipboard/clipboard').default;
+      Clipboard.setString(postLink);
+      Alert.alert('Link copied!');
+    } catch {
+      // clipboard not available, fallback
+      await Share.share({message: postLink});
+    }
+  }, [postLink]);
+
   return (
-    <SopChrome title="Share / Send">
-      <SopMeta label={`Share post ${route.params.postId} to DM, other apps, or copy link (simulated).`} />
-      <SopRow title="Send in DM" onPress={() => Alert.alert('DM', 'Opens composer to selected thread.')} />
-      <SopRow title="Copy link" onPress={() => Share.share({message: 'https://bromo.app/p/demo'})} />
-      <SopRow title="Other apps…" />
-    </SopChrome>
+    <View style={{flex: 1, backgroundColor: palette.background}}>
+      {/* Header */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
+        borderBottomWidth: 1, borderBottomColor: palette.border,
+      }}>
+        <Text style={{flex: 1, color: palette.foreground, fontSize: 18, fontWeight: '900'}}>Share</Text>
+        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
+          <Text style={{color: palette.primary, fontSize: 14, fontWeight: '700'}}>Done</Text>
+        </Pressable>
+      </View>
+
+      {/* Quick actions */}
+      <View style={{flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 14, gap: 20, borderBottomWidth: 1, borderBottomColor: palette.border}}>
+        <TouchableOpacity onPress={copyLink} style={{alignItems: 'center', gap: 6}}>
+          <View style={{width: 52, height: 52, borderRadius: 26, backgroundColor: palette.input, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.border}}>
+            <Link size={22} color={palette.foreground} />
+          </View>
+          <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '600'}}>Copy link</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={shareOther} style={{alignItems: 'center', gap: 6}}>
+          <View style={{width: 52, height: 52, borderRadius: 26, backgroundColor: palette.input, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.border}}>
+            <MoreHorizontal size={22} color={palette.foreground} />
+          </View>
+          <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '600'}}>More</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Send to followers */}
+      <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8}}>
+        SEND TO
+      </Text>
+
+      {loading ? (
+        <ActivityIndicator color={palette.primary} style={{marginTop: 24}} />
+      ) : following.length === 0 ? (
+        <View style={{paddingTop: 40, alignItems: 'center'}}>
+          <Users size={36} color={palette.mutedForeground} strokeWidth={1.5} />
+          <Text style={{color: palette.mutedForeground, marginTop: 12, fontSize: 14}}>Follow people to send posts</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={following}
+          keyExtractor={u => u._id}
+          contentContainerStyle={{paddingHorizontal: 16, paddingBottom: 24}}
+          renderItem={({item}) => {
+            const isSent = sent.has(item._id);
+            const avatar = item.profilePicture || `https://ui-avatars.com/api/?name=${item.displayName}`;
+            return (
+              <Pressable
+                onPress={() => !isSent && sendDm(item)}
+                style={{flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12}}>
+                <Image source={{uri: avatar}} style={{width: 50, height: 50, borderRadius: 25}} />
+                <View style={{flex: 1}}>
+                  <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 15}}>{item.displayName}</Text>
+                  <Text style={{color: palette.mutedForeground, fontSize: 13}}>@{item.username}</Text>
+                </View>
+                <Pressable
+                  onPress={() => !isSent && sendDm(item)}
+                  style={{
+                    paddingHorizontal: 18, paddingVertical: 8, borderRadius: 8,
+                    backgroundColor: isSent ? palette.input : palette.primary,
+                    borderWidth: 1, borderColor: isSent ? palette.border : palette.primary,
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                  }}>
+                  {isSent && <Check size={12} color={palette.mutedForeground} />}
+                  <Text style={{color: isSent ? palette.mutedForeground : palette.primaryForeground, fontWeight: '800', fontSize: 13}}>
+                    {isSent ? 'Sent' : 'Send'}
+                  </Text>
+                </Pressable>
+              </Pressable>
+            );
+          }}
+        />
+      )}
+    </View>
   );
 }
 

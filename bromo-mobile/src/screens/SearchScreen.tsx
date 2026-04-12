@@ -11,7 +11,7 @@ import {
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
 import {useNavigation} from '@react-navigation/native';
 import type {NavigationProp} from '@react-navigation/native';
-import {BadgeCheck, TrendingUp, Hash, MapPin, ShoppingBag, Users} from 'lucide-react-native';
+import {BadgeCheck, Play, TrendingUp, Hash, MapPin, ShoppingBag, Users} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {ThemedText} from '../components/ui/ThemedText';
@@ -315,12 +315,22 @@ export function SearchScreen() {
                       {explorePosts.filter((_, i) => i % 3 === col).map((post, i) => (
                         <Pressable
                           key={post._id}
-                          onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}>
+                          onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
+                          style={{position: 'relative'}}>
                           <Image
-                            source={{uri: post.mediaUrl}}
+                            source={{uri: post.mediaType === 'video' ? (post.thumbnailUrl ?? post.mediaUrl) : post.mediaUrl}}
                             style={{width: '100%', aspectRatio: i % 2 === 0 ? 0.8 : 1, borderRadius: 4}}
                             resizeMode="cover"
                           />
+                          {post.mediaType === 'video' && (
+                            <View style={{
+                              position: 'absolute', top: 6, right: 6,
+                              backgroundColor: 'rgba(0,0,0,0.55)',
+                              borderRadius: 10, padding: 4,
+                            }}>
+                              <Play size={10} color="#fff" fill="#fff" />
+                            </View>
+                          )}
                         </Pressable>
                       ))}
                     </View>

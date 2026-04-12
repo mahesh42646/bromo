@@ -7,6 +7,7 @@ import {
 } from "../middleware/firebaseAuth.js";
 import { Follow } from "../models/Follow.js";
 import { User } from "../models/User.js";
+import { createNotification, checkFollowerMilestone } from "../models/Notification.js";
 
 export const followRouter = Router();
 
@@ -62,7 +63,9 @@ followRouter.get(
       if (!q) return res.json({ users: [] });
 
       const regex = new RegExp(q, "i");
+      const excludeSelf = dbUser ? { _id: { $ne: dbUser._id } } : {};
       const users = await User.find({
+        ...excludeSelf,
         isActive: true,
         onboardingComplete: true,
         $or: [{ username: regex }, { displayName: regex }],
@@ -247,8 +250,29 @@ followRouter.post(
       await Follow.create({ followerId: follower._id, followingId: targetId, status });
 
       if (status === "accepted") {
-        await User.findByIdAndUpdate(follower._id, { $inc: { followingCount: 1 } });
-        await User.findByIdAndUpdate(targetId, { $inc: { followersCount: 1 } });
+        const [, updatedTarget] = await Promise.all([
+          User.findByIdAndUpdate(follower._id, { $inc: { followingCount: 1 } }),
+          User.findByIdAndUpdate(targetId, { $inc: { followersCount: 1 } }, { new: true }),
+        ]);
+        // Persist follow notification
+        createNotification({
+          recipientId: targetId,
+          actorId: follower._id,
+          type: "follow",
+          message: `${follower.displayName} started following you`,
+        });
+        // Milestone check
+        if (updatedTarget) {
+          checkFollowerMilestone(targetId, updatedTarget.followersCount ?? 0);
+        }
+      } else {
+        // pending request notification
+        createNotification({
+          recipientId: targetId,
+          actorId: follower._id,
+          type: "follow_request",
+          message: `${follower.displayName} requested to follow you`,
+        });
       }
 
       return res.json({ status });
@@ -303,8 +327,18 @@ followRouter.patch(
       follow.status = "accepted";
       await follow.save();
 
-      await User.findByIdAndUpdate(follow.followerId, { $inc: { followingCount: 1 } });
-      await User.findByIdAndUpdate(user._id, { $inc: { followersCount: 1 } });
+      const [, updatedMe] = await Promise.all([
+        User.findByIdAndUpdate(follow.followerId, { $inc: { followingCount: 1 } }),
+        User.findByIdAndUpdate(user._id, { $inc: { followersCount: 1 } }, { new: true }),
+      ]);
+      // Notify the requester that their request was accepted
+      createNotification({
+        recipientId: follow.followerId,
+        actorId: user._id,
+        type: "follow_accept",
+        message: `${user.displayName} accepted your follow request`,
+      });
+      if (updatedMe) checkFollowerMilestone(String(user._id), updatedMe.followersCount ?? 0);
 
       return res.json({ accepted: true });
     } catch (err) {

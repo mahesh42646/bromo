@@ -101,8 +101,20 @@ export function MainAppNavigator() {
       <Stack.Screen name="Profile" component={ProfileScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="CategoryFeed" component={CategoryFeedScreen} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
-      <Stack.Screen name="Comments" component={CommentsScreen} />
-      <Stack.Screen name="ShareSend" component={ShareSendScreen} />
+      <Stack.Screen
+        name="Comments"
+        component={CommentsScreen}
+        options={{
+          presentation: 'transparentModal',
+          animation: 'slide_from_bottom',
+          gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen
+        name="ShareSend"
+        component={ShareSendScreen}
+        options={{presentation: 'modal', animation: 'slide_from_bottom'}}
+      />
       <Stack.Screen name="StoryView" component={StoryViewScreen} />
       <Stack.Screen name="SearchResults" component={SearchResultsScreen} />
       <Stack.Screen name="HashtagDetail" component={HashtagDetailScreen} />

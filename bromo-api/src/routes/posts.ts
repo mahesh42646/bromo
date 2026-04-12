@@ -10,6 +10,7 @@ import { Like } from "../models/Like.js";
 import { Comment } from "../models/Comment.js";
 import { Follow } from "../models/Follow.js";
 import { User } from "../models/User.js";
+import { createNotification, checkLikeMilestone } from "../models/Notification.js";
 import {
   emitPostNew,
   emitPostLike,
@@ -475,8 +476,15 @@ postsRouter.post(
       const count = post?.likesCount ?? 0;
       emitPostLike(postId, count, true, String(user._id));
 
-      // Notify post author
+      // Persist + broadcast notification to post author
       if (post && String(post.authorId) !== String(user._id)) {
+        createNotification({
+          recipientId: post.authorId,
+          actorId: user._id,
+          type: "like",
+          postId,
+          message: `${user.displayName} liked your post`,
+        });
         emitNotification(
           String(post.authorId),
           "like",
@@ -485,6 +493,8 @@ postsRouter.post(
           `${user.displayName} liked your post`,
         );
       }
+      // Like milestone check (fire-and-forget)
+      checkLikeMilestone(String(post?.authorId ?? ""), count, postId);
 
       return res.json({ liked: true, likesCount: count });
     } catch (err) {
@@ -581,8 +591,15 @@ postsRouter.post(
       const result = { ...populated, author: populated?.authorId, authorId: undefined };
       emitPostComment(postId, commentsCount, result as object);
 
-      // Notify post author
+      // Persist + broadcast notification to post author
       if (updated && String(updated.authorId) !== String(user._id)) {
+        createNotification({
+          recipientId: updated.authorId,
+          actorId: user._id,
+          type: "comment",
+          postId,
+          message: `${user.displayName} commented: ${text.trim().slice(0, 50)}`,
+        });
         emitNotification(
           String(updated.authorId),
           "comment",
@@ -619,6 +636,47 @@ postsRouter.delete(
     } catch (err) {
       console.error("[posts] delete comment error:", err);
       return res.status(500).json({ message: "Failed to delete comment" });
+    }
+  },
+);
+
+// ── POST /posts/:id/hide ────────────────────────────────────────────
+postsRouter.post(
+  "/:id/hide",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      await mongoose.connection.collection("post_hides").updateOne(
+        { postId: new mongoose.Types.ObjectId(req.params.id), userId: user._id },
+        { $setOnInsert: { postId: new mongoose.Types.ObjectId(req.params.id), userId: user._id, createdAt: new Date() } },
+        { upsert: true },
+      );
+      return res.json({ hidden: true });
+    } catch (err) {
+      console.error("[posts] hide error:", err);
+      return res.status(500).json({ message: "Failed to hide post" });
+    }
+  },
+);
+
+// ── POST /posts/:id/report ──────────────────────────────────────────
+postsRouter.post(
+  "/:id/report",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const { reason = "other" } = req.body as { reason?: string };
+      await mongoose.connection.collection("post_reports").updateOne(
+        { postId: new mongoose.Types.ObjectId(req.params.id), reporterId: user._id },
+        { $set: { reason, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+        { upsert: true },
+      );
+      return res.json({ reported: true });
+    } catch (err) {
+      console.error("[posts] report error:", err);
+      return res.status(500).json({ message: "Failed to report post" });
     }
   },
 );

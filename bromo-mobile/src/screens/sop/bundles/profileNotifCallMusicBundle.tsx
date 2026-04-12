@@ -1,5 +1,5 @@
-import React, {useState} from 'react';
-import {Alert, Pressable, Switch, Text, View} from 'react-native';
+import React, {useCallback, useEffect, useState} from 'react';
+import {ActivityIndicator, Alert, FlatList, Image, Pressable, Switch, Text, View} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
@@ -8,6 +8,7 @@ import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
+import {getNotifications, markAllRead, markRead, type AppNotification} from '../../../api/notificationsApi';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
 export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
@@ -86,33 +87,182 @@ export function ReferralDashboardScreen() {
   );
 }
 
+function notifIcon(type: AppNotification['type']): string {
+  switch (type) {
+    case 'like': return '❤️';
+    case 'comment': return '💬';
+    case 'follow': return '👤';
+    case 'follow_request': return '🔔';
+    case 'follow_accept': return '✅';
+    case 'mention': return '@';
+    case 'message': return '✉️';
+    case 'milestone': return '🏆';
+    default: return '🔔';
+  }
+}
+
+function timeAgo(iso: string): string {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
+}
+
 export function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
-  const [tab, setTab] = useState<'all' | 'unread'>('all');
   const {palette} = useTheme();
+  const [tab, setTab] = useState<'all' | 'unread'>('all');
+  const [items, setItems] = useState<AppNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+
+  const load = useCallback(async (reset = false) => {
+    const p = reset ? 1 : page;
+    try {
+      const res = await getNotifications(p, tab === 'unread');
+      if (reset) {
+        setItems(res.notifications);
+        setPage(2);
+      } else {
+        setItems(prev => [...prev, ...res.notifications]);
+        setPage(p + 1);
+      }
+      setHasMore(res.hasMore);
+    } catch {}
+  }, [page, tab]);
+
+  useEffect(() => {
+    setLoading(true);
+    setPage(1);
+    load(true).finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  const onLoadMore = useCallback(async () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    await load(false);
+    setLoadingMore(false);
+  }, [hasMore, loadingMore, load]);
+
+  const onMarkAllRead = useCallback(async () => {
+    await markAllRead();
+    setItems(prev => prev.map(n => ({...n, read: true})));
+  }, []);
+
+  const onPressItem = useCallback(async (n: AppNotification) => {
+    if (!n.read) {
+      await markRead(n._id);
+      setItems(prev => prev.map(x => x._id === n._id ? {...x, read: true} : x));
+    }
+    if (n.postId) {
+      navigation.navigate('PostDetail', {postId: n.postId});
+    } else if (n.actorId) {
+      navigation.navigate('OtherUserProfile', {userId: n.actorId._id});
+    }
+  }, [navigation]);
+
   return (
-    <SopChrome title="Notifications">
-      <View style={{flexDirection: 'row', gap: 8, marginBottom: 16}}>
+    <View style={{flex: 1, backgroundColor: palette.background}}>
+      {/* Header */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10,
+        borderBottomWidth: 1, borderBottomColor: palette.border,
+      }}>
+        <Text style={{flex: 1, color: palette.foreground, fontSize: 20, fontWeight: '900'}}>Notifications</Text>
+        <Pressable onPress={onMarkAllRead} hitSlop={8}>
+          <Text style={{color: palette.primary, fontSize: 13, fontWeight: '700'}}>Mark all read</Text>
+        </Pressable>
+      </View>
+
+      {/* Tabs */}
+      <View style={{flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10}}>
         {(['all', 'unread'] as const).map(t => (
           <Pressable
             key={t}
             onPress={() => setTab(t)}
             style={{
-              paddingHorizontal: 14,
+              paddingHorizontal: 18,
               paddingVertical: 8,
               borderRadius: 999,
               backgroundColor: tab === t ? palette.primary : palette.input,
             }}>
-            <Text style={{color: tab === t ? palette.primaryForeground : palette.foreground, fontWeight: '800'}}>
+            <Text style={{color: tab === t ? palette.primaryForeground : palette.foreground, fontWeight: '800', fontSize: 13}}>
               {t === 'all' ? 'All' : 'Unread'}
             </Text>
           </Pressable>
         ))}
       </View>
-      <SopRow title="Auto DM: Welcome to BROMO 🎉" sub="Triggered on signup" onPress={() => navigation.navigate('AutoDm')} />
-      <SopRow title="3KM: Flash sale at Coffee Republic" />
-      <SopMeta label="Mark-as-read simulated via viewing list." />
-    </SopChrome>
+
+      {loading ? (
+        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
+          <ActivityIndicator color={palette.primary} size="large" />
+        </View>
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={n => n._id}
+          contentContainerStyle={{paddingBottom: 32}}
+          onEndReached={onLoadMore}
+          onEndReachedThreshold={0.4}
+          ListEmptyComponent={
+            <Text style={{textAlign: 'center', color: palette.mutedForeground, paddingTop: 60, fontSize: 15}}>
+              {tab === 'unread' ? 'No unread notifications' : 'No notifications yet'}
+            </Text>
+          }
+          ListFooterComponent={
+            loadingMore ? <ActivityIndicator color={palette.primary} style={{margin: 16}} /> : null
+          }
+          renderItem={({item}) => {
+            const avatar = item.actorId?.profilePicture ||
+              `https://ui-avatars.com/api/?name=${item.actorId?.displayName ?? 'B'}`;
+            return (
+              <Pressable
+                onPress={() => onPressItem(item)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 12,
+                  paddingHorizontal: 16, paddingVertical: 12,
+                  backgroundColor: item.read ? 'transparent' : `${palette.primary}12`,
+                  borderBottomWidth: 1, borderBottomColor: palette.border,
+                }}>
+                <View style={{position: 'relative'}}>
+                  <Image
+                    source={{uri: avatar}}
+                    style={{width: 46, height: 46, borderRadius: 23}}
+                  />
+                  <View style={{
+                    position: 'absolute', bottom: -2, right: -2,
+                    width: 20, height: 20, borderRadius: 10,
+                    backgroundColor: palette.background,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Text style={{fontSize: 11}}>{notifIcon(item.type)}</Text>
+                  </View>
+                </View>
+                <View style={{flex: 1}}>
+                  <Text style={{color: palette.foreground, fontSize: 14, lineHeight: 20}}>
+                    {item.actorId && (
+                      <Text style={{fontWeight: '800'}}>{item.actorId.username} </Text>
+                    )}
+                    <Text style={{fontWeight: item.read ? '400' : '600'}}>{item.message}</Text>
+                  </Text>
+                  <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 3}}>
+                    {timeAgo(item.createdAt)}
+                  </Text>
+                </View>
+                {!item.read && (
+                  <View style={{width: 8, height: 8, borderRadius: 4, backgroundColor: palette.primary}} />
+                )}
+              </Pressable>
+            );
+          }}
+        />
+      )}
+    </View>
   );
 }
 

@@ -155,6 +155,17 @@ export async function deleteComment(postId: string, commentId: string): Promise<
   if (!res.ok) throw new Error('Failed to delete comment');
 }
 
+export async function hidePost(postId: string): Promise<void> {
+  await authedFetch(`/posts/${postId}/hide`, {method: 'POST'}).catch(() => null);
+}
+
+export async function reportPost(postId: string, reason = 'other'): Promise<void> {
+  await authedFetch(`/posts/${postId}/report`, {
+    method: 'POST',
+    body: JSON.stringify({reason}),
+  }).catch(() => null);
+}
+
 export async function uploadMedia(
   localUri: string,
   meta?: {type: 'image' | 'video'; fileName?: string | null; category?: 'posts' | 'reels' | 'stories' | 'public'},

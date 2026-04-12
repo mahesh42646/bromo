@@ -39,7 +39,7 @@ import {
   Flag,
   SlidersHorizontal,
 } from 'lucide-react-native';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import type {NavigationProp} from '@react-navigation/native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
@@ -479,6 +479,14 @@ export function ReelsScreen() {
   const navigation = useNavigation() as Nav;
   const {palette} = useTheme();
   const {ready: authReady} = useAuth();
+  const [screenFocused, setScreenFocused] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true);
+      return () => setScreenFocused(false); // pause all on blur
+    }, []),
+  );
   const insets = useSafeAreaInsets();
   const [feedTab, setFeedTab] = useState<ReelFeedTab>('forYou');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -687,8 +695,6 @@ export function ReelsScreen() {
         keyExtractor={item => item._id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
-        snapToInterval={reelHeight}
-        snapToAlignment="start"
         decelerationRate="fast"
         onLayout={e => {
           const {height, width} = e.nativeEvent.layout;
@@ -734,7 +740,7 @@ export function ReelsScreen() {
         renderItem={({item, index}) => (
           <ReelItem
             item={item}
-            isActive={index === activeIndex}
+            isActive={screenFocused && index === activeIndex}
             reelHeight={reelHeight}
             reelWidth={reelWidth}
             navigation={navigation}

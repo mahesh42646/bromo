@@ -21,6 +21,8 @@ import {
   Bookmark,
   Bell,
   Eye,
+  EyeOff,
+  Flag,
   Flame,
   Heart,
   Home,
@@ -36,7 +38,11 @@ import {
   ShoppingBag,
   Trophy,
   User,
+  UserCheck,
+  UserPlus,
   Users,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react-native';
 import type {NavigationProp} from '@react-navigation/native';
@@ -50,7 +56,7 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
-import {getFeed, getStories, toggleLike, type Post, type StoryGroup} from '../api/postsApi';
+import {getFeed, getStories, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {socketService} from '../services/socketService';
 
@@ -84,40 +90,100 @@ type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
 };
 
+import {Modal} from 'react-native';
+
 type PostCardProps = {
   post: Post;
   onLikeToggle: (postId: string) => void;
+  onHide: (postId: string) => void;
   navigation: Nav;
-  /** Feed video autoplay: only the viewable post plays. */
   isVideoVisible?: boolean;
 };
 
-function PostCard({post, onLikeToggle, navigation, isVideoVisible = false}: PostCardProps) {
+function PostCard({post, onLikeToggle, onHide, navigation, isVideoVisible = false}: PostCardProps) {
   const {palette, contract} = useTheme();
   const [bookmarked, setBookmarked] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [following, setFollowing] = useState(post.isFollowing);
   const {borderRadiusScale} = contract.brandGuidelines;
   const radius = borderRadiusScale === 'bold' ? 14 : 10;
 
-  const hasStory = false; // TODO: derive from story API
+  const handleFollow = async () => {
+    try {
+      if (following) {
+        await unfollowUser(post.author._id);
+        setFollowing(false);
+      } else {
+        await followUser(post.author._id);
+        setFollowing(true);
+      }
+    } catch {}
+    setMenuOpen(false);
+  };
 
-  const headerAvatar = hasStory ? (
-    <Pressable onPress={() => parentNavigate(navigation, 'StoryView', {userId: post.author.username})}>
-      <StoryRing uri={post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`} size={36} />
-    </Pressable>
-  ) : (
-    <Image
-      source={{uri: post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`}}
-      style={{width: 36, height: 36, borderRadius: 18}}
-    />
-  );
+  const handleHide = async () => {
+    setMenuOpen(false);
+    hidePost(post._id);
+    onHide(post._id);
+  };
+
+  const handleReport = async () => {
+    setMenuOpen(false);
+    reportPost(post._id, 'inappropriate');
+  };
+
+  const avatarUri = post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`;
 
   return (
     <View style={{borderBottomWidth: 8, borderBottomColor: palette.background, backgroundColor: palette.background}}>
+      {/* 3-dot action sheet */}
+      <Modal visible={menuOpen} transparent animationType="slide" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end'}} onPress={() => setMenuOpen(false)}>
+          <Pressable
+            onPress={e => e.stopPropagation()}
+            style={{
+              backgroundColor: palette.surface, borderTopLeftRadius: 18, borderTopRightRadius: 18,
+              paddingBottom: 28, paddingTop: 6,
+            }}>
+            <View style={{alignItems: 'center', paddingBottom: 8}}>
+              <View style={{width: 40, height: 4, borderRadius: 2, backgroundColor: palette.border}} />
+            </View>
+            {[
+              {icon: following ? <UserCheck size={20} color={palette.foreground}/> : <UserPlus size={20} color={palette.foreground}/>,
+               label: following ? 'Unfollow' : 'Follow', onPress: handleFollow},
+              {icon: <User size={20} color={palette.foreground}/>, label: 'View Profile',
+               onPress: () => { setMenuOpen(false); parentNavigate(navigation, 'OtherUserProfile', {userId: post.author._id}); }},
+              {icon: <Send size={20} color={palette.foreground}/>, label: 'Share Post',
+               onPress: () => { setMenuOpen(false); parentNavigate(navigation, 'ShareSend', {postId: post._id}); }},
+              {icon: <Bookmark size={20} color={palette.foreground}/>, label: 'Save',
+               onPress: () => { setMenuOpen(false); setBookmarked(true); }},
+              {icon: <EyeOff size={20} color={palette.foreground}/>, label: 'Hide Post', onPress: handleHide},
+              {icon: <Flag size={20} color={palette.destructive}/>, label: 'Report', danger: true, onPress: handleReport},
+            ].map(item => (
+              <Pressable
+                key={item.label}
+                onPress={item.onPress}
+                style={({pressed}) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 14,
+                  paddingVertical: 14, paddingHorizontal: 18,
+                  backgroundColor: pressed ? `${palette.foreground}0f` : 'transparent',
+                })}>
+                {item.icon}
+                <ThemedText variant="body" style={{fontSize: 15, fontWeight: '500', color: item.danger ? palette.destructive : palette.foreground}}>
+                  {item.label}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12}}>
         <Pressable
           style={{flexDirection: 'row', alignItems: 'center', gap: 10}}
           onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: post.author._id})}>
-          {headerAvatar}
+          <Image source={{uri: avatarUri}} style={{width: 36, height: 36, borderRadius: 18}} />
           <View>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
               <ThemedText variant="label" style={{fontSize: 13}}>{post.author.displayName}</ThemedText>
@@ -138,8 +204,9 @@ function PostCard({post, onLikeToggle, navigation, isVideoVisible = false}: Post
           </View>
         </Pressable>
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
-          {!post.isFollowing && (
+          {!following && (
             <Pressable
+              onPress={handleFollow}
               style={{
                 borderWidth: 1,
                 borderColor: `${palette.primary}50`,
@@ -150,7 +217,9 @@ function PostCard({post, onLikeToggle, navigation, isVideoVisible = false}: Post
               <ThemedText variant="primary" style={{fontSize: 11, fontWeight: '800'}}>Follow</ThemedText>
             </Pressable>
           )}
-          <MoreHorizontal size={18} color={palette.mutedForeground} />
+          <Pressable onPress={() => setMenuOpen(true)} hitSlop={10}>
+            <MoreHorizontal size={18} color={palette.mutedForeground} />
+          </Pressable>
         </View>
       </View>
 
@@ -162,16 +231,31 @@ function PostCard({post, onLikeToggle, navigation, isVideoVisible = false}: Post
 
       <Pressable onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}>
         {post.mediaType === 'video' ? (
-          <NetworkVideo
-            context="feed"
-            uri={resolveMediaUrl(post.mediaUrl)}
-            posterUri={postThumbnailUri(post) || undefined}
-            style={{width: '100%', aspectRatio: 1}}
-            repeat
-            muted
-            paused={!isVideoVisible}
-            posterOverlayUntilReady
-          />
+          <View style={{position: 'relative'}}>
+            <NetworkVideo
+              context="feed"
+              uri={resolveMediaUrl(post.mediaUrl)}
+              posterUri={postThumbnailUri(post) || undefined}
+              style={{width: '100%', aspectRatio: 1}}
+              repeat
+              muted={muted}
+              paused={!isVideoVisible}
+              posterOverlayUntilReady
+            />
+            {/* Mute toggle */}
+            <Pressable
+              onPress={e => { e.stopPropagation(); setMuted(m => !m); }}
+              style={{
+                position: 'absolute', bottom: 10, right: 10,
+                width: 32, height: 32, borderRadius: 16,
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+              {muted
+                ? <VolumeX size={14} color="#fff" />
+                : <Volume2 size={14} color="#fff" />}
+            </Pressable>
+          </View>
         ) : (
           <Image
             source={{uri: resolveMediaUrl(post.mediaUrl)}}
@@ -391,6 +475,10 @@ export function HomeScreen() {
         ),
       );
     });
+  }, []);
+
+  const handleHidePost = useCallback((postId: string) => {
+    setPosts(prev => prev.filter(p => p._id !== postId));
   }, []);
 
   // Real-time feed: listen for new posts, likes, and story arrivals
@@ -698,6 +786,7 @@ export function HomeScreen() {
                 <PostCard
                   post={item.post}
                   onLikeToggle={handleLikeToggle}
+                  onHide={handleHidePost}
                   navigation={navigation}
                   isVideoVisible={item.post.mediaType === 'video' && item.post._id === visiblePostId}
                 />
