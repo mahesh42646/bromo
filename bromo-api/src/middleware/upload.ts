@@ -10,6 +10,9 @@ import {
   isBlockedExtension,
   normalizedMime,
   validateUploadForCategory,
+  VIDEO_EXTENSIONS,
+  IMAGE_EXTENSIONS,
+  AUDIO_EXTENSIONS,
 } from "../utils/uploadPolicy.js";
 
 const UPLOAD_DIR = uploadsRoot();
@@ -127,12 +130,27 @@ function userScopedDestination(req: Request, category: UploadCategory): string {
 }
 
 function resolveStoredExtension(file: Express.Multer.File): string {
-  let ext = extFromOriginalName(file.originalname);
+  const fromName = extFromOriginalName(file.originalname);
+  const nm = normalizedMime(file.mimetype);
+
+  /** Prefer the client filename extension when it matches the MIME family (e.g. `.mp4` + `video/quicktime` from iOS). */
+  if (fromName && ALLOWED_EXTS.includes(fromName)) {
+    if (VIDEO_EXTENSIONS.has(fromName) && nm.startsWith("video/")) {
+      return fromName;
+    }
+    if (IMAGE_EXTENSIONS.has(fromName) && nm.startsWith("image/")) {
+      return fromName;
+    }
+    if (AUDIO_EXTENSIONS.has(fromName) && nm.startsWith("audio/")) {
+      return fromName;
+    }
+  }
+
+  let ext = fromName;
   if (!ext || !ALLOWED_EXTS.includes(ext)) {
     const fromMime = extFromMime(file.mimetype);
     if (fromMime && ALLOWED_EXTS.includes(fromMime)) ext = fromMime;
   }
-  const nm = normalizedMime(file.mimetype);
   if (!ext || !ALLOWED_EXTS.includes(ext)) {
     if (nm.startsWith("video/")) return ".mp4";
     if (nm.startsWith("image/")) return ".jpg";

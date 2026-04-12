@@ -105,17 +105,24 @@ export function CreateHubScreen() {
   const [multiSelect, setMultiSelect] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const didBootstrap = useRef(false);
+  const lastBootstrapTs = useRef<number | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
-      if (didBootstrap.current) return;
-      didBootstrap.current = true;
+      const ts = route.params?.bootstrapTs;
+      if (typeof ts !== 'number') {
+        return;
+      }
+      if (lastBootstrapTs.current === ts) {
+        return;
+      }
+      lastBootstrapTs.current = ts;
       reset();
-      // Apply mode if passed from parent navigation (e.g. story "+" tap)
       const initialMode = route.params?.mode;
-      if (initialMode) setMode(initialMode);
-    }, [reset, route.params?.mode, setMode]),
+      if (initialMode) {
+        setMode(initialMode);
+      }
+    }, [reset, route.params?.bootstrapTs, route.params?.mode, setMode]),
   );
 
   useEffect(() => {

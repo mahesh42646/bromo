@@ -57,10 +57,22 @@ function probeMediaWithFfmpeg(absPath: string): ProbeInfo {
       Number(durMatch[1]) * 3600 + Number(durMatch[2]) * 60 + Number(durMatch[3]);
   }
 
-  const hasVideoStream = /Stream\s+#\d+:\d+(?:\([^)]*\))?:\s*Video:/i.test(stderr);
-  const hasAudioStream = /Stream\s+#\d+:\d+(?:\([^)]*\))?:\s*Audio:/i.test(stderr);
+  /** FFmpeg often prints `Stream #0:0[0x1](und): Video:` — the `[0x1]` block must be allowed or we mis-detect MP4 as having no video. */
+  const streamIdx = "(?:\\[[^\\]]+\\])?";
+  const streamMeta = "(?:\\([^)]*\\))?";
+  const hasVideoStream = new RegExp(
+    `Stream\\s+#\\d+:\\d+${streamIdx}${streamMeta}:\\s*Video:`,
+    "i",
+  ).test(stderr);
+  const hasAudioStream = new RegExp(
+    `Stream\\s+#\\d+:\\d+${streamIdx}${streamMeta}:\\s*Audio:`,
+    "i",
+  ).test(stderr);
   const videoLine = stderr.match(
-    /Stream\s+#\d+:\d+(?:\([^)]*\))?:\s*Video:\s*([a-zA-Z0-9_]+)/i,
+    new RegExp(
+      `Stream\\s+#\\d+:\\d+${streamIdx}${streamMeta}:\\s*Video:\\s*([a-zA-Z0-9_]+)`,
+      "i",
+    ),
   );
   const videoCodec = videoLine?.[1]?.toLowerCase();
 
@@ -167,7 +179,9 @@ export async function normalizeMediaAfterUpload(
     } catch {
       /* ignore */
     }
-    throw new Error("Reels need a video clip. This file looks like a still photo (HEIC/JPEG).");
+    throw new Error(
+      "Reels need a video file with a video track. This upload looks like a still image, not a playable clip.",
+    );
   }
 
   if (!probe.hasVideoStream) {

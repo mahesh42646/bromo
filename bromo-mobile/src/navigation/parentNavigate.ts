@@ -6,6 +6,11 @@ type LooseNav = {
   getParent?: () => LooseNav | undefined;
 };
 
+type CreateFlowNavParams = {
+  screen: 'CreateHub';
+  params: {mode?: string; bootstrapTs: number};
+};
+
 /**
  * Navigate to a screen registered on the main app stack (or a tab under `Main`).
  * Walks up the navigation tree so Tab children and nested stack screens resolve correctly
@@ -19,6 +24,18 @@ export function parentNavigate(navigation: any, name: string, params?: Record<st
     const state = current.getState?.();
     const routeNames = state?.routeNames;
     if (routeNames?.includes(name)) {
+      if (name === 'CreateFlow') {
+        const p = (params ?? {}) as {mode?: string; bootstrapTs?: number};
+        const payload: CreateFlowNavParams = {
+          screen: 'CreateHub',
+          params: {
+            mode: p.mode,
+            bootstrapTs: typeof p.bootstrapTs === 'number' ? p.bootstrapTs : Date.now(),
+          },
+        };
+        current.navigate?.(name, payload as object);
+        return;
+      }
       current.navigate?.(name, params as object);
       return;
     }

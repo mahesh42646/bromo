@@ -182,7 +182,10 @@ export function ReuseAudioScreen() {
   return (
     <SopChrome title="Use this audio">
       <SopMeta label={`Audio ${route.params.audioId} — opens create reel with attribution to original creator.`} />
-      <PrimaryButton label="Create reel" onPress={() => parentNavigate(navigation, 'CreateFlow')} />
+      <PrimaryButton
+        label="Create reel"
+        onPress={() => parentNavigate(navigation, 'CreateFlow', {mode: 'reel'})}
+      />
     </SopChrome>
   );
 }

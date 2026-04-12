@@ -3,7 +3,10 @@ import {Pressable, StyleSheet, View} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import type {BottomTabBarButtonProps} from '@react-navigation/bottom-tabs';
 import {useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import type {AppStackParamList, MainTabParamList} from './appStackParamList';
 import {
   Home,
   Search,
@@ -24,7 +27,7 @@ function EmptyCreateScreen() {
 }
 
 function CreateTabButton({style, children: _children, accessibilityState, testID}: BottomTabBarButtonProps) {
-  const navigation = useNavigation();
+  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const {palette} = useTheme();
 
   return (
@@ -35,10 +38,15 @@ function CreateTabButton({style, children: _children, accessibilityState, testID
         accessibilityLabel="Create post"
         accessibilityState={accessibilityState}
         onPress={() => {
-          const parent = navigation.getParent();
-          if (parent) {
-            (parent as {navigate: (name: string) => void}).navigate('CreateFlow');
-          }
+          const parent = navigation.getParent() as NativeStackNavigationProp<AppStackParamList> | undefined;
+          if (!parent) return;
+          const tabState = navigation.getState();
+          const tabName = tabState?.routes[tabState.index ?? 0]?.name;
+          const mode = tabName === 'Reels' ? 'reel' : 'post';
+          parent.navigate('CreateFlow', {
+            screen: 'CreateHub',
+            params: {mode, bootstrapTs: Date.now()},
+          });
         }}>
         <View
           style={[

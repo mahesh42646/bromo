@@ -47,6 +47,13 @@ function extFromPathOrName(pathOrName: string): string {
   return seg.slice(dot + 1).toLowerCase();
 }
 
+/** iOS `ph://` URIs often omit a normal basename — try to read `.mp4` / `.mov` from the path tail. */
+function inferVideoExtFromUri(uri: string): string {
+  const base = stripQuery(uri);
+  const m = base.match(/\.(mp4|mov|m4v|webm|mkv|avi|mpeg|mpg)(?:$|[?#])/i);
+  return m?.[1]?.toLowerCase() ?? '';
+}
+
 export type MediaKind = 'image' | 'video' | 'audio';
 
 export function buildMediaUploadPart(
@@ -64,13 +71,13 @@ export function buildMediaUploadPart(
 
   let ext = fileName ? extFromPathOrName(fileName) : '';
   if (!ext) ext = extFromPathOrName(localUri);
+  if (kind === 'video' && !ext) ext = inferVideoExtFromUri(localUri);
 
   const known = pool.has(ext);
+  /** Default video container: MP4 on all platforms (iOS used to force `.mov`, which confused users and MIME mapping). */
   const fallbackExt =
     kind === 'video'
-      ? Platform.OS === 'ios'
-        ? 'mov'
-        : 'mp4'
+      ? 'mp4'
       : kind === 'audio'
         ? 'm4a'
         : Platform.OS === 'ios'
