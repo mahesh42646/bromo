@@ -9,7 +9,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import Video, {type OnLoadData, type OnProgressData} from 'react-native-video';
+import Video, {ViewType, type OnLoadData, type OnProgressData} from 'react-native-video';
 
 function formatVideoError(e: unknown): string {
   if (e == null) return 'unknown';
@@ -56,8 +56,11 @@ export type NetworkVideoProps = {
 };
 
 /**
- * Remote (or file://) video with Android SurfaceView-friendly defaults and
- * explicit error reporting. Omits `source.type` so the native stack infers format.
+ * Remote (or file://) video with correct Android rendering (TextureView, not SurfaceView)
+ * and explicit error reporting. Omits `source.type` so the native stack infers format.
+ *
+ * On Android, `viewType=ViewType.TEXTURE` is mandatory: SurfaceView renders behind ALL
+ * React Native views (including transparent wrappers), making every video black.
  */
 export function NetworkVideo({
   uri,
@@ -97,6 +100,19 @@ export function NetworkVideo({
     setBuffering(false);
     progressed.current = false;
     decoderReadyFired.current = false;
+  }, [uri]);
+
+  // Safety net: if onReadyForDisplay never fires (e.g. Android surface timing),
+  // force-unblock the poster overlay after 6s so users aren't stuck on a black screen.
+  useEffect(() => {
+    if (!uri?.trim()) return;
+    const t = setTimeout(() => {
+      if (!decoderReadyFired.current) {
+        decoderReadyFired.current = true;
+        setReady(true);
+      }
+    }, 6000);
+    return () => clearTimeout(t);
   }, [uri]);
 
   const onLoad = useCallback((_d: OnLoadData) => {
@@ -167,23 +183,26 @@ export function NetworkVideo({
   return (
     <View style={[styles.wrap, style]}>
       <Video
-        source={{uri}}
+        source={{
+          uri,
+          // v6: bufferConfig belongs in source (component-level prop is deprecated)
+          ...(bufferConfig ? {bufferConfig} : {}),
+        }}
         style={StyleSheet.absoluteFill}
         resizeMode={resizeMode}
         repeat={repeat}
         paused={paused}
         muted={muted}
         ignoreSilentSwitch={ignoreSilentSwitch}
-        playInBackground={false}
-        playWhenInactive={false}
         onLoad={onLoad}
         onReadyForDisplay={onReadyForDisplay}
         onProgress={onProgress}
         onBuffer={onBuffer}
         onError={onError}
-        bufferConfig={bufferConfig}
-        useTextureView={Platform.OS === 'android' ? false : undefined}
-        shutterColor="transparent"
+        // TextureView renders in the RN view hierarchy (not behind it like SurfaceView).
+        // SurfaceView (default) punches through the RN layer → everything above it is black.
+        viewType={Platform.OS === 'android' ? ViewType.TEXTURE : undefined}
+        shutterColor={Platform.OS === 'android' ? 'transparent' : undefined}
         rate={rate}
         preventsDisplaySleepDuringVideoPlayback={preventsDisplaySleepDuringVideoPlayback}
       />

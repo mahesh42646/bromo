@@ -10,6 +10,8 @@ import {
   StatusBar,
   Text,
   View,
+  type ViewabilityConfig,
+  type ViewToken,
 } from 'react-native';
 import {NetworkVideo} from '../components/media/NetworkVideo';
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
@@ -86,9 +88,11 @@ type PostCardProps = {
   post: Post;
   onLikeToggle: (postId: string) => void;
   navigation: Nav;
+  /** Feed video autoplay: only the viewable post plays. */
+  isVideoVisible?: boolean;
 };
 
-function PostCard({post, onLikeToggle, navigation}: PostCardProps) {
+function PostCard({post, onLikeToggle, navigation, isVideoVisible = false}: PostCardProps) {
   const {palette, contract} = useTheme();
   const [bookmarked, setBookmarked] = useState(false);
   const {borderRadiusScale} = contract.brandGuidelines;
@@ -165,7 +169,7 @@ function PostCard({post, onLikeToggle, navigation}: PostCardProps) {
             style={{width: '100%', aspectRatio: 1}}
             repeat
             muted
-            paused={false}
+            paused={!isVideoVisible}
             posterOverlayUntilReady
           />
         ) : (
@@ -300,6 +304,27 @@ export function HomeScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const initialLoadDone = useRef(false);
+  /** ID of the currently-visible video post (only this one autoplays). */
+  const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
+
+  const feedViewabilityConfig = useRef<ViewabilityConfig>({
+    itemVisiblePercentThreshold: 60,
+    minimumViewTime: 200,
+  }).current;
+
+  const onFeedViewableItemsChanged = useRef(({viewableItems}: {viewableItems: ViewToken[]}) => {
+    // Find the first viewable item that is a video post
+    for (const vt of viewableItems) {
+      if (vt.item && typeof vt.item === 'object' && 'kind' in vt.item && vt.item.kind === 'post') {
+        const post = (vt.item as {post: Post}).post;
+        if (post.mediaType === 'video') {
+          setVisiblePostId(post._id);
+          return;
+        }
+      }
+    }
+    setVisiblePostId(null);
+  }).current;
 
   const loadData = useCallback(async (reset = false) => {
     try {
@@ -550,6 +575,8 @@ export function HomeScreen() {
           }
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.4}
+          viewabilityConfig={feedViewabilityConfig}
+          onViewableItemsChanged={onFeedViewableItemsChanged}
           ListEmptyComponent={
             <View style={{alignItems: 'center', paddingTop: 80}}>
               <Users size={48} color={palette.foregroundFaint} />
@@ -669,6 +696,7 @@ export function HomeScreen() {
                   post={item.post}
                   onLikeToggle={handleLikeToggle}
                   navigation={navigation}
+                  isVideoVisible={item.post.mediaType === 'video' && item.post._id === visiblePostId}
                 />
               );
             }
