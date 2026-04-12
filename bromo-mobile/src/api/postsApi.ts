@@ -158,7 +158,7 @@ export async function deleteComment(postId: string, commentId: string): Promise<
 export async function uploadMedia(
   localUri: string,
   meta?: {type: 'image' | 'video'; fileName?: string | null; category?: 'posts' | 'reels' | 'stories' | 'public'},
-): Promise<{url: string; thumbnailUrl?: string}> {
+): Promise<{url: string; thumbnailUrl?: string; mediaType?: 'image' | 'video'; converted?: boolean}> {
   const user = auth().currentUser;
   if (!user) throw new Error('Not authenticated');
   const token = await user.getIdToken(false);
@@ -183,11 +183,15 @@ export async function uploadMedia(
   if (typeof url !== 'string' || !url.trim()) {
     throw new Error('Upload succeeded but no file URL was returned. Try again or use MP4/MOV.');
   }
+  const mt = (body as {mediaType?: unknown}).mediaType;
+  const conv = (body as {converted?: unknown}).converted;
   return {
     url: url.trim(),
     thumbnailUrl: typeof (body as {thumbnailUrl?: unknown}).thumbnailUrl === 'string'
       ? (body as {thumbnailUrl: string}).thumbnailUrl.trim() || undefined
       : undefined,
+    mediaType: mt === 'video' || mt === 'image' ? mt : undefined,
+    converted: typeof conv === 'boolean' ? conv : undefined,
   };
 }
 

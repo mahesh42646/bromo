@@ -61,20 +61,26 @@ function extFromPickerName(name: string | undefined): string {
 
 function mapAsset(a: Asset): MediaAsset | null {
   if (!a.uri) return null;
-  const fn = (a.fileName ?? '').toLowerCase();
-  const uriTail = a.uri.split('?')[0]?.toLowerCase() ?? '';
   const ext = extFromPickerName(a.fileName) || extFromPickerName(a.uri.split('/').pop() ?? '');
-  let isVideo = a.type === 'video';
-  /** HEIC/HEIF are never video files — picker sometimes mis-tags Live Photos. */
-  if (isVideo && (ext === 'heic' || ext === 'heif' || fn.endsWith('.heic') || fn.endsWith('.heif') || uriTail.endsWith('.heic') || uriTail.endsWith('.heif'))) {
-    isVideo = false;
+  const videoExts = new Set(['mp4', 'mov', 'm4v', 'webm', '3gp', 'mkv', 'avi', 'mpeg', 'mpg']);
+
+  /** Trust the OS when it says `video` (do not downgrade — paths can contain unrelated ".heic" substrings). */
+  if (a.type === 'video') {
+    return {uri: a.uri, type: 'video', duration: a.duration, fileName: a.fileName ?? null};
   }
-  return {
-    uri: a.uri,
-    type: isVideo ? 'video' : 'image',
-    duration: a.duration,
-    fileName: a.fileName ?? null,
-  };
+
+  /** Some devices report `image` for files that are clearly video by extension. */
+  if (videoExts.has(ext)) {
+    return {uri: a.uri, type: 'video', duration: a.duration, fileName: a.fileName ?? null};
+  }
+
+  /** Duration present → usually a clip even if type is wrong. */
+  const dur = Number(a.duration);
+  if (Number.isFinite(dur) && dur > 0) {
+    return {uri: a.uri, type: 'video', duration: a.duration, fileName: a.fileName ?? null};
+  }
+
+  return {uri: a.uri, type: 'image', duration: a.duration, fileName: a.fileName ?? null};
 }
 
 const MODES: {id: CreateMode; label: string}[] = [

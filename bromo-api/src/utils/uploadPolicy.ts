@@ -99,13 +99,11 @@ export function validateUploadForCategory(
   }
 
   if (category === "reels") {
-    if (isImageLike(mimetype, ext) && !isVideoLike(mimetype, ext)) {
-      return "Reels must be a video file (e.g. MP4, MOV, WebM). HEIC/photos cannot be uploaded as reels.";
+    // Allow images (HEIC) and videos — server probes and converts true video to MP4; still photos are rejected there.
+    if (isImageLike(mimetype, ext) || isVideoLike(mimetype, ext)) {
+      return null;
     }
-    if (!isVideoLike(mimetype, ext)) {
-      return "Reels only accept video uploads.";
-    }
-    return null;
+    return "Reels accept photos (HEIC/JPEG/…) or video (MP4/MOV/…). Unsupported type.";
   }
 
   if (category === "profile") {

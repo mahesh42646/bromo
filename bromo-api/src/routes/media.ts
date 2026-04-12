@@ -8,6 +8,7 @@ import {
 import { uploadSingle, uploadAvatar } from "../middleware/upload.js";
 import { User } from "../models/User.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
+import { normalizeMediaAfterUpload } from "../services/videoNormalize.js";
 import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 import {
   publicUrlForUploadRelative,
@@ -60,13 +61,35 @@ mediaRouter.post(
       console.warn("[media] upload rejected after store:", policyErr, req.file.path);
       return res.status(400).json({ message: policyErr });
     }
-    const rel = relativeUploadPathFromAbs(req.file.path);
-    console.info("[media] upload ok", cat, rel, req.file.mimetype);
+    let rel = relativeUploadPathFromAbs(req.file.path);
+    console.info("[media] upload stored", cat, rel, req.file.mimetype);
+
+    let mediaType: "video" | "image" = "image";
+    let converted = false;
+    try {
+      const norm = await normalizeMediaAfterUpload(rel, cat);
+      rel = norm.rel;
+      mediaType = norm.mediaType;
+      converted = norm.converted;
+      if (converted) {
+        console.info("[media] normalized to mp4", rel);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Media processing failed";
+      console.warn("[media] normalize failed:", msg);
+      try {
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      } catch {
+        /* ignore */
+      }
+      return res.status(400).json({ message: msg });
+    }
+
     const url = urlFromStoredOrRelative(rel);
-    const ext = path.extname(req.file.filename).toLowerCase();
+    const ext = path.extname(rel).toLowerCase();
 
     let thumbnailUrl: string | undefined;
-    if (VIDEO_EXTS.has(ext)) {
+    if (mediaType === "video" || VIDEO_EXTS.has(ext)) {
       try {
         const thumbRel = await generateVideoThumbnail(rel);
         thumbnailUrl = urlFromStoredOrRelative(thumbRel);
@@ -75,7 +98,7 @@ mediaRouter.post(
       }
     }
 
-    return res.json({ url, thumbnailUrl, filename: rel });
+    return res.json({ url, thumbnailUrl, filename: rel, mediaType, converted });
   },
 );
 

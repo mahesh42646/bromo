@@ -90,22 +90,14 @@ export function ShareScreen() {
     }
     setPhase('posting');
     try {
-      if (draft.mode === 'reel' && asset.type !== 'video') {
-        setPhase('review');
-        Alert.alert(
-          'Reels need video',
-          'Pick a video file (MP4, MOV, etc.). Photos in HEIC/JPEG cannot be uploaded as reels.',
-        );
-        return;
-      }
       const uploadCategory =
         draft.mode === 'reel' ? 'reels' : draft.mode === 'story' ? 'stories' : 'posts';
-      const {url, thumbnailUrl} = await uploadMedia(asset.uri, {
+      const {url, thumbnailUrl, mediaType: mediaTypeFromServer} = await uploadMedia(asset.uri, {
         type: asset.type,
         fileName: asset.fileName,
         category: uploadCategory,
       });
-      const mediaType = asset.type === 'video' ? 'video' : 'image';
+      const mediaType = mediaTypeFromServer ?? (asset.type === 'video' ? 'video' : 'image');
       const postType = draft.mode === 'reel' ? 'reel' : draft.mode === 'story' ? 'story' : 'post';
       await createPost({
         type: postType,

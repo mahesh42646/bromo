@@ -54,15 +54,16 @@ export function buildMediaUploadPart(
   kind: MediaKind,
   fileName?: string | null,
 ): {uri: string; name: string; type: string} {
-  const pool = kind === 'video' ? KNOWN_VIDEO_EXT : kind === 'audio' ? KNOWN_AUDIO_EXT : KNOWN_IMAGE_EXT;
+  /** HEIC/HEIF can be motion video on iOS — keep extension + image/* MIME so the server can probe and transcode. */
+  const pool =
+    kind === 'video'
+      ? new Set<string>([...KNOWN_VIDEO_EXT, 'heic', 'heif'])
+      : kind === 'audio'
+        ? KNOWN_AUDIO_EXT
+        : KNOWN_IMAGE_EXT;
 
   let ext = fileName ? extFromPathOrName(fileName) : '';
   if (!ext) ext = extFromPathOrName(localUri);
-
-  /** iOS Live Photo / picker can mark HEIC as `video` — never send HEIC as a video upload. */
-  if (kind === 'video' && (ext === 'heic' || ext === 'heif')) {
-    ext = '';
-  }
 
   const known = pool.has(ext);
   const fallbackExt =
@@ -82,7 +83,7 @@ export function buildMediaUploadPart(
   if (fileName?.trim()) {
     const bn = stripQuery(fileName.trim()).split('/').pop() ?? '';
     const e = extFromPathOrName(bn);
-    if (bn && pool.has(e) && !(kind === 'video' && (e === 'heic' || e === 'heif'))) {
+    if (bn && pool.has(e)) {
       name = bn;
     } else {
       name = `bromo-${Date.now()}.${finalExt}`;
