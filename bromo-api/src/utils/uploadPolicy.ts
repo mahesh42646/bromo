@@ -70,6 +70,8 @@ export function isBlockedExtension(ext: string): boolean {
 }
 
 export function isVideoLike(mimetype: string, ext: string): boolean {
+  // Image extensions always win — HEIC files sent as video/quicktime must never be video.
+  if (IMAGE_EXTENSIONS.has(ext)) return false;
   if (VIDEO_EXTENSIONS.has(ext)) return true;
   return normalizedMime(mimetype).startsWith("video/");
 }

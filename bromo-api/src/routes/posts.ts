@@ -347,6 +347,10 @@ postsRouter.get(
           mediaUrl: typeof s.mediaUrl === "string" ? rewritePublicMediaUrl(s.mediaUrl) : s.mediaUrl,
           thumbnailUrl:
             typeof s.thumbnailUrl === "string" ? rewritePublicMediaUrl(s.thumbnailUrl) : s.thumbnailUrl,
+          hlsMasterUrl:
+            typeof (s as { hlsMasterUrl?: string }).hlsMasterUrl === "string" && (s as { hlsMasterUrl?: string }).hlsMasterUrl!.trim()
+              ? rewritePublicMediaUrl((s as { hlsMasterUrl?: string }).hlsMasterUrl!)
+              : undefined,
           authorId: undefined,
         });
       }

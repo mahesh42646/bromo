@@ -85,8 +85,10 @@ mediaRouter.post(
       const msg = e instanceof Error ? e.message : "Media processing failed";
       console.warn("[media] normalize failed:", msg);
       // Fail-open for user uploads: keep original video when optimization fails.
-      const ext = extFromOriginalName(req.file.originalname || "");
-      const isVideoUpload = isVideoLike(req.file.mimetype, ext);
+      const origExt = extFromOriginalName(req.file.originalname || "");
+      const isHeic = origExt === ".heic" || origExt === ".heif";
+      // HEIC files: iOS sends video/quicktime MIME — never treat as video
+      const isVideoUpload = !isHeic && isVideoLike(req.file.mimetype, origExt);
       if (isVideoUpload) {
         mediaType = "video";
         converted = false;
@@ -151,8 +153,11 @@ mediaRouter.post(
     }
 
     const rel = relativeUploadPathFromAbs(req.file.path);
-    const ext = path.extname(req.file.path).toLowerCase();
-    const mediaType: "video" | "image" = isVideoLike(req.file.mimetype, extFromOriginalName(req.file.originalname ?? ""))
+    // Detect HEIC/HEIF by extension first — iOS sends them as video/quicktime which would
+    // incorrectly classify them as video. They must always be routed to image processing.
+    const uploadExt = (path.extname(req.file.originalname || "").toLowerCase() || path.extname(req.file.path).toLowerCase());
+    const isHeicUpload = uploadExt === ".heic" || uploadExt === ".heif";
+    const mediaType: "video" | "image" = !isHeicUpload && isVideoLike(req.file.mimetype, extFromOriginalName(req.file.originalname ?? ""))
       ? "video"
       : "image";
 

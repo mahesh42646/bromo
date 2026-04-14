@@ -6,6 +6,7 @@ import { bundledFfmpegPath } from "../config/ffmpegInit.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
 import type { UploadCategory } from "../utils/uploadFiles.js";
 import { VIDEO_EXTENSIONS } from "../utils/uploadPolicy.js";
+import { normalizeImage } from "./imageNormalize.js";
 
 const UPLOAD_DIR = uploadsRoot();
 
@@ -103,7 +104,7 @@ function isH264InFriendlyContainer(ext: string, codec: string | undefined): bool
 export function needsTranscodeToMp4(ext: string, probe: ProbeInfo): boolean {
   const e = ext.toLowerCase();
   if (!probe.hasVideoStream) return false;
-  if (e === ".heic" || e === ".heif") return true;
+  // HEIC/HEIF are handled as images before this function is ever reached
   if (e === ".webm" || e === ".mkv" || e === ".avi" || e === ".mpeg" || e === ".mpg" || e === ".3gp") return true;
   if (isH264InFriendlyContainer(e, probe.videoCodec)) return false;
   const c = (probe.videoCodec ?? "").toLowerCase();
@@ -202,6 +203,13 @@ export async function normalizeMediaAfterUpload(
     return { rel, mediaType: "image", converted: false };
   }
 
+  // HEIC/HEIF are always images — even Live Photos with an embedded video stream.
+  // ffmpeg can't reliably transcode them as video (exits 187); route to imageNormalize instead.
+  if (ext === ".heic" || ext === ".heif") {
+    const newRel = await normalizeImage(rel).catch(() => rel);
+    return { rel: newRel, mediaType: "image", converted: newRel !== rel };
+  }
+
   const shouldAlwaysTranscodeStory = cat === "stories" && probe.hasVideoStream;
   if (!shouldAlwaysTranscodeStory && !needsTranscodeToMp4(ext, probe)) {
     return { rel, mediaType: "video", converted: false };
@@ -220,7 +228,9 @@ export async function normalizeMediaAfterUpload(
       /* ignore */
     }
     // Never block uploads on optimizer failure — keep original media.
-    return { rel, mediaType: "video", converted: false };
+    // Image extensions that somehow reached transcode should stay as images.
+    const isImageExt = [".heic", ".heif", ".jpg", ".jpeg", ".png", ".webp"].includes(ext);
+    return { rel, mediaType: isImageExt ? "image" : "video", converted: false };
   }
 
   try {
