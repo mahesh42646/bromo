@@ -56,7 +56,8 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
-import {getFeed, getExplore, getStories, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
+import {getFeed, getExplore, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
+import {loadStoriesFeed, loadStoriesFeedDeduped} from '../lib/storiesFeedCache';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getUnreadCount} from '../api/notificationsApi';
 import {getConversations} from '../api/chatApi';
@@ -473,14 +474,14 @@ export function HomeScreen() {
       const feedFetcher = activeCategory === 'trending' ? getExplore : getFeed;
       const [feedRes, storiesRes, suggestionsRes] = await Promise.all([
         feedFetcher(p),
-        reset ? getStories() : Promise.resolve(null),
+        reset ? loadStoriesFeedDeduped() : Promise.resolve(null),
         reset ? getUserSuggestions(6) : Promise.resolve(null),
       ]);
       const filteredPosts = filterPostsByCategory(feedRes.posts, activeCategory);
 
       if (reset) {
         setPosts(filteredPosts);
-        if (storiesRes) setStoryGroups(storiesRes.stories);
+        if (storiesRes) setStoryGroups(storiesRes);
         if (suggestionsRes) setSuggestions(suggestionsRes.users);
         setPage(2);
       } else {
@@ -590,8 +591,7 @@ export function HomeScreen() {
       );
     });
     const unsubStory = socketService.on('story:new', () => {
-      // Refresh story bar on new story from following
-      getStories().then(r => setStoryGroups(r.stories)).catch(() => null);
+      loadStoriesFeed({force: true}).then(s => setStoryGroups(s)).catch(() => null);
     });
     const unsubNotification = socketService.on('notification', () => {
       refreshHeaderCounts().catch(() => null);

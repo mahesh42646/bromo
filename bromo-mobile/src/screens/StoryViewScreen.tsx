@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {useNavigation, useRoute} from '@react-navigation/native';
+import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {ChevronLeft, Heart, Send, Share2} from 'lucide-react-native';
@@ -19,7 +19,8 @@ import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {useMessaging} from '../messaging/MessagingContext';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {getStories, toggleLike, type StoryGroup} from '../api/postsApi';
+import {toggleLike, type StoryGroup} from '../api/postsApi';
+import {loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
 import {NetworkVideo} from '../components/media/NetworkVideo';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
@@ -33,7 +34,8 @@ const STORY_DURATION_IMAGE_MS = 5000;
 const STORY_DURATION_VIDEO_FALLBACK_MS = 15000;
 const STORY_DURATION_VIDEO_MIN_MS = 4000;
 const STORY_DURATION_VIDEO_MAX_MS = 30000;
-const PREFETCH_LOOKAHEAD = 6;
+const PREFETCH_LOOKAHEAD = 3;
+const STORIES_FOCUS_REFRESH_MIN_MS = 120_000;
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
 const CACHE_KEY = '@bromo/story_media_cache_v2';
 const {width: W, height: H} = Dimensions.get('window');
@@ -99,6 +101,8 @@ export function StoryViewScreen() {
   // Without this, the 20-second refresh resets storyIdx every time, causing the
   // video to restart from the beginning and producing the buffering/loop glitch.
   const groupsInitialized = useRef(false);
+  const lastStoriesFetchAt = useRef(0);
+  const storiesFocusHandledOnce = useRef(false);
 
   const loadCacheIndex = useCallback(async () => {
     try {
@@ -121,25 +125,42 @@ export function StoryViewScreen() {
     } catch {}
   }, []);
 
-  const load = useCallback(() => {
-    // Don't show the full-screen spinner on background refreshes
-    if (!groupsInitialized.current) setLoading(true);
-    getStories()
-      .then(r => setGroups(r.stories))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const runInitialStories = useCallback(async () => {
+    try {
+      const cached = await peekStoriesFromCache();
+      if (cached?.length) {
+        setGroups(cached);
+        setLoading(false);
+      }
+      const fresh = await loadStoriesFeedDeduped({});
+      setGroups(fresh);
+      lastStoriesFetchAt.current = Date.now();
+    } catch {
+      // keep cached UI if peekStoriesFromCache already rendered
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     loadCacheIndex().finally(() => null);
-    load();
-  }, [load, loadCacheIndex]);
+    runInitialStories();
+  }, [runInitialStories, loadCacheIndex]);
 
-  // Background sync — keeps story list fresh but does NOT reset current position.
-  useEffect(() => {
-    const t = setInterval(() => { load(); }, 20000);
-    return () => clearInterval(t);
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!storiesFocusHandledOnce.current) {
+        storiesFocusHandledOnce.current = true;
+        return;
+      }
+      const now = Date.now();
+      if (now - lastStoriesFetchAt.current < STORIES_FOCUS_REFRESH_MIN_MS) return;
+      lastStoriesFetchAt.current = now;
+      loadStoriesFeedDeduped({})
+        .then(s => setGroups(s))
+        .catch(() => null);
+    }, []),
+  );
 
   // Position to the correct group/story — ONLY on the very first groups load.
   useEffect(() => {
@@ -157,7 +178,10 @@ export function StoryViewScreen() {
   const allStories = useMemo(() => groups.flatMap(g => g.stories), [groups]);
 
   const warmStoryMedia = useCallback(
-    async (story: StoryGroup['stories'][number] | undefined) => {
+    async (
+      story: StoryGroup['stories'][number] | undefined,
+      opts?: {prefetchVideo?: boolean},
+    ) => {
       if (!story) return;
       const mediaUri = resolveMediaUrl(story.mediaUrl);
       if (!mediaUri) return;
@@ -170,7 +194,9 @@ export function StoryViewScreen() {
       } else {
         const thumb = postThumbnailUri(story);
         if (thumb) await Image.prefetch(resolveMediaUrl(thumb)).catch(() => false);
-        await warmVideo(mediaUri);
+        if (opts?.prefetchVideo !== false) {
+          await warmVideo(mediaUri);
+        }
       }
       mediaCacheRef.current[story._id] = expiresAt;
       saveCacheIndex().catch(() => null);
@@ -235,7 +261,7 @@ export function StoryViewScreen() {
     for (let i = 1; i <= PREFETCH_LOOKAHEAD; i++) {
       const next = allStories[idx + i];
       if (!next) break;
-      warmStoryMedia(next).catch(() => null);
+      warmStoryMedia(next, {prefetchVideo: i === 1}).catch(() => null);
     }
   }, [allStories, current?._id, warmStoryMedia, current]);
 

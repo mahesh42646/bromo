@@ -102,10 +102,28 @@ export type StoryGroup = {
   stories: Post[];
 };
 
-export async function getStories(): Promise<{stories: StoryGroup[]}> {
-  const res = await authedFetch('/posts/stories');
+export type FetchStoriesResult =
+  | {notModified: true; etag: string}
+  | {notModified: false; stories: StoryGroup[]; etag: string};
+
+/**
+ * Conditional GET for `/posts/stories`. Pass previous `etag` as `ifNoneMatch`
+ * to receive `{notModified: true}` with an empty body (HTTP 304).
+ */
+export async function fetchStories(ifNoneMatch?: string | null): Promise<FetchStoriesResult> {
+  const headers: Record<string, string> = {};
+  if (ifNoneMatch) {
+    headers['If-None-Match'] = ifNoneMatch;
+  }
+  const res = await authedFetch('/posts/stories', {headers});
+  if (res.status === 304) {
+    const etag = res.headers.get('etag')?.trim() || ifNoneMatch || '';
+    return {notModified: true, etag};
+  }
   if (!res.ok) throw new Error('Failed to fetch stories');
-  return res.json() as Promise<{stories: StoryGroup[]}>;
+  const etag = res.headers.get('etag')?.trim() || '';
+  const body = (await res.json()) as {stories: StoryGroup[]};
+  return {notModified: false, stories: body.stories ?? [], etag};
 }
 
 export async function getUserPosts(userId: string, type = 'post', page = 1): Promise<FeedResponse> {

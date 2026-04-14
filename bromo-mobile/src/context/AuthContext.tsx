@@ -19,6 +19,7 @@ import {
   getEmailByUsername,
   invalidateTokenCache,
 } from '../api/authApi';
+import {clearStoriesFeedCache} from '../lib/storiesFeedCache';
 
 const K_ONBOARD = '@bromo/onboarding_done';
 const K_DB_USER = '@bromo/db_user_v1';
@@ -241,6 +242,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       await GoogleSignin.signOut();
     } catch {}
     invalidateTokenCache();
+    await clearStoriesFeedCache();
     await auth().signOut();
     setDbUser(null);
     AsyncStorage.removeItem(K_DB_USER);

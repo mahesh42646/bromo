@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router, type Response } from "express";
 import mongoose from "mongoose";
 import {
@@ -49,6 +50,23 @@ const PAGE_SIZE = 20;
 
 /** Public listings: active and not soft-deleted. */
 const VISIBLE_POST = { isActive: true, isDeleted: { $ne: true } } as const;
+
+function storiesFeedEtag(
+  slim: Array<{ _id: mongoose.Types.ObjectId; updatedAt: Date }>,
+): string {
+  const payload = slim
+    .map((s) => `${String(s._id)}:${new Date(s.updatedAt).getTime()}`)
+    .sort()
+    .join("|");
+  return `"${createHash("sha1").update(payload).digest("hex").slice(0, 24)}"`;
+}
+
+function normalizeIfNoneMatch(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  const t = v.trim();
+  if (t.startsWith("W/")) return t.slice(2).trim();
+  return t;
+}
 
 function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, followingSet: Set<string>, dbUserId?: string) {
   const author = p.authorId as Record<string, unknown> | null;
@@ -248,7 +266,10 @@ postsRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const dbUser = req.dbUser;
-      if (!dbUser) return res.json({ stories: [] });
+      if (!dbUser) {
+        res.set("Cache-Control", "private, no-store");
+        return res.json({ stories: [] });
+      }
 
       const follows = await Follow.find({
         followerId: dbUser._id,
@@ -257,12 +278,27 @@ postsRouter.get(
       const followingIds = follows.map((f) => f.followingId);
       const authorIds = [dbUser._id, ...followingIds];
 
-      const stories = await Post.find({
-        type: "story",
+      const match = {
+        type: "story" as const,
         ...VISIBLE_POST,
         authorId: { $in: authorIds },
         expiresAt: { $gt: new Date() },
-      })
+      };
+
+      const slim = await Post.find(match)
+        .select({ _id: 1, updatedAt: 1 })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const etag = storiesFeedEtag(slim);
+      const inm = normalizeIfNoneMatch(req.get("if-none-match"));
+      if (inm && inm === etag) {
+        res.setHeader("ETag", etag);
+        res.set("Cache-Control", "private, max-age=120, stale-while-revalidate=300");
+        return res.status(304).end();
+      }
+
+      const stories = await Post.find(match)
         .sort({ createdAt: -1 })
         .populate("authorId", AUTHOR_SELECT)
         .lean();
@@ -283,10 +319,8 @@ postsRouter.get(
         });
       }
 
-      // Short private cache — lets the client avoid a server round-trip on quick revisits
-      // while ensuring fresh data within 15 s. stale-while-revalidate lets it serve
-      // the cached response while fetching in the background.
-      res.set("Cache-Control", "private, max-age=15, stale-while-revalidate=30");
+      res.setHeader("ETag", etag);
+      res.set("Cache-Control", "private, max-age=120, stale-while-revalidate=300");
       return res.json({ stories: Object.values(grouped) });
     } catch (err) {
       console.error("[posts] stories error:", err);

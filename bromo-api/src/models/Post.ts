@@ -85,6 +85,8 @@ postSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 // Fast feed/reels lookup — covers the query filter + _id sort in one index scan
 postSchema.index({ type: 1, isActive: 1, isDeleted: 1, _id: -1 });
 postSchema.index({ authorId: 1, type: 1, isActive: 1, isDeleted: 1, _id: -1 });
+/** Story tray: type + visibility + author $in + expiresAt range + createdAt sort */
+postSchema.index({ type: 1, isActive: 1, isDeleted: 1, authorId: 1, expiresAt: 1, createdAt: -1 });
 // Explore sort (viewsCount desc) + trending
 postSchema.index({ type: 1, isActive: 1, isDeleted: 1, viewsCount: -1, createdAt: -1 });
 postSchema.index({ trendingScore: -1, createdAt: -1 });
