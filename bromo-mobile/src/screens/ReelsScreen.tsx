@@ -551,7 +551,7 @@ const VIEWABILITY_CONFIG: ViewabilityConfig = {
 export function ReelsScreen() {
   const navigation = useNavigation() as Nav;
   const {palette} = useTheme();
-  const {ready: authReady} = useAuth();
+  const {ready: authReady, dbUser} = useAuth();
   const [screenFocused, setScreenFocused] = useState(true);
 
   useFocusEffect(
@@ -650,6 +650,28 @@ export function ReelsScreen() {
 
   // Real-time: new reels & like updates via socket
   useEffect(() => {
+    const unsubNew = socketService.on('post:new', p => {
+      if (p.type !== 'reel' || !p._id) return;
+      const myId = dbUser?._id;
+      const authorId = p.author?._id;
+      const isSelf = Boolean(myId && authorId && String(authorId) === String(myId));
+      const enriched: Post = {
+        ...p,
+        isLiked: p.isLiked ?? false,
+        isFollowing: isSelf ? true : (p.isFollowing ?? false),
+        likesCount: p.likesCount ?? 0,
+        commentsCount: p.commentsCount ?? 0,
+        viewsCount: p.viewsCount ?? 0,
+        impressionsCount: p.impressionsCount ?? 0,
+        sharesCount: p.sharesCount ?? 0,
+        avgWatchTimeMs: p.avgWatchTimeMs ?? 0,
+        trendingScore: p.trendingScore ?? 0,
+      };
+      setReels(prev => {
+        if (prev.some(r => r._id === enriched._id)) return prev;
+        return [enriched, ...prev];
+      });
+    });
     const unsubLike = socketService.on('post:like', ({postId, likesCount, liked}) => {
       setReels(prev =>
         prev.map(r => r._id === postId ? {...r, likesCount, isLiked: liked} : r),
@@ -659,10 +681,11 @@ export function ReelsScreen() {
       setReels(prev => prev.filter(r => r._id !== postId));
     });
     return () => {
+      unsubNew();
       unsubLike();
       unsubDelete();
     };
-  }, []);
+  }, [dbUser?._id]);
 
   const onLoadMore = useCallback(async () => {
     if (!hasMoreRef.current || loadingMoreRef.current) return;

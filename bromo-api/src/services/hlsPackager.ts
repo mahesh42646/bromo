@@ -8,7 +8,8 @@
  *  720p  →  2800 kbps video + 160 kbps audio
  *  1080p →  5000 kbps video + 192 kbps audio
  *
- * Optional HEVC (720p / 1080p only): ~62% of H.264 bandwidth estimate; skipped if libx265 fails.
+ * Optional HEVC (720p / 1080p only): opt-in via HLS_ENABLE_HEVC=1 (default off — saves ~half encode time on small hosts).
+ * H.264 ladder: HLS_ENCODE_CONCURRENCY (default 2), HLS_X264_PRESET (default veryfast; ultrafast for max speed).
  *
  * Segments: ~2 s fMP4 (CMAF-style). Falls back to MPEG-TS if fmp4 fails.
  * Audio: AAC-LC stereo, bitrate scaled per rung.
@@ -22,6 +23,45 @@ import { bundledFfmpegPath } from "../config/ffmpegInit.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
 
 const UPLOAD_DIR = uploadsRoot();
+
+function x264Preset(): string {
+  const p = process.env.HLS_X264_PRESET?.trim().toLowerCase();
+  const allowed = new Set([
+    "ultrafast",
+    "superfast",
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+  ]);
+  if (p && allowed.has(p)) return p;
+  return "veryfast";
+}
+
+function hlsEncodeConcurrency(): number {
+  const raw = parseInt(process.env.HLS_ENCODE_CONCURRENCY ?? "2", 10);
+  if (Number.isNaN(raw)) return 2;
+  return Math.max(1, Math.min(4, raw));
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  const capped = Math.max(1, Math.min(limit, items.length));
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: capped }, () => worker()));
+}
 
 /** HLS rung definition (exported for mezzanine encoder). */
 export type HlsRung = {
@@ -165,7 +205,7 @@ function encodeRung(
     const cmd = ffmpeg(inputAbs)
       .outputOptions([
         "-c:v libx264",
-        "-preset veryfast",
+        `-preset ${x264Preset()}`,
         "-profile:v main",
         "-level 3.1",
         `-vf ${scaleFilter(rung.height)},fps=${targetFps}`,
@@ -321,7 +361,7 @@ export async function encodeMezzanineMp4(
   return new Promise((resolve, reject) => {
     const cmd = ffmpeg(inputAbs).outputOptions([
       "-c:v libx264",
-      "-preset veryfast",
+      `-preset ${x264Preset()}`,
       "-profile:v high",
       "-level 4.1",
       `-vf ${scaleFilter(top.height)},fps=${targetFps}`,
@@ -369,25 +409,29 @@ export async function packageHls(
   fs.mkdirSync(outDir, { recursive: true });
 
   const n = rungs.length;
-  for (let i = 0; i < n; i++) {
-    onProgress?.(Math.round((i / n) * 70));
+  let h264Done = 0;
+  await runWithConcurrency(rungs, hlsEncodeConcurrency(), async (rung) => {
     try {
-      await encodeRung(inputAbs, outDir, rungs[i], probe.fps, probe.hasAudio);
+      await encodeRung(inputAbs, outDir, rung, probe.fps, probe.hasAudio);
     } catch (fmp4Err) {
-      console.warn(`[hlsPackager] fMP4 failed for ${rungs[i].height}p, retrying with TS:`, fmp4Err);
-      await encodeRungTs(inputAbs, outDir, rungs[i], probe.fps, probe.hasAudio);
+      console.warn(`[hlsPackager] fMP4 failed for ${rung.height}p, retrying with TS:`, fmp4Err);
+      await encodeRungTs(inputAbs, outDir, rung, probe.fps, probe.hasAudio);
     }
-  }
+    h264Done++;
+    onProgress?.(Math.round((h264Done / n) * 70));
+  });
 
   const hevcHeights = new Set<number>();
-  for (const r of rungs) {
-    if (r.height < 720) continue;
-    try {
-      onProgress?.(72);
-      await encodeHevcRung(inputAbs, outDir, r, probe.fps, probe.hasAudio);
-      hevcHeights.add(r.height);
-    } catch (e) {
-      console.warn(`[hlsPackager] HEVC ${r.height}p skipped:`, e);
+  if (process.env.HLS_ENABLE_HEVC === "1") {
+    for (const r of rungs) {
+      if (r.height < 720) continue;
+      try {
+        onProgress?.(72);
+        await encodeHevcRung(inputAbs, outDir, r, probe.fps, probe.hasAudio);
+        hevcHeights.add(r.height);
+      } catch (e) {
+        console.warn(`[hlsPackager] HEVC ${r.height}p skipped:`, e);
+      }
     }
   }
 
@@ -425,7 +469,7 @@ function encodeRungTs(
     const cmd = ffmpeg(inputAbs)
       .outputOptions([
         "-c:v libx264",
-        "-preset veryfast",
+        `-preset ${x264Preset()}`,
         "-profile:v main",
         "-level 3.1",
         `-vf ${scaleFilter(rung.height)},fps=${targetFps}`,

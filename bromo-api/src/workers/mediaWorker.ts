@@ -15,11 +15,66 @@ import { User } from "../models/User.js";
 import { packageHls, encodeMezzanineMp4 } from "../services/hlsPackager.js";
 import { normalizeImage } from "../services/imageNormalize.js";
 import { createNotification } from "../models/Notification.js";
-import { emitNotification, emitStoryNew } from "../services/socketService.js";
+import { emitNotification, emitPostNew, emitStoryNew } from "../services/socketService.js";
+import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
+import { postForSocketBroadcast } from "../utils/postSocketPayload.js";
 import { publicUrlForUploadRelative } from "../utils/uploadFiles.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
 
 const UPLOAD_DIR = uploadsRoot();
+
+const POST_AUTHOR_SELECT =
+  "username displayName profilePicture isPrivate emailVerified followersCount";
+
+async function broadcastActivatedPost(postId: string): Promise<void> {
+  const populated = await Post.findById(postId).populate("authorId", POST_AUTHOR_SELECT).lean();
+  if (!populated) return;
+
+  const p = populated as unknown as Record<string, unknown>;
+  const typ = String(p.type ?? "");
+  const authorLean = p.authorId as Record<string, unknown> | null | undefined;
+  const authorIdStr = authorLean ? String(authorLean._id ?? "") : "";
+
+  if (typ === "story") {
+    if (authorIdStr) emitStoryNew(authorIdStr);
+    return;
+  }
+
+  const base = postForSocketBroadcast(p);
+  if (!base) return;
+
+  const mediaUrl = typeof base.mediaUrl === "string" ? rewritePublicMediaUrl(base.mediaUrl) : base.mediaUrl;
+  const thumbnailUrl =
+    typeof base.thumbnailUrl === "string" ? rewritePublicMediaUrl(base.thumbnailUrl) : base.thumbnailUrl;
+  const hlsMasterUrl =
+    typeof base.hlsMasterUrl === "string" && String(base.hlsMasterUrl).trim()
+      ? rewritePublicMediaUrl(String(base.hlsMasterUrl))
+      : base.hlsMasterUrl;
+
+  let author = base.author as Record<string, unknown> | undefined;
+  if (author) {
+    author = {
+      ...author,
+      profilePicture:
+        typeof author.profilePicture === "string"
+          ? rewritePublicMediaUrl(author.profilePicture)
+          : author.profilePicture,
+      followersCount: Number(author.followersCount) || 0,
+    };
+  }
+
+  emitPostNew({
+    ...base,
+    mediaUrl,
+    thumbnailUrl,
+    hlsMasterUrl,
+    author,
+    likesCount: Number(base.likesCount) || 0,
+    commentsCount: Number(base.commentsCount) || 0,
+    viewsCount: Number(base.viewsCount) || 0,
+    isLiked: false,
+  } as object);
+}
 
 const queue: string[] = [];
 let running = false;
@@ -109,10 +164,7 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
       },
     );
 
-    const post = await Post.findById(job.postDraftId).select("type authorId").lean();
-    if (post?.type === "story") {
-      emitStoryNew(String(post.authorId));
-    }
+    await broadcastActivatedPost(String(job.postDraftId));
 
     await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
       console.warn("[mediaWorker] postsCount increment failed:", e),
@@ -144,6 +196,8 @@ async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
         isActive: true,
       },
     );
+
+    await broadcastActivatedPost(String(job.postDraftId));
 
     await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
       console.warn("[mediaWorker] postsCount increment failed:", e),

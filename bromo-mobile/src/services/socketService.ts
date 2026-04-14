@@ -5,10 +5,11 @@
 import {io, type Socket} from 'socket.io-client';
 import auth from '@react-native-firebase/auth';
 import {apiBase} from '../api/authApi';
+import type {Post} from '../api/postsApi';
 
 type SocketEvents = {
   // Server → client
-  'post:new': (post: {_id: string; type: string; authorId: string}) => void;
+  'post:new': (post: Post) => void;
   'post:like': (data: {postId: string; likesCount: number; liked: boolean; userId: string}) => void;
   'post:comment': (data: {postId: string; commentsCount: number; comment: object}) => void;
   'post:delete': (data: {postId: string}) => void;
