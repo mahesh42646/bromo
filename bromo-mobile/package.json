@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "metro:sync-ip": "node scripts/sync-metro-host.cjs",
     "ios:device:sync": "npm run metro:sync-ip && npm run ios:device",
-    "start": "react-native start --host 0.0.0.0",
+    "start": "node scripts/start-metro.cjs",
     "test": "jest"
   },
   "dependencies": {

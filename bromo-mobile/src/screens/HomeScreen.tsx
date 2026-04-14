@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {ComponentType} from 'react';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   FlatList,
   Image,
   Pressable,
@@ -439,6 +440,15 @@ export function HomeScreen() {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+
+  const myStoryGroup = useMemo(
+    () => (dbUser?._id ? storyGroups.find(g => g.author._id === dbUser._id) : undefined),
+    [storyGroups, dbUser?._id],
+  );
+  const myStoriesAllSeen =
+    myStoryGroup && myStoryGroup.stories.length > 0
+      ? myStoryGroup.stories.every(s => s.seenByMe === true)
+      : false;
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -593,6 +603,9 @@ export function HomeScreen() {
     const unsubStory = socketService.on('story:new', () => {
       loadStoriesFeed({force: true}).then(s => setStoryGroups(s)).catch(() => null);
     });
+    const unsubSeen = DeviceEventEmitter.addListener('bromo:storiesChanged', () => {
+      loadStoriesFeedDeduped({force: true}).then(s => setStoryGroups(s)).catch(() => null);
+    });
     const unsubNotification = socketService.on('notification', () => {
       refreshHeaderCounts().catch(() => null);
     });
@@ -601,6 +614,7 @@ export function HomeScreen() {
       unsubDelete();
       unsubComment();
       unsubStory();
+      unsubSeen.remove();
       unsubNotification();
     };
   }, [refreshHeaderCounts]);
@@ -889,9 +903,10 @@ export function HomeScreen() {
                     style={{alignItems: 'center', gap: 5}}
                     onPress={() => parentNavigate(navigation, 'CreateFlow', {mode: 'story'})}>
                     <View style={{position: 'relative'}}>
-                      <Image
-                        source={{uri: myAvatar || `https://ui-avatars.com/api/?name=${dbUser?.displayName ?? 'You'}`}}
-                        style={{width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: palette.border}}
+                      <StoryRing
+                        uri={myAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(dbUser?.displayName ?? 'You')}`}
+                        size={58}
+                        seen={myStoriesAllSeen}
                       />
                       <View
                         style={{
@@ -908,22 +923,26 @@ export function HomeScreen() {
 
                   {/* Following stories */}
                   {storyGroups.map(group => {
-                    const first = group.stories?.[0];
+                    const firstUnseen = group.stories.find(s => !s.seenByMe);
+                    const preview = firstUnseen ?? group.stories[0];
                     const ringUri =
-                      first != null
-                        ? first.mediaType === 'video'
-                          ? first.thumbnailUrl || first.mediaUrl
-                          : first.mediaUrl
+                      preview != null
+                        ? preview.mediaType === 'video'
+                          ? preview.thumbnailUrl || preview.mediaUrl
+                          : preview.mediaUrl
                         : group.author.profilePicture ||
                           `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}`;
+                    const allSeen =
+                      group.stories.length > 0 && group.stories.every(s => s.seenByMe === true);
                     return (
                     <Pressable
                       key={group.author._id}
                       style={{alignItems: 'center', gap: 5}}
                       onPress={() => parentNavigate(navigation, 'StoryView', {userId: group.author._id})}>
                       <StoryRing
-                        uri={ringUri}
+                        uri={resolveMediaUrl(ringUri) || ringUri}
                         size={60}
+                        seen={allSeen}
                       />
                       <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>
                         {group.author.username}

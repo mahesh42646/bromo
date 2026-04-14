@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Animated,
+  DeviceEventEmitter,
   Dimensions,
   Image,
   Pressable,
@@ -19,7 +20,7 @@ import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {useMessaging} from '../messaging/MessagingContext';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {toggleLike, type StoryGroup} from '../api/postsApi';
+import {markStorySeenPost, toggleLike, type StoryGroup} from '../api/postsApi';
 import {loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
 import {prefetchStoryVideoToDisk, resolveStoryVideoPlayUri} from '../lib/storyVideoCache';
 import {NetworkVideo} from '../components/media/NetworkVideo';
@@ -227,6 +228,12 @@ export function StoryViewScreen() {
   }, [current?._id, current?.mediaType, current?.mediaUrl]);
 
   const goNext = useCallback(() => {
+    const leavingId = current?._id;
+    if (leavingId) {
+      void markStorySeenPost(leavingId).then(() => {
+        DeviceEventEmitter.emit('bromo:storiesChanged');
+      });
+    }
     if (storyIdx < stories.length - 1) {
       setStoryIdx(i => i + 1);
     } else if (groupIdx < groups.length - 1) {
@@ -236,7 +243,7 @@ export function StoryViewScreen() {
       navigation.goBack();
     }
     setLiked(false);
-  }, [storyIdx, stories.length, groupIdx, groups.length, navigation]);
+  }, [current?._id, storyIdx, stories.length, groupIdx, groups.length, navigation]);
 
   const onStoryVideoEnd = useCallback(() => {
     if (current?.mediaType === 'video') {

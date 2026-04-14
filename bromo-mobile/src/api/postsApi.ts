@@ -52,6 +52,8 @@ export type Post = {
   deletedAt?: string;
   /** Story-only: overlays and background color */
   storyMeta?: StoryMeta;
+  /** Story tray: whether the current user has finished this segment (server). */
+  seenByMe?: boolean;
 };
 
 export type Comment = {
@@ -176,6 +178,26 @@ export async function recordView(postId: string, watchMs = 0): Promise<void> {
     method: 'POST',
     body: JSON.stringify({watchMs: Math.round(watchMs)}),
   }).catch(() => null);
+}
+
+/** Mark a story post as seen for the current user (tray ring + ordering). */
+export async function markStorySeenPost(storyPostId: string): Promise<void> {
+  await authedFetch(`/posts/stories/${encodeURIComponent(storyPostId)}/seen`, {
+    method: 'POST',
+  }).catch(() => null);
+}
+
+/** Publish the given reel/video post as your story (reuses media on server). */
+export async function createStoryFromReel(sourcePostId: string): Promise<{post: Post}> {
+  const res = await authedFetch('/posts/story-from-reel', {
+    method: 'POST',
+    body: JSON.stringify({sourcePostId}),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Could not add to story');
+  }
+  return res.json() as Promise<{post: Post}>;
 }
 
 export async function recordShare(postId: string): Promise<void> {

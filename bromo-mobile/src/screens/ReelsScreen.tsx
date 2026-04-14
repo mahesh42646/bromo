@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  DeviceEventEmitter,
   Dimensions,
   Easing,
   FlatList,
@@ -40,6 +41,7 @@ import {
   XCircle,
   Flag,
   SlidersHorizontal,
+  Sparkles,
 } from 'lucide-react-native';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import type {NavigationProp} from '@react-navigation/native';
@@ -49,7 +51,7 @@ import {StoryRing} from '../components/ui/StoryRing';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {followUser} from '../api/followApi';
-import {getReels, toggleLike, recordView, recordShare, type Post} from '../api/postsApi';
+import {createStoryFromReel, getReels, toggleLike, recordView, recordShare, type Post} from '../api/postsApi';
 import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import type {ThemePalette} from '../config/platform-theme';
@@ -75,6 +77,7 @@ function ReelMoreSheet({
   bottomInset,
   autoScroll,
   onAutoScroll,
+  reel,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -82,6 +85,7 @@ function ReelMoreSheet({
   bottomInset: number;
   autoScroll: boolean;
   onAutoScroll: (v: boolean) => void;
+  reel: Post | null;
 }) {
   const row = (icon: React.ReactNode, label: string, onPress?: () => void, danger?: boolean) => (
     <Pressable
@@ -168,6 +172,15 @@ function ReelMoreSheet({
               </View>
             </View>
             <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, marginTop: 10}]}>
+              {row(<Sparkles size={20} color={palette.accent} />, 'Add reel to your story', () => {
+                if (!reel) return;
+                createStoryFromReel(reel._id)
+                  .then(() => {
+                    DeviceEventEmitter.emit('bromo:storiesChanged');
+                    Alert.alert('Story', 'This reel was added to your story.');
+                  })
+                  .catch(e => Alert.alert('Could not add', e instanceof Error ? e.message : 'Try again.'));
+              })}
               {row(<QrCode size={20} color={palette.foreground} />, 'QR code', () => Alert.alert('QR code', 'Share link as QR (coming soon).'))}
             </View>
             <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, marginTop: 10}]}>
@@ -507,6 +520,7 @@ function ReelItem({
         bottomInset={insets.bottom}
         autoScroll={autoScroll}
         onAutoScroll={onAutoScrollChange}
+        reel={item}
       />
     </View>
   );

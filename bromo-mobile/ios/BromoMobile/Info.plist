@@ -56,6 +56,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>BROMO needs camera access to capture posts, stories, reels, and live moments.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>BROMO connects to the Metro bundler on your Mac during development for fast refresh and reload.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>BROMO needs camera access to capture posts, stories, reels, and live moments.</string>
 	<key>NSMicrophoneUsageDescription</key>

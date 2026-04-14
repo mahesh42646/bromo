@@ -52,10 +52,10 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     backBufferDurationMs: 1000,
   },
   story: {
-    minBufferMs: 500,
-    maxBufferMs: 8000,
-    bufferForPlaybackMs: 300,       // start after 0.3 s buffered — aggressive fast-start
-    bufferForPlaybackAfterRebufferMs: 800,
+    minBufferMs: 1200,
+    maxBufferMs: 12000,
+    bufferForPlaybackMs: 500,
+    bufferForPlaybackAfterRebufferMs: 1200,
     backBufferDurationMs: 0,
   },
 };

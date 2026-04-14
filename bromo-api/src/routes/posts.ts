@@ -7,6 +7,7 @@ import {
   type FirebaseAuthedRequest,
 } from "../middleware/firebaseAuth.js";
 import { Post } from "../models/Post.js";
+import { StorySeen } from "../models/StorySeen.js";
 import { Like } from "../models/Like.js";
 import { Comment } from "../models/Comment.js";
 import { Follow } from "../models/Follow.js";
@@ -51,14 +52,17 @@ const PAGE_SIZE = 20;
 /** Public listings: active and not soft-deleted. */
 const VISIBLE_POST = { isActive: true, isDeleted: { $ne: true } } as const;
 
-function storiesFeedEtag(
+/** ETag for story tray includes viewer’s seen set so 304 invalidates after mark-seen. */
+function storiesTrayEtag(
   slim: Array<{ _id: mongoose.Types.ObjectId; updatedAt: Date }>,
+  seenSortedIds: string,
 ): string {
   const payload = slim
     .map((s) => `${String(s._id)}:${new Date(s.updatedAt).getTime()}`)
     .sort()
     .join("|");
-  return `"${createHash("sha1").update(payload).digest("hex").slice(0, 24)}"`;
+  const h = createHash("sha1").update(`${payload}||${seenSortedIds}`).digest("hex").slice(0, 28);
+  return `"${h}"`;
 }
 
 function normalizeIfNoneMatch(v: string | undefined): string | undefined {
@@ -290,7 +294,16 @@ postsRouter.get(
         .sort({ createdAt: -1 })
         .lean();
 
-      const etag = storiesFeedEtag(slim);
+      const slimIds = slim.map((s) => s._id);
+      const seenForEtag = await StorySeen.find({
+        viewerId: dbUser._id,
+        storyPostId: { $in: slimIds },
+      })
+        .select({ storyPostId: 1 })
+        .lean();
+      const seenSortedIds = seenForEtag.map((r) => String(r.storyPostId)).sort().join("|");
+
+      const etag = storiesTrayEtag(slim, seenSortedIds);
       const inm = normalizeIfNoneMatch(req.get("if-none-match"));
       if (inm && inm === etag) {
         res.setHeader("ETag", etag);
@@ -303,6 +316,15 @@ postsRouter.get(
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
+      const allIds = stories.map((s) => s._id);
+      const seenRows = await StorySeen.find({
+        viewerId: dbUser._id,
+        storyPostId: { $in: allIds },
+      })
+        .select({ storyPostId: 1 })
+        .lean();
+      const seenSet = new Set(seenRows.map((r) => String(r.storyPostId)));
+
       const grouped: Record<string, { author: unknown; stories: unknown[] }> = {};
       for (const s of stories) {
         const authorId = String((s.authorId as { _id: mongoose.Types.ObjectId })._id);
@@ -311,20 +333,131 @@ postsRouter.get(
         }
         grouped[authorId].stories.push({
           ...s,
+          seenByMe: seenSet.has(String(s._id)),
           mediaUrl: typeof s.mediaUrl === "string" ? rewritePublicMediaUrl(s.mediaUrl) : s.mediaUrl,
           thumbnailUrl:
             typeof s.thumbnailUrl === "string" ? rewritePublicMediaUrl(s.thumbnailUrl) : s.thumbnailUrl,
           authorId: undefined,
-          // storyMeta is already in s via lean() spread — included automatically
         });
       }
 
+      type GStory = { seenByMe?: boolean; createdAt: Date };
+      type G = { author: unknown; stories: GStory[] };
+      const groupsArr = Object.values(grouped) as G[];
+      groupsArr.sort((a, b) => {
+        const ua = a.stories.some((x) => !x.seenByMe);
+        const ub = b.stories.some((x) => !x.seenByMe);
+        if (ua !== ub) return ua ? -1 : 1;
+        const maxA = Math.max(...a.stories.map((x) => new Date(x.createdAt).getTime()));
+        const maxB = Math.max(...b.stories.map((x) => new Date(x.createdAt).getTime()));
+        return maxB - maxA;
+      });
+
       res.setHeader("ETag", etag);
       res.set("Cache-Control", "private, max-age=120, stale-while-revalidate=300");
-      return res.json({ stories: Object.values(grouped) });
+      return res.json({ stories: groupsArr });
     } catch (err) {
       console.error("[posts] stories error:", err);
       return res.status(500).json({ message: "Failed to fetch stories" });
+    }
+  },
+);
+
+// ── POST /posts/stories/:storyPostId/seen ───────────────────────────
+postsRouter.post(
+  "/stories/:storyPostId/seen",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const dbUser = req.dbUser;
+      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const storyPostId = req.params.storyPostId;
+      const story = await Post.findOne({
+        _id: storyPostId,
+        type: "story",
+        ...VISIBLE_POST,
+        expiresAt: { $gt: new Date() },
+      })
+        .select("authorId")
+        .lean();
+      if (!story) return res.status(404).json({ message: "Story not found" });
+
+      const authorId = String(story.authorId);
+      const isSelf = String(dbUser._id) === authorId;
+      if (!isSelf) {
+        const okFollow = await Follow.countDocuments({
+          followerId: dbUser._id,
+          followingId: story.authorId,
+          status: "accepted",
+        });
+        if (okFollow === 0) {
+          return res.status(403).json({ message: "Not allowed" });
+        }
+      }
+
+      await StorySeen.updateOne(
+        { viewerId: dbUser._id, storyPostId },
+        { $set: { viewerId: dbUser._id, storyPostId } },
+        { upsert: true },
+      );
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[posts] story seen error:", err);
+      return res.status(500).json({ message: "Failed to mark story seen" });
+    }
+  },
+);
+
+// ── POST /posts/story-from-reel ─────────────────────────────────────
+postsRouter.post(
+  "/story-from-reel",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const { sourcePostId } = req.body as { sourcePostId?: string };
+      if (!sourcePostId) return res.status(400).json({ message: "sourcePostId is required" });
+
+      const src = await Post.findOne({
+        _id: sourcePostId,
+        type: { $in: ["reel", "post"] },
+        ...VISIBLE_POST,
+      }).lean();
+      if (!src) return res.status(404).json({ message: "Post not found" });
+      if (src.mediaType !== "video") {
+        return res.status(400).json({ message: "Only video posts can be added to your story" });
+      }
+
+      const mediaUrl =
+        typeof src.mediaUrl === "string" ? rewritePublicMediaUrl(src.mediaUrl) : String(src.mediaUrl ?? "");
+      const thumbnailUrl =
+        typeof src.thumbnailUrl === "string" && src.thumbnailUrl.trim()
+          ? rewritePublicMediaUrl(src.thumbnailUrl)
+          : "";
+
+      const post = await Post.create({
+        authorId: user._id,
+        type: "story",
+        mediaUrl,
+        thumbnailUrl,
+        mediaType: "video",
+        caption: "",
+        location: "",
+        music: typeof src.music === "string" ? src.music : "",
+        tags: [],
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        isDeleted: false,
+      });
+
+      await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
+      const populated = await Post.findById(post._id).populate("authorId", AUTHOR_SELECT).lean();
+      const result = { ...populated, author: populated?.authorId, authorId: undefined };
+      emitStoryNew(String(user._id));
+      return res.status(201).json({ post: result });
+    } catch (err) {
+      console.error("[posts] story-from-reel error:", err);
+      return res.status(500).json({ message: "Failed to add reel to story" });
     }
   },
 );
