@@ -52,12 +52,19 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     backBufferDurationMs: 1000,
   },
   story: {
-    minBufferMs: 1500,
-    maxBufferMs: 10000,
-    bufferForPlaybackMs: 600,
-    bufferForPlaybackAfterRebufferMs: 1200,
+    minBufferMs: 500,
+    maxBufferMs: 8000,
+    bufferForPlaybackMs: 300,       // start after 0.3 s buffered — aggressive fast-start
+    bufferForPlaybackAfterRebufferMs: 800,
     backBufferDurationMs: 0,
   },
+};
+
+/** Safety-net delay per context: time before we force-unblock the poster if native callbacks stall. */
+const SAFETY_MS: Record<string, number> = {
+  story: 3500,
+  reel:  2000,
+  feed:  1500,
 };
 
 export type NetworkVideoProps = {
@@ -141,25 +148,29 @@ export function NetworkVideo({
     decoderReadyFired.current = false;
   }, [uri]);
 
-  // Safety net: if ready callbacks never fire, unblock poster / parent loading UI after 1 s.
+  // Safety net: if first-frame callbacks never fire (stalled decoder, slow network),
+  // unblock poster after a context-appropriate delay. Stories get more time.
   useEffect(() => {
     if (!uri?.trim()) return;
+    const ms = SAFETY_MS[context] ?? 2000;
     const t = setTimeout(() => {
       fireDecoderReadyRef.current();
-    }, 1000);
+    }, ms);
     return () => clearTimeout(t);
-  }, [uri]);
+  }, [uri, context]);
 
   const onLoad = useCallback(
     (d: OnLoadData) => {
       if (__DEV__) {
-        console.info(logPrefix, 'onLoad', uri);
+        console.info(logPrefix, 'onLoad metadata ready', uri);
       }
+      // Only propagate metadata (duration, dimensions). Do NOT fire decoder-ready here.
+      // onLoad fires when the container/codec headers are parsed — the frame pipeline
+      // is not yet running. Unblocking the poster now causes the black-frame flash.
+      // We wait for onReadyForDisplay (iOS) or onProgress (Android) instead.
       onLoadProp?.(d);
-      /** Metadata is ready; unblocks loaders even when `onReadyForDisplay` is delayed (common on Android). */
-      fireDecoderReady();
     },
-    [fireDecoderReady, logPrefix, onLoadProp, uri],
+    [logPrefix, onLoadProp, uri],
   );
 
   const onReadyForDisplay = useCallback(() => {
@@ -248,7 +259,10 @@ export function NetworkVideo({
         // TextureView renders in the RN view hierarchy (not behind it like SurfaceView).
         // SurfaceView (default) punches through the RN layer → everything above it is black.
         viewType={Platform.OS === 'android' ? ViewType.TEXTURE : undefined}
-        shutterColor={Platform.OS === 'android' ? 'transparent' : undefined}
+        // shutterColor: suppress the black frame that flashes before the first decoded frame.
+        // On iOS this prevents the brief black flash on stream open; on Android it's a no-op
+        // (TextureView already handles it), but setting it is harmless.
+        shutterColor="transparent"
         rate={rate}
         preventsDisplaySleepDuringVideoPlayback={preventsDisplaySleepDuringVideoPlayback}
       />

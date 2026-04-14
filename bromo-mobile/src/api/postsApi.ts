@@ -11,6 +11,21 @@ export type PostAuthor = {
   emailVerified: boolean;
 };
 
+export type StoryOverlay = {
+  id: string;
+  type: 'text' | 'emoji' | 'music';
+  content: string;
+  x: number;
+  y: number;
+  color?: string;
+  fontSize?: number;
+};
+
+export type StoryMeta = {
+  bgColor?: string;
+  overlays?: StoryOverlay[];
+};
+
 export type Post = {
   _id: string;
   author: PostAuthor;
@@ -35,6 +50,8 @@ export type Post = {
   createdAt: string;
   isDeleted?: boolean;
   deletedAt?: string;
+  /** Story-only: overlays and background color */
+  storyMeta?: StoryMeta;
 };
 
 export type Comment = {
@@ -112,6 +129,7 @@ export async function createPost(data: {
   location?: string;
   music?: string;
   tags?: string[];
+  storyMeta?: StoryMeta;
 }): Promise<{post: Post}> {
   const res = await authedFetch('/posts', {
     method: 'POST',

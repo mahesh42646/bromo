@@ -35,10 +35,26 @@ const STORY_DURATION_VIDEO_MIN_MS = 4000;
 const STORY_DURATION_VIDEO_MAX_MS = 30000;
 const PREFETCH_LOOKAHEAD = 6;
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
-const CACHE_KEY = '@bromo/story_media_cache_v1';
+const CACHE_KEY = '@bromo/story_media_cache_v2';
 const {width: W, height: H} = Dimensions.get('window');
 
 type StoryMediaCache = Record<string, number>;
+
+// Story overlay types stored in storyMeta
+type StoryOverlay = {
+  id: string;
+  type: 'text' | 'emoji' | 'music';
+  content: string;
+  x: number; // 0–1 relative to W
+  y: number; // 0–1 relative to H
+  color?: string;
+  fontSize?: number;
+};
+
+type StoryMeta = {
+  bgColor?: string;
+  overlays?: StoryOverlay[];
+};
 
 function storyExpiresAt(createdAt: string): number {
   const createdMs = new Date(createdAt).getTime();
@@ -46,9 +62,9 @@ function storyExpiresAt(createdAt: string): number {
 }
 
 async function warmVideo(url: string): Promise<void> {
-  // Warm CDN/OS cache with the first chunk. Ignore failures silently.
+  // Warm CDN / OS HTTP cache with the first 512 KB chunk.
   try {
-    await fetch(url, {headers: {Range: 'bytes=0-262143'}});
+    await fetch(url, {headers: {'Range': 'bytes=0-524287'}});
   } catch {}
 }
 
@@ -70,13 +86,19 @@ export function StoryViewScreen() {
   const [showReply, setShowReply] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
   const [storyDurationMs, setStoryDurationMs] = useState(STORY_DURATION_IMAGE_MS);
-  const [videoProgress, setVideoProgress] = useState(0);
-  const [showVideoPoster, setShowVideoPoster] = useState(true);
 
+  // Animated values — never setState on progress tick to avoid re-renders
   const progressAnim = useRef(new Animated.Value(0)).current;
   const progressRef = useRef<Animated.CompositeAnimation | null>(null);
+  const videoProgressAnim = useRef(new Animated.Value(0)).current;
+
   const inputRef = useRef<TextInput>(null);
   const mediaCacheRef = useRef<StoryMediaCache>({});
+
+  // ─── critical fix: only position group/story on the INITIAL groups load ──────
+  // Without this, the 20-second refresh resets storyIdx every time, causing the
+  // video to restart from the beginning and producing the buffering/loop glitch.
+  const groupsInitialized = useRef(false);
 
   const loadCacheIndex = useCallback(async () => {
     try {
@@ -100,7 +122,8 @@ export function StoryViewScreen() {
   }, []);
 
   const load = useCallback(() => {
-    setLoading(true);
+    // Don't show the full-screen spinner on background refreshes
+    if (!groupsInitialized.current) setLoading(true);
     getStories()
       .then(r => setGroups(r.stories))
       .catch(() => {})
@@ -112,17 +135,16 @@ export function StoryViewScreen() {
     load();
   }, [load, loadCacheIndex]);
 
-  // Keep stories synced so removed/expired stories disappear quickly.
+  // Background sync — keeps story list fresh but does NOT reset current position.
   useEffect(() => {
-    const t = setInterval(() => {
-      load();
-    }, 20000);
+    const t = setInterval(() => { load(); }, 20000);
     return () => clearInterval(t);
   }, [load]);
 
-  // Find the group for the given userId
+  // Position to the correct group/story — ONLY on the very first groups load.
   useEffect(() => {
-    if (groups.length === 0) return;
+    if (groups.length === 0 || groupsInitialized.current) return;
+    groupsInitialized.current = true;
     const i = groups.findIndex(g => g.author._id === userId || g.author.username === userId);
     setGroupIdx(Math.max(0, i));
     setStoryIdx(0);
@@ -139,10 +161,10 @@ export function StoryViewScreen() {
       if (!story) return;
       const mediaUri = resolveMediaUrl(story.mediaUrl);
       if (!mediaUri) return;
-      const expiresAt = storyExpiresAt(story.createdAt);
       const known = mediaCacheRef.current[story._id] ?? 0;
-      if (known > Date.now()) return;
+      if (known > Date.now()) return; // already warmed within this session
 
+      const expiresAt = storyExpiresAt(story.createdAt);
       if (story.mediaType === 'image') {
         await Image.prefetch(mediaUri).catch(() => false);
       } else {
@@ -178,7 +200,19 @@ export function StoryViewScreen() {
     setLiked(false);
   }, [storyIdx, groupIdx]);
 
-  // Auto-advance timer (images only). Videos move on `onEnd`.
+  // Reset per-story state when the current story changes
+  useEffect(() => {
+    setMediaReady(false);
+    videoProgressAnim.setValue(0);
+    progressAnim.setValue(0);
+    setStoryDurationMs(
+      current?.mediaType === 'video'
+        ? STORY_DURATION_VIDEO_FALLBACK_MS
+        : STORY_DURATION_IMAGE_MS,
+    );
+  }, [current?._id, current?.mediaType, videoProgressAnim, progressAnim]);
+
+  // Auto-advance timer — images only; videos advance on `onEnd`
   useEffect(() => {
     if (!current || current.mediaType !== 'image' || paused || showReply || !mediaReady) return;
     progressAnim.setValue(0);
@@ -188,35 +222,30 @@ export function StoryViewScreen() {
       useNativeDriver: false,
     });
     progressRef.current = anim;
-    anim.start(({finished}) => {
-      if (finished) goNext();
-    });
+    anim.start(({finished}) => { if (finished) goNext(); });
     return () => { anim.stop(); };
-  }, [current?._id, current?.mediaType, paused, showReply, goNext, mediaReady, storyDurationMs]);
+  }, [current?._id, current?.mediaType, paused, showReply, goNext, mediaReady, storyDurationMs, progressAnim]);
 
-  useEffect(() => {
-    setMediaReady(false);
-    setVideoProgress(0);
-    setShowVideoPoster(true);
-    setStoryDurationMs(
-      current?.mediaType === 'video'
-        ? STORY_DURATION_VIDEO_FALLBACK_MS
-        : STORY_DURATION_IMAGE_MS,
-    );
-  }, [current?._id, current?.mediaType]);
-
-  // Warm current + next stories for smoother playback.
+  // Prefetch current + next stories
   useEffect(() => {
     if (!current) return;
-    const currentIndex = allStories.findIndex(s => s._id === current._id);
-    if (currentIndex < 0) return;
+    const idx = allStories.findIndex(s => s._id === current._id);
+    if (idx < 0) return;
     warmStoryMedia(current).catch(() => null);
     for (let i = 1; i <= PREFETCH_LOOKAHEAD; i++) {
-      const next = allStories[currentIndex + i];
+      const next = allStories[idx + i];
       if (!next) break;
       warmStoryMedia(next).catch(() => null);
     }
   }, [allStories, current?._id, warmStoryMedia, current]);
+
+  // Video progress — updates Animated.Value directly (zero re-renders)
+  const onVideoProgress = useCallback((d: OnProgressData) => {
+    const dur = Number(d.seekableDuration || 0);
+    if (dur > 0) {
+      videoProgressAnim.setValue(Math.max(0, Math.min(1, d.currentTime / dur)));
+    }
+  }, [videoProgressAnim]);
 
   const handleLike = useCallback(async () => {
     if (!current) return;
@@ -268,51 +297,49 @@ export function StoryViewScreen() {
   const avatarUri = group.author.profilePicture ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}&size=64`;
 
+  // Parse story overlays and bg color from storyMeta
+  const storyMeta = (current as unknown as {storyMeta?: StoryMeta}).storyMeta;
+  const bgColor = storyMeta?.bgColor;
+  const overlays: StoryOverlay[] = storyMeta?.overlays ?? [];
+  const isColorBg = Boolean(bgColor) && (!mediaUri || mediaUri === 'color-bg');
+
   return (
     <View style={{flex: 1, backgroundColor: '#000'}}>
       <StatusBar barStyle="light-content" hidden />
 
-      {/* Media */}
-      {current.mediaType === 'video' ? (
-        <>
-          <NetworkVideo
-            key={current._id}
-            context="story"
-            uri={mediaUri}
-            posterUri={poster}
-            style={{width: W, height: H}}
-            repeat={false}
-            muted={false}
-            paused={paused || showReply}
-            resizeMode="cover"
-            posterOverlayUntilReady={false}
-            onDecoderReady={() => {
-              setMediaReady(true);
-              setShowVideoPoster(false);
-            }}
-            onLoad={(d: OnLoadData) => {
-              const sec = Number(d.duration);
-              if (Number.isFinite(sec) && sec > 0) {
-                const ms = Math.round(sec * 1000);
-                setStoryDurationMs(
-                  Math.min(STORY_DURATION_VIDEO_MAX_MS, Math.max(STORY_DURATION_VIDEO_MIN_MS, ms)),
-                );
-              } else {
-                setStoryDurationMs(STORY_DURATION_VIDEO_FALLBACK_MS);
-              }
-            }}
-            onProgress={(d: OnProgressData) => {
-              const dur = Number(d.seekableDuration || 0);
-              if (dur > 0) {
-                setVideoProgress(Math.max(0, Math.min(1, d.currentTime / dur)));
-              }
-            }}
-            onEnd={goNext}
-          />
-          {showVideoPoster && poster ? (
-            <Image source={{uri: poster}} style={{position: 'absolute', width: W, height: H}} resizeMode="cover" />
-          ) : null}
-        </>
+      {/* ── Media / Background ──────────────────────────────────────────── */}
+      {isColorBg ? (
+        <View style={{width: W, height: H, backgroundColor: bgColor}} />
+      ) : current.mediaType === 'video' ? (
+        <NetworkVideo
+          key={current._id}
+          context="story"
+          uri={mediaUri}
+          posterUri={poster}
+          style={{width: W, height: H}}
+          repeat={false}
+          muted={false}
+          paused={paused || showReply}
+          resizeMode="cover"
+          // Use built-in poster management: stays visible until onReadyForDisplay fires.
+          // This is the fix for the black-frame flash — we no longer hide the poster
+          // prematurely on onLoad (metadata ready).
+          posterOverlayUntilReady
+          onDecoderReady={() => setMediaReady(true)}
+          onLoad={(d: OnLoadData) => {
+            const sec = Number(d.duration);
+            if (Number.isFinite(sec) && sec > 0) {
+              const ms = Math.round(sec * 1000);
+              setStoryDurationMs(
+                Math.min(STORY_DURATION_VIDEO_MAX_MS, Math.max(STORY_DURATION_VIDEO_MIN_MS, ms)),
+              );
+            } else {
+              setStoryDurationMs(STORY_DURATION_VIDEO_FALLBACK_MS);
+            }
+          }}
+          onProgress={onVideoProgress}
+          onEnd={goNext}
+        />
       ) : (
         <Image
           source={{uri: mediaUri}}
@@ -320,28 +347,69 @@ export function StoryViewScreen() {
           resizeMode="cover"
           onLoadEnd={() => setMediaReady(true)}
           progressiveRenderingEnabled
-          fadeDuration={120}
+          fadeDuration={80}
         />
       )}
 
-      {/* Progress bars */}
+      {/* ── Color-bg overlay tint (when story has media + a bg tint) ─────── */}
+      {bgColor && !isColorBg ? (
+        <View
+          pointerEvents="none"
+          style={{position: 'absolute', width: W, height: H, backgroundColor: bgColor, opacity: 0.35}}
+        />
+      ) : null}
+
+      {/* ── Story overlays (text / emoji / music badge) ───────────────────── */}
+      {overlays.map(o => (
+        <View
+          key={o.id}
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: o.x * W,
+            top: o.y * H,
+          }}>
+          {o.type === 'music' ? (
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 20,
+              paddingHorizontal: 12, paddingVertical: 6,
+            }}>
+              <Text style={{fontSize: 16}}>🎵</Text>
+              <Text style={{color: '#fff', fontSize: 13, fontWeight: '700'}}>{o.content}</Text>
+            </View>
+          ) : (
+            <Text style={{
+              color: o.color ?? '#fff',
+              fontSize: o.fontSize ?? 24,
+              fontWeight: '800',
+              textShadowColor: 'rgba(0,0,0,0.5)',
+              textShadowOffset: {width: 0, height: 1},
+              textShadowRadius: 4,
+            }}>
+              {o.content}
+            </Text>
+          )}
+        </View>
+      ))}
+
+      {/* ── Progress bars ──────────────────────────────────────────────────── */}
       <View style={{position: 'absolute', top: 12, left: 8, right: 8, flexDirection: 'row', gap: 3}}>
         {stories.map((s, i) => (
-          <View key={s._id} style={{flex: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 1, overflow: 'hidden'}}>
+          <View
+            key={s._id}
+            style={{flex: 1, height: 2.5, backgroundColor: 'rgba(255,255,255,0.35)', borderRadius: 2, overflow: 'hidden'}}>
             {i < storyIdx ? (
               <View style={{flex: 1, backgroundColor: '#fff'}} />
             ) : i === storyIdx ? (
               current.mediaType === 'video' ? (
-                <View
-                  style={{
-                    height: 2,
-                    backgroundColor: '#fff',
-                    width: `${Math.round(videoProgress * 100)}%`,
-                  }}
-                />
+                <Animated.View style={{
+                  height: 2.5, backgroundColor: '#fff',
+                  width: videoProgressAnim.interpolate({inputRange: [0, 1], outputRange: ['0%', '100%']}),
+                }} />
               ) : (
                 <Animated.View style={{
-                  height: 2, backgroundColor: '#fff',
+                  height: 2.5, backgroundColor: '#fff',
                   width: progressAnim.interpolate({inputRange: [0, 1], outputRange: ['0%', '100%']}),
                 }} />
               )
@@ -350,7 +418,7 @@ export function StoryViewScreen() {
         ))}
       </View>
 
-      {/* Author row */}
+      {/* ── Author row ──────────────────────────────────────────────────────── */}
       <View style={{
         position: 'absolute', top: 24, left: 12, right: 12,
         flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -358,11 +426,16 @@ export function StoryViewScreen() {
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
           <ChevronLeft color="#fff" size={22} />
         </Pressable>
-        <Image source={{uri: avatarUri}} style={{width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: '#fff'}} />
-        <Text style={{color: '#fff', fontWeight: '700', fontSize: 14, flex: 1}}>@{group.author.username}</Text>
+        <Image
+          source={{uri: avatarUri}}
+          style={{width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: '#fff'}}
+        />
+        <Text style={{color: '#fff', fontWeight: '700', fontSize: 14, flex: 1}}>
+          @{group.author.username}
+        </Text>
       </View>
 
-      {/* Tap zones for navigation */}
+      {/* ── Tap zones ───────────────────────────────────────────────────────── */}
       <View
         pointerEvents="box-none"
         style={{position: 'absolute', top: 70, left: 0, right: 0, bottom: 100, flexDirection: 'row'}}>
@@ -380,7 +453,7 @@ export function StoryViewScreen() {
         />
       </View>
 
-      {/* Bottom controls */}
+      {/* ── Bottom controls ─────────────────────────────────────────────────── */}
       {showReply ? (
         <View style={{
           position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -408,7 +481,9 @@ export function StoryViewScreen() {
             onSubmitEditing={handleReply}
             returnKeyType="send"
           />
-          <Pressable onPress={handleReply} hitSlop={8}
+          <Pressable
+            onPress={handleReply}
+            hitSlop={8}
             style={{padding: 10, backgroundColor: palette.primary, borderRadius: 22}}>
             <Send size={18} color="#fff" />
           </Pressable>
@@ -422,7 +497,6 @@ export function StoryViewScreen() {
           flexDirection: 'row', alignItems: 'center', gap: 14,
           paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28,
         }}>
-          {/* Reply input trigger */}
           <Pressable
             onPress={() => { setShowReply(true); setPaused(true); }}
             style={{
@@ -431,12 +505,15 @@ export function StoryViewScreen() {
               borderRadius: 22, paddingHorizontal: 16, paddingVertical: 11,
             }}>
             <Text style={{color: 'rgba(255,255,255,0.5)', fontSize: 14}}>
-              {group.author._id === dbUser?._id ? 'Viewers can reply…' : `Reply to @${group.author.username}…`}
+              {group.author._id === dbUser?._id
+                ? 'Viewers can reply…'
+                : `Reply to @${group.author.username}…`}
             </Text>
           </Pressable>
 
-          {/* Like */}
-          <Pressable onPress={handleLike} hitSlop={12}
+          <Pressable
+            onPress={handleLike}
+            hitSlop={12}
             style={{alignItems: 'center', justifyContent: 'center', width: 40, height: 40}}>
             <Heart
               size={26}
@@ -445,7 +522,6 @@ export function StoryViewScreen() {
             />
           </Pressable>
 
-          {/* Share */}
           <Pressable
             onPress={() => parentNavigate(navigation, 'ShareSend', {postId: current._id})}
             hitSlop={12}

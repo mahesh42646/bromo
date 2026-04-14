@@ -1,5 +1,24 @@
 import mongoose, { Schema, type Document, type Types } from "mongoose";
 
+export type StoryOverlay = {
+  id: string;
+  type: "text" | "emoji" | "music";
+  content: string;
+  /** 0–1 relative to screen width */
+  x: number;
+  /** 0–1 relative to screen height */
+  y: number;
+  color?: string;
+  fontSize?: number;
+};
+
+export type StoryMeta = {
+  /** Solid/gradient background hex for color-background stories */
+  bgColor?: string;
+  /** Text, emoji, and music badge overlays */
+  overlays?: StoryOverlay[];
+};
+
 export interface PostDoc extends Document {
   authorId: Types.ObjectId;
   type: "post" | "reel" | "story";
@@ -26,6 +45,8 @@ export interface PostDoc extends Document {
   /** Soft-removed from feeds; files may remain on disk until hard delete. */
   isDeleted: boolean;
   deletedAt?: Date;
+  /** Story-only: background color + draggable overlays */
+  storyMeta?: StoryMeta;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,6 +74,7 @@ const postSchema = new Schema<PostDoc>(
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date },
+    storyMeta: { type: Schema.Types.Mixed, default: undefined },
   },
   { timestamps: true },
 );

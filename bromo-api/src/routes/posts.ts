@@ -279,9 +279,14 @@ postsRouter.get(
           thumbnailUrl:
             typeof s.thumbnailUrl === "string" ? rewritePublicMediaUrl(s.thumbnailUrl) : s.thumbnailUrl,
           authorId: undefined,
+          // storyMeta is already in s via lean() spread — included automatically
         });
       }
 
+      // Short private cache — lets the client avoid a server round-trip on quick revisits
+      // while ensuring fresh data within 15 s. stale-while-revalidate lets it serve
+      // the cached response while fetching in the background.
+      res.set("Cache-Control", "private, max-age=15, stale-while-revalidate=30");
       return res.json({ stories: Object.values(grouped) });
     } catch (err) {
       console.error("[posts] stories error:", err);
@@ -387,7 +392,7 @@ postsRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
-      const { type, mediaUrl, thumbnailUrl, mediaType, caption, location, music, tags } = req.body as {
+      const { type, mediaUrl, thumbnailUrl, mediaType, caption, location, music, tags, storyMeta } = req.body as {
         type: "post" | "reel" | "story";
         mediaUrl: string;
         thumbnailUrl?: string;
@@ -396,10 +401,16 @@ postsRouter.post(
         location?: string;
         music?: string;
         tags?: string[];
+        storyMeta?: { bgColor?: string; overlays?: unknown[] };
       };
 
-      if (!mediaUrl || !mediaType || !type) {
+      // For color-background stories, mediaUrl may be the sentinel "color-bg"
+      const isColorBgStory = type === "story" && storyMeta?.bgColor && (!mediaUrl || mediaUrl === "color-bg");
+      if (!isColorBgStory && (!mediaUrl || !mediaType || !type)) {
         return res.status(400).json({ message: "mediaUrl, mediaType and type are required" });
+      }
+      if (!type) {
+        return res.status(400).json({ message: "type is required" });
       }
 
       if (type === "reel" && mediaType !== "video") {
@@ -411,15 +422,16 @@ postsRouter.post(
       const post = await Post.create({
         authorId: user._id,
         type,
-        mediaUrl,
+        mediaUrl: mediaUrl ?? "color-bg",
         thumbnailUrl: thumbnailUrl ?? "",
-        mediaType,
+        mediaType: mediaType ?? "image",
         caption: caption?.trim() ?? "",
         location: location?.trim() ?? "",
         music: music?.trim() ?? "",
         tags: tags ?? [],
         expiresAt,
         isDeleted: false,
+        ...(type === "story" && storyMeta ? { storyMeta } : {}),
       });
 
       await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
