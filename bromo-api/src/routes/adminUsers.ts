@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { User } from "../models/User.js";
 import { Admin } from "../models/Admin.js";
 import { Post } from "../models/Post.js";
+import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 import { requireAdminToken, type AuthedRequest } from "../middleware/authBearer.js";
 import { emitPostDelete } from "../services/socketService.js";
 import { deleteLocalFilesForMediaUrls } from "../utils/uploadFiles.js";
@@ -236,7 +237,7 @@ router.delete("/posts/:postId", requireAdminToken, async (req: AuthedRequest, re
     if (permanent) {
       deleteLocalFilesForMediaUrls([post.mediaUrl, post.thumbnailUrl]);
       await Post.findByIdAndDelete(post._id);
-      if (!post.isDeleted) {
+      if (!post.isDeleted && authorPostsCountWasBumped(post)) {
         await User.findByIdAndUpdate(post.authorId, { $inc: { postsCount: -1 } });
       }
       emitPostDelete(String(post._id));
@@ -250,7 +251,9 @@ router.delete("/posts/:postId", requireAdminToken, async (req: AuthedRequest, re
     post.deletedAt = new Date();
     post.isActive = false;
     await post.save();
-    await User.findByIdAndUpdate(post.authorId, { $inc: { postsCount: -1 } });
+    if (authorPostsCountWasBumped(post)) {
+      await User.findByIdAndUpdate(post.authorId, { $inc: { postsCount: -1 } });
+    }
     emitPostDelete(String(post._id));
     return res.json({ ok: true, mode: "soft" });
   } catch (err) {
@@ -270,7 +273,9 @@ router.post("/posts/:postId/restore", requireAdminToken, async (req: AuthedReque
     post.deletedAt = undefined;
     post.isActive = true;
     await post.save();
-    await User.findByIdAndUpdate(post.authorId, { $inc: { postsCount: 1 } });
+    if (authorPostsCountWasBumped(post)) {
+      await User.findByIdAndUpdate(post.authorId, { $inc: { postsCount: 1 } });
+    }
     const populated = await Post.findById(post._id).populate("authorId", POST_AUTHOR_SELECT).lean();
     const row = populated as Record<string, unknown>;
     return res.json({

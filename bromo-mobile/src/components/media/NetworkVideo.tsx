@@ -45,11 +45,12 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     backBufferDurationMs: 0,        // don't keep back-buffer; save memory
   },
   'reel-hls': {
-    minBufferMs: 3000,
-    maxBufferMs: 20000,
-    bufferForPlaybackMs: 1000,
-    bufferForPlaybackAfterRebufferMs: 2000,
-    backBufferDurationMs: 0,
+    minBufferMs: 4000,
+    maxBufferMs: 25000,
+    bufferForPlaybackMs: 1200,
+    bufferForPlaybackAfterRebufferMs: 2500,
+    /** Small back-buffer reduces black flashes when the player repositions / switches variants. */
+    backBufferDurationMs: 4000,
   },
   feed: {
     minBufferMs: 3000,

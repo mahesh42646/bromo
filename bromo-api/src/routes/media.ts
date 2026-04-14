@@ -191,6 +191,9 @@ mediaRouter.post(
       } catch { /* non-fatal */ }
     }
 
+    const storyExpiresAt =
+      postType === "story" ? new Date(Date.now() + 24 * 60 * 60 * 1000) : undefined;
+
     // Create draft post — hidden until processingStatus === ready
     const draftPost = await Post.create({
       authorId: dbUser._id,
@@ -202,6 +205,7 @@ mediaRouter.post(
       location,
       music,
       tags,
+      expiresAt: storyExpiresAt,
       processingStatus: "pending",
       isActive: false, // hidden from feeds until HLS ready
     });

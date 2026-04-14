@@ -58,7 +58,7 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {getFeed, getExplore, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
-import {loadStoriesFeed, loadStoriesFeedDeduped} from '../lib/storiesFeedCache';
+import {clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped} from '../lib/storiesFeedCache';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getUnreadCount} from '../api/notificationsApi';
 import {getConversations} from '../api/chatApi';
@@ -601,23 +601,49 @@ export function HomeScreen() {
       );
     });
     const unsubStory = socketService.on('story:new', () => {
-      loadStoriesFeed({force: true}).then(s => setStoryGroups(s)).catch(() => null);
+      void clearStoriesFeedCache()
+        .then(() => loadStoriesFeed({force: true}))
+        .then(s => setStoryGroups(s))
+        .catch(() => null);
+    });
+    const unsubNew = socketService.on('post:new', p => {
+      if (p.type === 'story') return;
+      const myId = dbUser?._id;
+      const aid = p.author?._id;
+      const isSelf = Boolean(myId && aid && String(aid) === String(myId));
+      const enriched: Post = {
+        ...p,
+        isLiked: p.isLiked ?? false,
+        isFollowing: isSelf ? true : (p.isFollowing ?? false),
+        likesCount: p.likesCount ?? 0,
+        commentsCount: p.commentsCount ?? 0,
+        viewsCount: p.viewsCount ?? 0,
+        impressionsCount: p.impressionsCount ?? 0,
+        sharesCount: p.sharesCount ?? 0,
+        avgWatchTimeMs: p.avgWatchTimeMs ?? 0,
+        trendingScore: p.trendingScore ?? 0,
+      };
+      setPosts(prev => (prev.some(x => x._id === enriched._id) ? prev : [enriched, ...prev]));
     });
     const unsubSeen = DeviceEventEmitter.addListener('bromo:storiesChanged', () => {
-      loadStoriesFeedDeduped({force: true}).then(s => setStoryGroups(s)).catch(() => null);
+      void clearStoriesFeedCache()
+        .then(() => loadStoriesFeedDeduped({force: true}))
+        .then(s => setStoryGroups(s))
+        .catch(() => null);
     });
     const unsubNotification = socketService.on('notification', () => {
       refreshHeaderCounts().catch(() => null);
     });
-    return () => {
+       return () => {
       unsubLike();
       unsubDelete();
       unsubComment();
       unsubStory();
+      unsubNew();
       unsubSeen.remove();
       unsubNotification();
     };
-  }, [refreshHeaderCounts]);
+  }, [refreshHeaderCounts, dbUser?._id]);
 
   const collapseSearch = useCallback(() => {
     setSearchExpanded(false);

@@ -564,7 +564,8 @@ export function ReelsScreen() {
   const [feedTab, setFeedTab] = useState<ReelFeedTab>('forYou');
   const [activeIndex, setActiveIndex] = useState(0);
   const win = Dimensions.get('window');
-  const [reelHeight, setReelHeight] = useState(win.height);
+  /** Measured from FlatList `onLayout` — avoids `getItemLayout` using full window height while the tab bar consumes space (fixes >100% viewport / black paging gaps). */
+  const [reelHeight, setReelHeight] = useState(0);
   const [reelWidth, setReelWidth] = useState(win.width);
   const {isCellular, maxBitRate} = usePlaybackNetworkCap();
   const [reels, setReels] = useState<Post[]>([]);
@@ -834,11 +835,15 @@ export function ReelsScreen() {
         }}
         onEndReached={onLoadMore}
         onEndReachedThreshold={2}
-        getItemLayout={(_data, index) => ({
-          length: reelHeight,
-          offset: reelHeight * index,
-          index,
-        })}
+        getItemLayout={
+          reelHeight > 0
+            ? (_data, index) => ({
+                length: reelHeight,
+                offset: reelHeight * index,
+                index,
+              })
+            : undefined
+        }
         // Instagram-style: render 1 ahead, keep 3 in window, unload rest
         initialNumToRender={1}
         maxToRenderPerBatch={2}
@@ -852,7 +857,7 @@ export function ReelsScreen() {
           }, 350);
         }}
         ListEmptyComponent={
-          <View style={{height: reelHeight, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24}}>
+          <View style={{height: reelHeight > 0 ? reelHeight : win.height * 0.85, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24}}>
             <Text style={{color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center'}}>
               {feedTab === 'friends' ? 'No reels from people you follow yet' : 'No reels yet'}
             </Text>

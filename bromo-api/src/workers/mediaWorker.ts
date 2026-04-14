@@ -154,15 +154,17 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
   );
 
   if (job.postDraftId) {
-    await Post.updateOne(
-      { _id: job.postDraftId },
-      {
-        processingStatus: "ready",
-        hlsMasterUrl: masterUrl,
-        mediaUrl: mezzanineUrl,
-        isActive: true,
-      },
-    );
+    const existing = await Post.findById(job.postDraftId).select("type expiresAt").lean();
+    const readyPatch: Record<string, unknown> = {
+      processingStatus: "ready",
+      hlsMasterUrl: masterUrl,
+      mediaUrl: mezzanineUrl,
+      isActive: true,
+    };
+    if (existing?.type === "story" && !existing.expiresAt) {
+      readyPatch.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    }
+    await Post.updateOne({ _id: job.postDraftId }, { $set: readyPatch });
 
     await broadcastActivatedPost(String(job.postDraftId));
 
@@ -188,14 +190,16 @@ async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
   );
 
   if (job.postDraftId) {
-    await Post.updateOne(
-      { _id: job.postDraftId },
-      {
-        processingStatus: "ready",
-        mediaUrl: imageUrl,
-        isActive: true,
-      },
-    );
+    const existing = await Post.findById(job.postDraftId).select("type expiresAt").lean();
+    const readyPatch: Record<string, unknown> = {
+      processingStatus: "ready",
+      mediaUrl: imageUrl,
+      isActive: true,
+    };
+    if (existing?.type === "story" && !existing.expiresAt) {
+      readyPatch.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    }
+    await Post.updateOne({ _id: job.postDraftId }, { $set: readyPatch });
 
     await broadcastActivatedPost(String(job.postDraftId));
 

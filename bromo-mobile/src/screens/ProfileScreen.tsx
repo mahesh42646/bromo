@@ -52,6 +52,8 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resetToAuth} from '../navigation/rootNavigation';
 import {getUserPosts, type Post} from '../api/postsApi';
+import {socketService} from '../services/socketService';
+import {clearStoriesFeedCache} from '../lib/storiesFeedCache';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -221,6 +223,41 @@ export function ProfileScreen() {
   useEffect(() => {
     loadPosts(gridTab);
   }, [gridTab, loadPosts]);
+
+  useEffect(() => {
+    const unsubDel = socketService.on('post:delete', ({postId}) => {
+      setUserPosts(prev => prev.filter(p => p._id !== postId));
+      void refreshDbUser();
+    });
+    const unsubNew = socketService.on('post:new', p => {
+      if (!dbUser?._id || String(p.author?._id) !== String(dbUser._id)) return;
+      void refreshDbUser();
+      if (p.type === 'story') {
+        void clearStoriesFeedCache().catch(() => null);
+        return;
+      }
+      const wantPost = gridTab === 'posts' && p.type === 'post';
+      const wantReel = gridTab === 'reels' && p.type === 'reel';
+      if (!wantPost && !wantReel) return;
+      const enriched: Post = {
+        ...p,
+        isLiked: p.isLiked ?? false,
+        isFollowing: true,
+        likesCount: p.likesCount ?? 0,
+        commentsCount: p.commentsCount ?? 0,
+        viewsCount: p.viewsCount ?? 0,
+        impressionsCount: p.impressionsCount ?? 0,
+        sharesCount: p.sharesCount ?? 0,
+        avgWatchTimeMs: p.avgWatchTimeMs ?? 0,
+        trendingScore: p.trendingScore ?? 0,
+      };
+      setUserPosts(prev => (prev.some(x => x._id === enriched._id) ? prev : [enriched, ...prev]));
+    });
+    return () => {
+      unsubDel();
+      unsubNew();
+    };
+  }, [dbUser?._id, gridTab, refreshDbUser]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -448,7 +485,7 @@ export function ProfileScreen() {
             {/* Stats */}
             <View style={styles.statsRow}>
               {[
-                {label: 'Posts', value: dbUser?.postsCount ?? 0, onPress: () => parentNavigate(navigation, 'ManageContent')},
+                {label: 'Posts', value: Math.max(0, dbUser?.postsCount ?? 0), onPress: () => parentNavigate(navigation, 'ManageContent')},
                 {
                   label: 'Followers',
                   value: dbUser?.followersCount ?? 0,

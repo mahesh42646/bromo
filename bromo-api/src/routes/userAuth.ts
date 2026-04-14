@@ -127,6 +127,11 @@ userAuthRouter.get(
         await user.save();
       }
 
+      if (typeof user.postsCount === "number" && user.postsCount < 0) {
+        user.postsCount = 0;
+        await user.save();
+      }
+
       return res.json({ user });
     } catch (err: unknown) {
       console.error("[userAuth] /me error:", err);

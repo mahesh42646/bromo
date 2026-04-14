@@ -32,6 +32,7 @@ import {
 } from "../utils/uploadFiles.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
 import { enqueueMediaJob } from "../workers/mediaWorker.js";
+import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 
 export const postsRouter = Router();
 
@@ -301,6 +302,19 @@ postsRouter.get(
       }).select("followingId");
       const followingIds = follows.map((f) => f.followingId);
       const authorIds = [dbUser._id, ...followingIds];
+
+      // Heal story docs missing expiresAt (older async uploads) so they match the tray query.
+      await Post.collection.updateMany(
+        {
+          type: "story",
+          authorId: { $in: authorIds },
+          isActive: true,
+          isDeleted: { $ne: true },
+          processingStatus: { $nin: ["pending", "processing", "failed"] },
+          $or: [{ expiresAt: { $exists: false } }, { expiresAt: null }],
+        },
+        [{ $set: { expiresAt: { $add: ["$createdAt", 86400000] } } }],
+      );
 
       const match = {
         type: "story" as const,
@@ -709,7 +723,9 @@ postsRouter.delete(
       post.deletedAt = new Date();
       post.isActive = false;
       await post.save();
-      await User.findByIdAndUpdate(user._id, { $inc: { postsCount: -1 } });
+      if (authorPostsCountWasBumped(post)) {
+        await User.findByIdAndUpdate(user._id, { $inc: { postsCount: -1 } });
+      }
       emitPostDelete(String(req.params.id));
       return res.json({ message: "Post deleted" });
     } catch (err) {
