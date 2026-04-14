@@ -51,7 +51,7 @@ import {
   X,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import {uploadMedia, createPost} from '../../api/postsApi';
+import {uploadMedia, uploadMediaAsync, createPost} from '../../api/postsApi';
 import type {StoryOverlay, StoryMeta} from '../../api/postsApi';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 
@@ -232,29 +232,43 @@ export function StoryCreatorScreen() {
         ...(overlays.length > 0 ? {overlays} : {}),
       };
 
-      let mediaUrl = 'color-bg';
-      let thumbnailUrl: string | undefined;
-      let mediaType: 'image' | 'video' = 'image';
-
-      if (media) {
-        const uploaded = await uploadMedia(media.uri, {
-          type: media.type,
-          category: 'stories',
+      // Color-only story — no media upload needed
+      if (!media) {
+        await createPost({
+          type: 'story',
+          mediaUrl: 'color-bg',
+          mediaType: 'image',
+          music: selectedMusic?.title,
+          storyMeta,
         });
-        mediaUrl = uploaded.url;
-        thumbnailUrl = uploaded.thumbnailUrl;
-        mediaType = uploaded.mediaType ?? (media.type === 'video' ? 'video' : 'image');
+        setPhase('done');
+        return;
       }
 
+      // Video stories: async HLS pipeline (server notifies when ready)
+      if (media.type === 'video') {
+        await uploadMediaAsync(media.uri, {
+          type: 'video',
+          category: 'stories',
+          music: selectedMusic?.title,
+        });
+        setPhase('done'); // show "uploading" success; notification arrives when HLS ready
+        return;
+      }
+
+      // Image stories: sync upload + immediate post
+      const uploaded = await uploadMedia(media.uri, {
+        type: media.type,
+        category: 'stories',
+      });
       await createPost({
         type: 'story',
-        mediaUrl,
-        thumbnailUrl,
-        mediaType,
+        mediaUrl: uploaded.url,
+        thumbnailUrl: uploaded.thumbnailUrl,
+        mediaType: uploaded.mediaType ?? 'image',
         music: selectedMusic?.title,
         storyMeta,
       });
-
       setPhase('done');
     } catch (err) {
       setPhase('canvas');

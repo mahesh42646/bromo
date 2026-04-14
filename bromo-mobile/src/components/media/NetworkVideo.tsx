@@ -44,6 +44,13 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     bufferForPlaybackAfterRebufferMs: 1500,
     backBufferDurationMs: 0,        // don't keep back-buffer; save memory
   },
+  'reel-hls': {
+    minBufferMs: 3000,
+    maxBufferMs: 20000,
+    bufferForPlaybackMs: 1000,
+    bufferForPlaybackAfterRebufferMs: 2000,
+    backBufferDurationMs: 0,
+  },
   feed: {
     minBufferMs: 3000,
     maxBufferMs: 12000,
@@ -56,6 +63,13 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     maxBufferMs: 12000,
     bufferForPlaybackMs: 500,
     bufferForPlaybackAfterRebufferMs: 1200,
+    backBufferDurationMs: 0,
+  },
+  'story-hls': {
+    minBufferMs: 2000,
+    maxBufferMs: 15000,
+    bufferForPlaybackMs: 800,
+    bufferForPlaybackAfterRebufferMs: 1500,
     backBufferDurationMs: 0,
   },
 };
@@ -75,7 +89,7 @@ export type NetworkVideoProps = {
   paused?: boolean;
   repeat?: boolean;
   resizeMode?: 'contain' | 'cover' | 'stretch' | 'none';
-  /** Included in Metro logs to locate the surface (e.g. feed, reel, story). */
+  /** Included in Metro logs to locate the surface (e.g. feed, reel, story, reel-hls, story-hls). */
   context?: string;
   bufferConfig?: BufferConfig;
   ignoreSilentSwitch?: 'ignore' | 'obey';
@@ -83,6 +97,12 @@ export type NetworkVideoProps = {
   preventsDisplaySleepDuringVideoPlayback?: boolean;
   /** When true, show `posterUri` in an overlay until the first frame is ready (avoids black frame + deprecated poster quirks). */
   posterOverlayUntilReady?: boolean;
+  /**
+   * Max bitrate cap in bps — for ABR ceiling on cellular.
+   * Pass from usePlaybackNetworkCap().maxBitRate.
+   * Only applies when uri is an HLS master playlist.
+   */
+  maxBitRate?: number | null;
   /** Fires once when the first frame is ready or playback has started (whichever comes first). */
   onDecoderReady?: () => void;
   /** Notified when playback fails (after logging to Metro). */
@@ -114,6 +134,7 @@ export function NetworkVideo({
   rate,
   preventsDisplaySleepDuringVideoPlayback,
   posterOverlayUntilReady = true,
+  maxBitRate,
   onDecoderReady,
   onPlaybackError,
   onLoad: onLoadProp,
@@ -260,11 +281,12 @@ export function NetworkVideo({
         // SurfaceView (default) punches through the RN layer → everything above it is black.
         viewType={Platform.OS === 'android' ? ViewType.TEXTURE : undefined}
         // shutterColor: suppress the black frame that flashes before the first decoded frame.
-        // On iOS this prevents the brief black flash on stream open; on Android it's a no-op
-        // (TextureView already handles it), but setting it is harmless.
         shutterColor="transparent"
         rate={rate}
         preventsDisplaySleepDuringVideoPlayback={preventsDisplaySleepDuringVideoPlayback}
+        // ABR ceiling: cap bitrate on cellular to prevent buffering stalls.
+        // AVPlayer (iOS) + ExoPlayer (Android) both honour maxBitRate on HLS streams.
+        maxBitRate={maxBitRate ?? undefined}
       />
       {showPoster ? (
         <Image

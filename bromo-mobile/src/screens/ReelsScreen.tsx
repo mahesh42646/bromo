@@ -51,9 +51,11 @@ import {StoryRing} from '../components/ui/StoryRing';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {followUser} from '../api/followApi';
-import {createStoryFromReel, getReels, toggleLike, recordView, recordShare, type Post} from '../api/postsApi';
+import {createStoryFromReel, getReels, toggleLike, recordView, recordShare, resolveVideoUrl, type Post} from '../api/postsApi';
 import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
+import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
+import {prefetchHlsSegments} from '../lib/hlsPrefetch';
 import type {ThemePalette} from '../config/platform-theme';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
@@ -213,6 +215,8 @@ function ReelItem({
   autoScroll,
   onAutoScrollChange,
   onAutoAdvanceClip,
+  isCellular,
+  maxBitRate,
 }: {
   item: Post;
   isActive: boolean;
@@ -223,6 +227,8 @@ function ReelItem({
   autoScroll: boolean;
   onAutoScrollChange: (v: boolean) => void;
   onAutoAdvanceClip: () => void;
+  isCellular: boolean;
+  maxBitRate: number | null;
 }) {
   const insets = useSafeAreaInsets();
   const {palette, contract} = useTheme();
@@ -299,8 +305,11 @@ function ReelItem({
     } catch {}
   };
 
-  const playUri = resolveMediaUrl(item.mediaUrl);
+  // Prefer HLS master URL for ABR playback; fall back to progressive MP4 for legacy posts
+  const rawVideoUrl = resolveVideoUrl(item, isCellular);
+  const playUri = resolveMediaUrl(rawVideoUrl);
   const thumbUri = resolveMediaUrl(item.thumbnailUrl ?? '') || playUri;
+  const isHls = rawVideoUrl.endsWith('.m3u8');
 
   /** Stable so `NetworkVideo` safety timer / native callbacks are not reset every progress tick. */
   const hideCoverSpinner = useCallback(() => {
@@ -312,9 +321,10 @@ function ReelItem({
       {item.mediaType === 'video' ? (
         <NetworkVideo
           key={item._id}
-          context="reel"
+          context={isHls ? 'reel-hls' : 'reel'}
           uri={playUri}
           posterUri={item.thumbnailUrl ? thumbUri : undefined}
+          maxBitRate={isHls ? maxBitRate : undefined}
           style={{width: '100%', height: '100%', position: 'absolute'}}
           resizeMode="cover"
           repeat={!autoScroll}
@@ -549,6 +559,7 @@ export function ReelsScreen() {
   const win = Dimensions.get('window');
   const [reelHeight, setReelHeight] = useState(win.height);
   const [reelWidth, setReelWidth] = useState(win.width);
+  const {isCellular, maxBitRate} = usePlaybackNetworkCap();
   const [reels, setReels] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -682,6 +693,40 @@ export function ReelsScreen() {
     }
   }).current;
 
+  // HLS prefetch: fully download next reel, partial for +2..+4
+  useEffect(() => {
+    const currentReels = reels;
+    const idx = activeIndex;
+
+    // Full prefetch for the next item (most likely to play)
+    const next = currentReels[idx + 1];
+    if (next?.hlsMasterUrl) {
+      prefetchHlsSegments(
+        isCellular
+          ? next.hlsMasterUrl.replace(/master\.m3u8$/, 'master_cell.m3u8')
+          : next.hlsMasterUrl,
+        next._id,
+        isCellular,
+        null, // all segments
+      );
+    }
+
+    // Partial lookahead for +2 to +4
+    for (let i = idx + 2; i <= idx + 4 && i < currentReels.length; i++) {
+      const r = currentReels[i];
+      if (r?.hlsMasterUrl) {
+        prefetchHlsSegments(
+          isCellular
+            ? r.hlsMasterUrl.replace(/master\.m3u8$/, 'master_cell.m3u8')
+            : r.hlsMasterUrl,
+          r._id,
+          isCellular,
+          6,
+        );
+      }
+    }
+  }, [activeIndex, reels, isCellular]);
+
   if (loading) {
     return (
       <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
@@ -804,6 +849,8 @@ export function ReelsScreen() {
             autoScroll={autoScroll}
             onAutoScrollChange={setAutoScroll}
             onAutoAdvanceClip={onAutoAdvanceClip}
+            isCellular={isCellular}
+            maxBitRate={maxBitRate}
           />
         )}
       />

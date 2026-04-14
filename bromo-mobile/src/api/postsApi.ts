@@ -26,6 +26,8 @@ export type StoryMeta = {
   overlays?: StoryOverlay[];
 };
 
+export type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';
+
 export type Post = {
   _id: string;
   author: PostAuthor;
@@ -34,6 +36,14 @@ export type Post = {
   mediaType: 'image' | 'video';
   /** Server-generated for video; use for grids and `<Image>` previews */
   thumbnailUrl?: string;
+  /**
+   * HLS master playlist URL — prefer this over mediaUrl for video playback.
+   * Pass to NetworkVideo uri prop. Falls back to mediaUrl when absent (legacy posts).
+   * On cellular, swap for master_cell.m3u8 (same dir, replace "master" with "master_cell").
+   */
+  hlsMasterUrl?: string;
+  /** HLS processing pipeline status. Post visible in feeds only when 'ready'. */
+  processingStatus?: ProcessingStatus;
   caption: string;
   location: string;
   music: string;
@@ -54,6 +64,34 @@ export type Post = {
   storyMeta?: StoryMeta;
   /** Story tray: whether the current user has finished this segment (server). */
   seenByMe?: boolean;
+};
+
+/** Derive the best video URL from a post — HLS master if available, else legacy mediaUrl. */
+export function resolveVideoUrl(post: Post, isCellular = false): string {
+  if (post.hlsMasterUrl) {
+    if (isCellular) {
+      // Use cellular-capped master (≤720p variants) — same dir convention
+      return post.hlsMasterUrl.replace(/master\.m3u8$/, 'master_cell.m3u8');
+    }
+    return post.hlsMasterUrl;
+  }
+  return post.mediaUrl;
+}
+
+export type MediaJobStatus = 'queued' | 'processing' | 'ready' | 'failed';
+
+export type MediaJobPoll = {
+  jobId: string;
+  status: MediaJobStatus;
+  progress: number;
+  mediaType: 'video' | 'image';
+  category: string;
+  hlsMasterUrl?: string;
+  cellMasterUrl?: string;
+  renditions?: Array<{height: number; bitrate: number}>;
+  error?: string;
+  postId?: string;
+  post?: Post;
 };
 
 export type Comment = {
@@ -301,6 +339,73 @@ export async function uploadMedia(
     mediaType: mt === 'video' || mt === 'image' ? mt : undefined,
     converted: typeof conv === 'boolean' ? conv : undefined,
   };
+}
+
+/**
+ * Upload media asynchronously — returns immediately with jobId + postId.
+ * Server processes HLS transcode in background and sends a notification when done.
+ * Use for: reels, stories, and video posts.
+ */
+export async function uploadMediaAsync(
+  localUri: string,
+  meta: {
+    type: 'image' | 'video';
+    fileName?: string | null;
+    category?: 'posts' | 'reels' | 'stories';
+    caption?: string;
+    location?: string;
+    music?: string;
+    tags?: string[];
+  },
+): Promise<{jobId: string; postId: string; thumbnailUrl?: string}> {
+  const user = auth().currentUser;
+  if (!user) throw new Error('Not authenticated');
+  const token = await user.getIdToken(false);
+  const base = apiBase();
+  const category = meta.category ?? 'posts';
+
+  const part = buildMediaUploadPart(localUri, meta.type, meta.fileName);
+  const form = new FormData();
+  form.append('file', {uri: part.uri, type: part.type, name: part.name} as unknown as Blob);
+  if (meta.caption) form.append('caption', meta.caption);
+  if (meta.location) form.append('location', meta.location);
+  if (meta.music) form.append('music', meta.music);
+  if (meta.tags?.length) form.append('tags', meta.tags.join(','));
+
+  const res = await fetch(`${base}/media/upload-async?category=${encodeURIComponent(category)}`, {
+    method: 'POST',
+    headers: {Authorization: `Bearer ${token}`},
+    body: form,
+  });
+
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error((body.message as string | undefined) ?? 'Async upload failed');
+  }
+
+  const jobId = body.jobId as string | undefined;
+  const postId = body.postId as string | undefined;
+  if (!jobId || !postId) throw new Error('Server did not return jobId/postId');
+
+  return {
+    jobId,
+    postId,
+    thumbnailUrl: typeof body.thumbnailUrl === 'string' ? body.thumbnailUrl : undefined,
+  };
+}
+
+/** Poll the status of an async media job. */
+export async function getMediaJob(jobId: string): Promise<MediaJobPoll> {
+  const res = await authedFetch(`/media/jobs/${encodeURIComponent(jobId)}`);
+  if (!res.ok) throw new Error('Failed to poll job');
+  return res.json() as Promise<MediaJobPoll>;
+}
+
+/** Fetch all pending/processing jobs for the current user. */
+export async function getMyPendingJobs(): Promise<{jobs: Array<{jobId: string; status: string; progress: number; postId?: string; category: string}>}> {
+  const res = await authedFetch('/media/jobs');
+  if (!res.ok) throw new Error('Failed to fetch jobs');
+  return res.json() as Promise<{jobs: Array<{jobId: string; status: string; progress: number; postId?: string; category: string}>}>;
 }
 
 // Re-export apiBase for use by other modules

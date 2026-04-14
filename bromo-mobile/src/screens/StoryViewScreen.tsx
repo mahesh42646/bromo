@@ -20,9 +20,11 @@ import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {useMessaging} from '../messaging/MessagingContext';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {markStorySeenPost, toggleLike, type StoryGroup} from '../api/postsApi';
+import {markStorySeenPost, toggleLike, resolveVideoUrl, type StoryGroup} from '../api/postsApi';
 import {loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
 import {prefetchStoryVideoToDisk, resolveStoryVideoPlayUri} from '../lib/storyVideoCache';
+import {prefetchHlsSegments} from '../lib/hlsPrefetch';
+import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
 import {NetworkVideo} from '../components/media/NetworkVideo';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
@@ -77,6 +79,7 @@ export function StoryViewScreen() {
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [groupIdx, setGroupIdx] = useState(0);
   const [storyIdx, setStoryIdx] = useState(0);
+  const {isCellular, maxBitRate} = usePlaybackNetworkCap();
   const [paused, setPaused] = useState(false);
   const [liked, setLiked] = useState(false);
   const [replyText, setReplyText] = useState('');
@@ -182,15 +185,26 @@ export function StoryViewScreen() {
       opts?: {prefetchToDisk?: boolean},
     ) => {
       if (!story) return;
-      const mediaUri = resolveMediaUrl(story.mediaUrl);
-      if (!mediaUri) return;
       const known = mediaCacheRef.current[story._id] ?? 0;
       if (known > Date.now()) return; // already warmed within this session
 
       const expiresAt = storyExpiresAt(story.createdAt);
+
       if (story.mediaType === 'image') {
-        await Image.prefetch(mediaUri).catch(() => false);
+        const mediaUri = resolveMediaUrl(story.mediaUrl);
+        if (mediaUri) await Image.prefetch(mediaUri).catch(() => false);
+      } else if (story.hlsMasterUrl) {
+        // HLS story: prefetch first 6 segments
+        const masterUrl = isCellular
+          ? story.hlsMasterUrl.replace(/master\.m3u8$/, 'master_cell.m3u8')
+          : story.hlsMasterUrl;
+        prefetchHlsSegments(masterUrl, story._id, isCellular, 6);
+        const thumb = postThumbnailUri(story);
+        if (thumb) await Image.prefetch(resolveMediaUrl(thumb)).catch(() => false);
       } else {
+        // Legacy progressive MP4
+        const mediaUri = resolveMediaUrl(story.mediaUrl);
+        if (!mediaUri) { mediaCacheRef.current[story._id] = expiresAt; return; }
         const thumb = postThumbnailUri(story);
         if (thumb) await Image.prefetch(resolveMediaUrl(thumb)).catch(() => false);
         if (opts?.prefetchToDisk) {
@@ -200,7 +214,7 @@ export function StoryViewScreen() {
       mediaCacheRef.current[story._id] = expiresAt;
       saveCacheIndex().catch(() => null);
     },
-    [saveCacheIndex],
+    [saveCacheIndex, isCellular],
   );
 
   useEffect(() => {
@@ -208,6 +222,15 @@ export function StoryViewScreen() {
       setStoryVideoPlayUri(null);
       return;
     }
+
+    // For HLS stories: use master URL directly (no disk cache needed — segments are prefetched)
+    if (current.hlsMasterUrl) {
+      const hlsUrl = resolveVideoUrl(current, isCellular);
+      setStoryVideoPlayUri(resolveMediaUrl(hlsUrl));
+      return;
+    }
+
+    // Legacy progressive MP4: check disk cache first
     const remote = resolveMediaUrl(current.mediaUrl);
     if (!remote?.trim()) {
       setStoryVideoPlayUri(null);
@@ -225,7 +248,7 @@ export function StoryViewScreen() {
     return () => {
       alive = false;
     };
-  }, [current?._id, current?.mediaType, current?.mediaUrl]);
+  }, [current?._id, current?.mediaType, current?.mediaUrl, current?.hlsMasterUrl, isCellular]);
 
   const goNext = useCallback(() => {
     const leavingId = current?._id;
@@ -246,7 +269,8 @@ export function StoryViewScreen() {
   }, [current?._id, storyIdx, stories.length, groupIdx, groups.length, navigation]);
 
   const onStoryVideoEnd = useCallback(() => {
-    if (current?.mediaType === 'video') {
+    // For legacy MP4 stories, cache to disk for instant replay
+    if (current?.mediaType === 'video' && !current.hlsMasterUrl) {
       const u = resolveMediaUrl(current.mediaUrl);
       if (u?.trim()) prefetchStoryVideoToDisk(u, current._id);
     }
@@ -390,7 +414,7 @@ export function StoryViewScreen() {
         ) : (
           <NetworkVideo
             key={`${current._id}-${storyVideoPlayUri.startsWith('file') ? 'local' : 'net'}`}
-            context="story"
+            context={current.hlsMasterUrl ? 'story-hls' : 'story'}
             uri={storyVideoPlayUri}
             posterUri={poster}
             style={{width: W, height: H}}
@@ -398,6 +422,7 @@ export function StoryViewScreen() {
             muted={false}
             paused={paused || showReply}
             resizeMode="cover"
+            maxBitRate={current.hlsMasterUrl ? maxBitRate : undefined}
             posterOverlayUntilReady
             onDecoderReady={() => setMediaReady(true)}
             onLoad={(d: OnLoadData) => {

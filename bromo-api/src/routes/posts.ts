@@ -49,8 +49,13 @@ function recomputeTrending(postId: string): void {
 const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
 const PAGE_SIZE = 20;
 
-/** Public listings: active and not soft-deleted. */
-const VISIBLE_POST = { isActive: true, isDeleted: { $ne: true } } as const;
+/** Public listings: active, not soft-deleted, and not still processing. */
+const VISIBLE_POST = {
+  isActive: true,
+  isDeleted: { $ne: true },
+  // Exclude posts still in the transcode pipeline; allow legacy posts with no processingStatus
+  processingStatus: { $nin: ["pending", "processing", "failed"] },
+} as const;
 
 /** ETag for story tray includes viewer’s seen set so 304 invalidates after mark-seen. */
 function storiesTrayEtag(
@@ -82,10 +87,15 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
   const mediaUrl = typeof p.mediaUrl === "string" ? rewritePublicMediaUrl(p.mediaUrl) : p.mediaUrl;
   const thumbnailUrl =
     typeof p.thumbnailUrl === "string" ? rewritePublicMediaUrl(p.thumbnailUrl) : p.thumbnailUrl;
+  const hlsMasterUrl =
+    typeof p.hlsMasterUrl === "string" && p.hlsMasterUrl.trim()
+      ? rewritePublicMediaUrl(p.hlsMasterUrl)
+      : undefined;
   return {
     ...p,
     mediaUrl,
     thumbnailUrl,
+    hlsMasterUrl,
     likesCount: Number(p.likesCount) || 0,
     commentsCount: Number(p.commentsCount) || 0,
     viewsCount: Number(p.viewsCount) || 0,
@@ -435,12 +445,18 @@ postsRouter.post(
         typeof src.thumbnailUrl === "string" && src.thumbnailUrl.trim()
           ? rewritePublicMediaUrl(src.thumbnailUrl)
           : "";
+      // If source already has HLS, reuse it directly — no re-transcode needed.
+      const srcHlsMaster =
+        typeof src.hlsMasterUrl === "string" && src.hlsMasterUrl.trim()
+          ? src.hlsMasterUrl
+          : undefined;
 
-      const post = await Post.create({
+      const storyPost = await Post.create({
         authorId: user._id,
         type: "story",
         mediaUrl,
         thumbnailUrl,
+        hlsMasterUrl: srcHlsMaster,
         mediaType: "video",
         caption: "",
         location: "",
@@ -448,11 +464,18 @@ postsRouter.post(
         tags: [],
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         isDeleted: false,
+        processingStatus: srcHlsMaster ? "ready" : undefined,
+        isActive: true,
       });
 
       await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
-      const populated = await Post.findById(post._id).populate("authorId", AUTHOR_SELECT).lean();
-      const result = { ...populated, author: populated?.authorId, authorId: undefined };
+      const populated = await Post.findById(storyPost._id).populate("authorId", AUTHOR_SELECT).lean();
+      const result = {
+        ...populated,
+        hlsMasterUrl: srcHlsMaster,
+        author: populated?.authorId,
+        authorId: undefined,
+      };
       emitStoryNew(String(user._id));
       return res.status(201).json({ post: result });
     } catch (err) {

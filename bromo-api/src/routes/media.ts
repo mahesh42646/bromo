@@ -7,6 +7,8 @@ import {
 } from "../middleware/firebaseAuth.js";
 import { uploadSingle, uploadAvatar } from "../middleware/upload.js";
 import { User } from "../models/User.js";
+import { MediaJob } from "../models/MediaJob.js";
+import { Post } from "../models/Post.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
 import { normalizeMediaAfterUpload } from "../services/videoNormalize.js";
 import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
@@ -20,6 +22,7 @@ import {
   isVideoLike,
   extFromOriginalName,
 } from "../utils/uploadPolicy.js";
+import { enqueueMediaJob } from "../workers/mediaWorker.js";
 
 export const mediaRouter = Router();
 
@@ -111,6 +114,106 @@ mediaRouter.post(
     }
 
     return res.json({ url, thumbnailUrl, filename: rel, mediaType, converted });
+  },
+);
+
+/**
+ * POST /media/upload-async
+ * Accepts any media file, stores to disk, creates a MediaJob + draft Post,
+ * enqueues background HLS transcode (video) or image normalize (image).
+ * Returns immediately with { jobId, postId } — client polls /media/jobs/:id.
+ *
+ * Query params:
+ *   category: posts | reels | stories (default: posts)
+ *   caption, location, music, tags (optional — applied to draft post)
+ */
+mediaRouter.post(
+  "/upload-async",
+  requireFirebaseToken,
+  requireDbUser,
+  (req: FirebaseAuthedRequest, res: Response, next: NextFunction) => {
+    uploadSingle(req as never, res, (err: unknown) => {
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      next();
+    });
+  },
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    if (!req.file?.path) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    const dbUser = req.dbUser!;
+    const cat = normalizeUploadCategory((req.query as Record<string, string>).category);
+
+    const policyErr = validateUploadForCategory(cat, req.file.mimetype, req.file.originalname);
+    if (policyErr) {
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      return res.status(400).json({ message: policyErr });
+    }
+
+    const rel = relativeUploadPathFromAbs(req.file.path);
+    const ext = path.extname(req.file.path).toLowerCase();
+    const mediaType: "video" | "image" = isVideoLike(req.file.mimetype, extFromOriginalName(req.file.originalname ?? ""))
+      ? "video"
+      : "image";
+
+    // Map category to post type
+    const postType = cat === "reels" ? "reel" : cat === "stories" ? "story" : "post";
+
+    // Parse optional metadata from body
+    const body = req.body as Record<string, string | undefined>;
+    const caption = body.caption ?? "";
+    const location = body.location ?? "";
+    const music = body.music ?? "";
+    const tags: string[] = body.tags ? String(body.tags).split(",").map((t) => t.trim()).filter(Boolean) : [];
+
+    // Thumbnail for immediate preview (sync, lightweight)
+    let thumbnailUrl = "";
+    if (mediaType === "video") {
+      try {
+        const thumbRel = await generateVideoThumbnail(rel);
+        thumbnailUrl = urlFromStoredOrRelative(thumbRel);
+      } catch { /* non-fatal */ }
+    }
+
+    // Create draft post — hidden until processingStatus === ready
+    const draftPost = await Post.create({
+      authorId: dbUser._id,
+      type: postType,
+      mediaUrl: publicUrlForUploadRelative(rel), // raw URL as fallback / placeholder
+      mediaType,
+      thumbnailUrl,
+      caption,
+      location,
+      music,
+      tags,
+      processingStatus: "pending",
+      isActive: false, // hidden from feeds until HLS ready
+    });
+
+    // Create job record
+    const job = await MediaJob.create({
+      userId: dbUser._id,
+      rawRelPath: rel,
+      category: cat,
+      mediaType,
+      postDraftId: draftPost._id,
+      status: "queued",
+    });
+
+    // Link job to post
+    await Post.updateOne({ _id: draftPost._id }, { mediaJobId: job._id });
+
+    // Kick off background worker
+    enqueueMediaJob(String(job._id));
+
+    console.info(`[media] async job queued: ${job._id} (${cat}, ${mediaType})`);
+
+    return res.status(202).json({
+      jobId: String(job._id),
+      postId: String(draftPost._id),
+      thumbnailUrl: thumbnailUrl || undefined,
+      message: "Processing started",
+    });
   },
 );
 

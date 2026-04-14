@@ -19,6 +19,8 @@ export type StoryMeta = {
   overlays?: StoryOverlay[];
 };
 
+export type ProcessingStatus = "pending" | "processing" | "ready" | "failed";
+
 export interface PostDoc extends Document {
   authorId: Types.ObjectId;
   type: "post" | "reel" | "story";
@@ -47,6 +49,14 @@ export interface PostDoc extends Document {
   deletedAt?: Date;
   /** Story-only: background color + draggable overlays */
   storyMeta?: StoryMeta;
+  /** HLS master playlist URL (served from /uploads/hls/<jobId>/master.m3u8). Preferred over mediaUrl for video. */
+  hlsMasterUrl?: string;
+  /** Processing pipeline status. Posts stay hidden until 'ready'. */
+  processingStatus?: ProcessingStatus;
+  /** Error detail when processingStatus === 'failed'. */
+  processingError?: string;
+  /** Reference to the MediaJob driving this post's transcode. */
+  mediaJobId?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,6 +85,14 @@ const postSchema = new Schema<PostDoc>(
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date },
     storyMeta: { type: Schema.Types.Mixed, default: undefined },
+    hlsMasterUrl: { type: String },
+    processingStatus: {
+      type: String,
+      enum: ["pending", "processing", "ready", "failed"],
+      default: undefined,
+    },
+    processingError: { type: String },
+    mediaJobId: { type: Schema.Types.ObjectId, ref: "MediaJob" },
   },
   { timestamps: true },
 );
@@ -90,5 +108,7 @@ postSchema.index({ type: 1, isActive: 1, isDeleted: 1, authorId: 1, expiresAt: 1
 // Explore sort (viewsCount desc) + trending
 postSchema.index({ type: 1, isActive: 1, isDeleted: 1, viewsCount: -1, createdAt: -1 });
 postSchema.index({ trendingScore: -1, createdAt: -1 });
+postSchema.index({ mediaJobId: 1 }, { sparse: true });
+postSchema.index({ processingStatus: 1, authorId: 1 }, { sparse: true });
 
 export const Post = mongoose.model<PostDoc>("Post", postSchema);

@@ -14,6 +14,11 @@ function contentTypeForUpload(absPath: string): string {
     ".mpeg": "video/mpeg",
     ".mpg": "video/mpeg",
     ".m4v": "video/x-m4v",
+    // HLS
+    ".m3u8": "application/vnd.apple.mpegurl",
+    ".m4s": "video/iso.segment",
+    ".ts": "video/mp2t",
+    // Images
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
@@ -35,6 +40,7 @@ import { adminUsersRouter } from "./routes/adminUsers.js";
 import { postsRouter } from "./routes/posts.js";
 import { followRouter } from "./routes/follow.js";
 import { mediaRouter } from "./routes/media.js";
+import { mediaJobsRouter } from "./routes/mediaJobs.js";
 import { chatRouter } from "./routes/chat.js";
 import { liveRouter } from "./routes/live.js";
 import { notificationsRouter } from "./routes/notifications.js";
@@ -79,21 +85,35 @@ export function createApp() {
   });
   const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
   const VIDEO_STATIC_EXTS = new Set([".mp4", ".mov", ".webm", ".mkv", ".avi", ".mpeg", ".mpg", ".m4v"]);
+  // HLS segment/init extensions
+  const HLS_SEGMENT_EXTS = new Set([".m4s", ".ts", ".mp4"]);
+  const HLS_PLAYLIST_EXTS = new Set([".m3u8"]);
 
   app.use(
     "/uploads",
     express.static(uploadsRoot, {
       // ETag + Last-Modified enabled by default in express.static — good.
-      // Cache-Control: immutable for content-addressed media; 7d for avatars/thumbnails.
       setHeaders(res, absPath) {
         res.setHeader("Content-Type", contentTypeForUpload(absPath));
         res.setHeader("Accept-Ranges", "bytes");
         const ext = path.extname(absPath).toLowerCase();
-        if (VIDEO_STATIC_EXTS.has(ext)) {
-          // Videos: cache 7 days in CDN/proxy, 1 day in client OS cache
+        const isHlsDir = absPath.includes(`${path.sep}hls${path.sep}`);
+
+        if (isHlsDir && HLS_SEGMENT_EXTS.has(ext)) {
+          // HLS segments are immutable (content-addressed by segment index + job ID)
+          // 30 days CDN / 7 days client
+          res.setHeader("Cache-Control", "public, max-age=604800, s-maxage=2592000, immutable");
+          res.setHeader("Access-Control-Allow-Origin", "*");
+        } else if (isHlsDir && HLS_PLAYLIST_EXTS.has(ext)) {
+          // Playlists are VOD (static after transcode) — cache 1h client, 1h CDN
+          res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+        } else if (VIDEO_STATIC_EXTS.has(ext)) {
+          // Videos: cache 7 days CDN, 1 day client
           res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
         } else if (IMAGE_EXTS.has(ext)) {
-          // Images / thumbnails: cache 24h client, 7d proxy
+          // Images / thumbnails
           res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
         } else {
           res.setHeader("Cache-Control", "public, max-age=3600");
@@ -113,6 +133,7 @@ export function createApp() {
   app.use("/posts", postsRouter);
   app.use("/users", followRouter);
   app.use("/media", mediaRouter);
+  app.use("/media", mediaJobsRouter);
   app.use("/chat", chatRouter);
   app.use("/live", liveRouter);
   app.use("/notifications", notificationsRouter);

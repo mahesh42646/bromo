@@ -8,7 +8,8 @@ export type NotificationType =
   | "follow_accept"
   | "mention"
   | "message"
-  | "milestone";
+  | "milestone"
+  | "media_ready";
 
 export interface NotificationDoc extends Document {
   recipientId: Types.ObjectId;
@@ -26,7 +27,7 @@ const notificationSchema = new Schema<NotificationDoc>(
     actorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     type: {
       type: String,
-      enum: ["like", "comment", "follow", "follow_request", "follow_accept", "mention", "message", "milestone"],
+      enum: ["like", "comment", "follow", "follow_request", "follow_accept", "mention", "message", "milestone", "media_ready"],
       required: true,
     },
     postId: { type: Schema.Types.ObjectId, ref: "Post" },

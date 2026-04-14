@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
@@ -36,14 +37,14 @@ import {useCreateDraft} from '../../create/CreateDraftContext';
 import {FILTER_LAYERS} from '../../create/filterStyles';
 import type {Visibility} from '../../create/createTypes';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
-import {uploadMedia, createPost} from '../../api/postsApi';
+import {uploadMedia, uploadMediaAsync, createPost} from '../../api/postsApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'ShareFinal'>;
 
 const DRAFT_KEY = 'bromo_ugc_drafts_v1';
 const {width: W} = Dimensions.get('window');
 
-type SharePhase = 'review' | 'posting' | 'done';
+type SharePhase = 'review' | 'posting' | 'processing' | 'done';
 
 export function ShareScreen() {
   const navigation = useNavigation<Nav>();
@@ -90,26 +91,46 @@ export function ShareScreen() {
     }
     setPhase('posting');
     try {
-      const uploadCategory =
+      const uploadCategory: 'reels' | 'stories' | 'posts' =
         draft.mode === 'reel' ? 'reels' : draft.mode === 'story' ? 'stories' : 'posts';
-      const {url, thumbnailUrl, mediaType: mediaTypeFromServer} = await uploadMedia(asset.uri, {
-        type: asset.type,
-        fileName: asset.fileName,
-        category: uploadCategory,
-      });
-      const mediaType = mediaTypeFromServer ?? (asset.type === 'video' ? 'video' : 'image');
-      const postType = draft.mode === 'reel' ? 'reel' : draft.mode === 'story' ? 'story' : 'post';
-      await createPost({
-        type: postType,
-        mediaUrl: url,
-        thumbnailUrl,
-        mediaType,
-        caption: [draft.caption, ...draft.hashtags].filter(Boolean).join(' ') || undefined,
-        location: draft.location?.name,
-        music: draft.selectedAudio?.title,
-        tags: draft.tagged.map(t => t.username),
-      });
-      setPhase('done');
+      const caption = [draft.caption, ...draft.hashtags].filter(Boolean).join(' ') || undefined;
+
+      // Use async pipeline for video reels/stories/posts — server does HLS transcode in background
+      const useAsync = asset.type === 'video' && (draft.mode === 'reel' || draft.mode === 'story' || draft.mode === 'post');
+
+      if (useAsync) {
+        // Upload raw → server queues HLS transcode → sends notification when ready
+        await uploadMediaAsync(asset.uri, {
+          type: asset.type,
+          fileName: asset.fileName,
+          category: uploadCategory,
+          caption,
+          location: draft.location?.name,
+          music: draft.selectedAudio?.title,
+          tags: draft.tagged.map(t => t.username),
+        });
+        setPhase('processing');
+      } else {
+        // Sync path: images and small media (legacy)
+        const {url, thumbnailUrl, mediaType: mediaTypeFromServer} = await uploadMedia(asset.uri, {
+          type: asset.type,
+          fileName: asset.fileName,
+          category: uploadCategory,
+        });
+        const mediaType = mediaTypeFromServer ?? (asset.type === 'video' ? 'video' : 'image');
+        const postType = draft.mode === 'reel' ? 'reel' : draft.mode === 'story' ? 'story' : 'post';
+        await createPost({
+          type: postType,
+          mediaUrl: url,
+          thumbnailUrl,
+          mediaType,
+          caption,
+          location: draft.location?.name,
+          music: draft.selectedAudio?.title,
+          tags: draft.tagged.map(t => t.username),
+        });
+        setPhase('done');
+      }
     } catch (err) {
       setPhase('review');
       Alert.alert('Failed to post', err instanceof Error ? err.message : 'Try again');
@@ -117,7 +138,7 @@ export function ShareScreen() {
   };
 
   useEffect(() => {
-    if (phase === 'done') {
+    if (phase === 'done' || phase === 'processing') {
       Animated.parallel([
         Animated.spring(scaleAnim, {toValue: 1, friction: 4, tension: 60, useNativeDriver: true}),
         Animated.timing(fadeAnim, {toValue: 1, duration: 400, useNativeDriver: true}),
@@ -144,7 +165,44 @@ export function ShareScreen() {
           {key: 'private', label: 'Only me', Icon: Lock},
         ];
 
-  // Success screen
+  // Async processing screen — upload done, HLS transcode in background
+  if (phase === 'processing') {
+    return (
+      <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
+        <View style={styles.doneContainer}>
+          <Animated.View
+            style={[
+              styles.doneCircle,
+              {backgroundColor: palette.muted ?? '#0f3460', transform: [{scale: scaleAnim}]},
+            ]}>
+            <ActivityIndicator color={palette.accent} size="large" />
+          </Animated.View>
+          <Animated.Text style={[styles.doneTitle, {color: palette.foreground, opacity: fadeAnim}]}>
+            Processing…
+          </Animated.Text>
+          <Animated.Text
+            style={[styles.doneSubtitle, {color: palette.foregroundMuted, opacity: fadeAnim, textAlign: 'center'}]}>
+            Your{' '}
+            {draft.mode === 'story' ? 'story' : draft.mode === 'reel' ? 'reel' : 'post'} is being
+            optimized for all devices.{'\n'}You'll get a notification when it's ready.
+          </Animated.Text>
+          <Pressable
+            onPress={closeAll}
+            style={{
+              marginTop: 24,
+              paddingHorizontal: 28,
+              paddingVertical: 12,
+              borderRadius: 12,
+              backgroundColor: palette.accent,
+            }}>
+            <Text style={{color: '#fff', fontWeight: '600', fontSize: 15}}>Got it</Text>
+          </Pressable>
+        </View>
+      </ThemedSafeScreen>
+    );
+  }
+
+  // Success screen (sync path — image posts)
   if (phase === 'done') {
     return (
       <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
