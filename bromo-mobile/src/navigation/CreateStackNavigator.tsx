@@ -8,7 +8,6 @@ import {ShareScreen} from '@/screens/create/ShareScreen';
 import {CameraSettingsScreen} from '@/screens/create/CameraSettingsScreen';
 import {DraftsScreen} from '@/screens/create/DraftsScreen';
 import {LivePreviewScreen} from '@/screens/create/LivePreviewScreen';
-import {StoryCreatorScreen} from '@/screens/create/StoryCreatorScreen';
 import {
   CloseFriendsPickerScreen,
   CollaborationInviteScreen,
@@ -21,8 +20,6 @@ import type {CreateMode} from '@/create/createTypes';
 export type CreateStackParamList = {
   /** `bootstrapTs` changes each time the user opens create from the tab (+) or deep link — triggers a fresh draft + mode. */
   CreateHub: {mode?: CreateMode; bootstrapTs?: number} | undefined;
-  /** Dedicated Instagram-like story creation screen */
-  StoryCreator: undefined;
   MediaEditor: undefined;
   Composer: undefined;
   ShareFinal: undefined;
@@ -48,11 +45,6 @@ export function CreateStackNavigator() {
           contentStyle: {backgroundColor: '#000'},
         }}>
         <Stack.Screen name="CreateHub" component={CreateHubScreen} />
-        <Stack.Screen
-          name="StoryCreator"
-          component={StoryCreatorScreen}
-          options={{animation: 'slide_from_bottom'}}
-        />
         <Stack.Screen name="MediaEditor" component={MediaEditorScreen} />
         <Stack.Screen name="Composer" component={ComposerScreen} />
         <Stack.Screen

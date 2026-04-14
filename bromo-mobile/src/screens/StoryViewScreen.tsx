@@ -416,6 +416,9 @@ export function StoryViewScreen() {
             key={`${current._id}-${storyVideoPlayUri.startsWith('file') ? 'local' : 'net'}`}
             context={current.hlsMasterUrl ? 'story-hls' : 'story'}
             uri={storyVideoPlayUri}
+            fallbackUri={
+              current.hlsMasterUrl ? resolveMediaUrl(current.mediaUrl) ?? undefined : undefined
+            }
             posterUri={poster}
             style={{width: W, height: H}}
             repeat={false}

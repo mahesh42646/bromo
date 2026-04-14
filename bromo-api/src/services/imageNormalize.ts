@@ -1,8 +1,9 @@
 /**
- * Image normalization — resize to max height 1080, preserve aspect ratio, no upscale.
- * Uses FFmpeg (already bundled) to avoid native build deps.
+ * Image normalization — resize to max height 1080 / width 1920, preserve aspect, no upscale.
+ * Output: **WebP** (lossy quality 85; alpha preserved for PNG/WebP sources).
+ * Uses FFmpeg (already bundled).
  *
- * Supported: JPEG, PNG, WebP, HEIC/HEIF → JPEG output.
+ * Supported inputs: JPEG, PNG, WebP, GIF (first frame), HEIC/HEIF, AVIF (if FFmpeg build supports decode).
  */
 
 import ffmpeg from "fluent-ffmpeg";
@@ -15,13 +16,13 @@ import { uploadsRoot } from "../utils/uploadFiles.js";
 const UPLOAD_DIR = uploadsRoot();
 const MAX_HEIGHT = 1080;
 const MAX_WIDTH = 1920;
+const WEBP_QUALITY = 85;
 
 function absFromRel(rel: string): string {
   const clean = rel.replace(/^\/+/, "").split("/").join(path.sep);
   return path.join(UPLOAD_DIR, clean);
 }
 
-/** Probe image dimensions via ffmpeg -i stderr */
 function probeImageDimensions(absPath: string): { width: number; height: number } {
   const bin = bundledFfmpegPath;
   if (!bin) throw new Error("ffmpeg binary not available");
@@ -37,12 +38,10 @@ function probeImageDimensions(absPath: string): { width: number; height: number 
   return { width: Number(m[1]), height: Number(m[2]) };
 }
 
-/** Returns true when the image needs resizing. */
 function needsResize(width: number, height: number): boolean {
   return height > MAX_HEIGHT || width > MAX_WIDTH;
 }
 
-/** Scale filter: keep aspect ratio, fit within MAX_WIDTH×MAX_HEIGHT, divisible by 2. */
 function buildScaleFilter(width: number, height: number): string {
   if (height > MAX_HEIGHT) {
     return `scale=-2:${MAX_HEIGHT}`;
@@ -54,8 +53,8 @@ function buildScaleFilter(width: number, height: number): string {
 }
 
 /**
- * Normalize an image: resize to max 1080p height (no upscale), re-encode HEIC/HEIF to JPEG.
- * Returns updated relative path (may change extension for HEIC/HEIF).
+ * Normalize an image to WebP under max dimensions (no upscale).
+ * HEIC/HEIF, GIF, and oversize assets are re-encoded; within bounds still converted to WebP for uniform delivery.
  */
 export async function normalizeImage(rel: string): Promise<string> {
   const abs = absFromRel(rel);
@@ -63,44 +62,42 @@ export async function normalizeImage(rel: string): Promise<string> {
   const stem = path.basename(abs, ext);
   const dir = path.dirname(abs);
 
-  const isHeic = ext === ".heic" || ext === ".heif";
+  const outAbs = path.join(dir, `${stem}-norm.webp`);
 
-  let dims: { width: number; height: number };
+  let scaleFilter: string;
   try {
-    dims = probeImageDimensions(abs);
+    const dims = probeImageDimensions(abs);
+    scaleFilter = buildScaleFilter(dims.width, dims.height);
   } catch {
-    // Can't probe — pass through unchanged
-    return rel;
+    scaleFilter = "";
   }
-
-  const shouldResize = needsResize(dims.width, dims.height);
-
-  if (!isHeic && !shouldResize) {
-    // Nothing to do — image is within limits and not HEIC
-    return rel;
-  }
-
-  const outExt = ".jpg";
-  const outAbs = path.join(dir, `${stem}-norm${outExt}`);
-  const scaleFilter = buildScaleFilter(dims.width, dims.height);
 
   await new Promise<void>((resolve, reject) => {
     const cmd = ffmpeg(abs);
-    if (scaleFilter) {
-      cmd.outputOptions([`-vf ${scaleFilter}`]);
+    const vfParts: string[] = [];
+    if (scaleFilter) vfParts.push(scaleFilter);
+    if (ext === ".gif") {
+      vfParts.push("format=rgba");
+    }
+    if (vfParts.length) {
+      cmd.outputOptions([`-vf ${vfParts.join(",")}`]);
     }
     cmd
       .outputOptions([
-        "-q:v 3",   // JPEG quality (1=best, 31=worst; 2-5 is excellent)
-        "-frames:v 1",
-        "-f image2",
+        "-frames:v",
+        "1",
+        "-c:v",
+        "libwebp",
+        "-quality",
+        String(WEBP_QUALITY),
+        "-compression_level",
+        "6",
       ])
       .on("end", () => resolve())
       .on("error", (e) => reject(e))
       .save(outAbs);
   });
 
-  // Remove original if we produced a new file
   if (outAbs !== abs) {
     try {
       fs.unlinkSync(abs);

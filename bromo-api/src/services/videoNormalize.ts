@@ -6,7 +6,6 @@ import { bundledFfmpegPath } from "../config/ffmpegInit.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
 import type { UploadCategory } from "../utils/uploadFiles.js";
 import { VIDEO_EXTENSIONS } from "../utils/uploadPolicy.js";
-import { normalizeImage } from "./imageNormalize.js";
 
 const UPLOAD_DIR = uploadsRoot();
 
@@ -204,10 +203,10 @@ export async function normalizeMediaAfterUpload(
   }
 
   // HEIC/HEIF are always images — even Live Photos with an embedded video stream.
-  // ffmpeg can't reliably transcode them as video (exits 187); route to imageNormalize instead.
+  // ffmpeg can't reliably transcode them as video (exits 187). WebP conversion runs in
+  // `media.ts` (sync) or `mediaWorker` (async), not here, so we don't double-encode.
   if (ext === ".heic" || ext === ".heif") {
-    const newRel = await normalizeImage(rel).catch(() => rel);
-    return { rel: newRel, mediaType: "image", converted: newRel !== rel };
+    return { rel, mediaType: "image", converted: false };
   }
 
   const shouldAlwaysTranscodeStory = cat === "stories" && probe.hasVideoStream;
@@ -229,7 +228,7 @@ export async function normalizeMediaAfterUpload(
     }
     // Never block uploads on optimizer failure — keep original media.
     // Image extensions that somehow reached transcode should stay as images.
-    const isImageExt = [".heic", ".heif", ".jpg", ".jpeg", ".png", ".webp"].includes(ext);
+    const isImageExt = [".heic", ".heif", ".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"].includes(ext);
     return { rel, mediaType: isImageExt ? "image" : "video", converted: false };
   }
 

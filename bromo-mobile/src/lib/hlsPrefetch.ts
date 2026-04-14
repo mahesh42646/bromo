@@ -119,7 +119,7 @@ async function runPrefetch(
   const masterResp = await ReactNativeBlobUtil.fetch('GET', masterUrl, {
     'User-Agent': 'BromoMobile/1 (hls-prefetch)',
   });
-  const masterText = masterResp.text();
+  const masterText = await Promise.resolve(masterResp.text());
   if (!masterText || !masterText.includes('#EXTM3U')) return;
 
   // If master has variants, pick appropriate one
@@ -138,7 +138,7 @@ async function runPrefetch(
   const playlistResp = await ReactNativeBlobUtil.fetch('GET', segmentPlaylistUrl, {
     'User-Agent': 'BromoMobile/1 (hls-prefetch)',
   });
-  const playlistText = playlistResp.text();
+  const playlistText = await Promise.resolve(playlistResp.text());
   const segmentUrls = parseSegmentUrls(playlistText, segmentPlaylistUrl);
 
   const toFetch = segmentLimit !== null ? segmentUrls.slice(0, segmentLimit) : segmentUrls;

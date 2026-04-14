@@ -177,9 +177,15 @@ function ReelMoreSheet({
               {row(<Sparkles size={20} color={palette.accent} />, 'Add reel to your story', () => {
                 if (!reel) return;
                 createStoryFromReel(reel._id)
-                  .then(() => {
+                  .then(({post}) => {
                     DeviceEventEmitter.emit('bromo:storiesChanged');
-                    Alert.alert('Story', 'This reel was added to your story.');
+                    const pending = post.processingStatus === 'pending' || post.processingStatus === 'processing';
+                    Alert.alert(
+                      'Story',
+                      pending
+                        ? 'Your story is processing. You will get a notification when it is ready.'
+                        : 'This reel was added to your story.',
+                    );
                   })
                   .catch(e => Alert.alert('Could not add', e instanceof Error ? e.message : 'Try again.'));
               })}
@@ -323,6 +329,7 @@ function ReelItem({
           key={item._id}
           context={isHls ? 'reel-hls' : 'reel'}
           uri={playUri}
+          fallbackUri={isHls ? resolveMediaUrl(item.mediaUrl) ?? undefined : undefined}
           posterUri={item.thumbnailUrl ? thumbUri : undefined}
           maxBitRate={isHls ? maxBitRate : undefined}
           style={{width: '100%', height: '100%', position: 'absolute'}}

@@ -1,6 +1,13 @@
 import path from "node:path";
 import type { UploadCategory } from "./uploadFiles.js";
 
+/**
+ * Input matrix (server normalizes after upload):
+ * - Images: jpg/jpeg/png/webp/gif/heic/heif/avif → WebP (GIF = first frame) via imageNormalize + sync path.
+ * - Video: mp4/mov/m4v/webm/mkv/avi/mpeg/mpg/3gp → HLS ladder + mezzanine MP4 (async) or probe/transcode (sync).
+ * - HEIC with video/quicktime MIME: extension wins → image pipeline (see media routes).
+ */
+
 /** Extensions we never store (scripts, HTML, binaries). */
 export const BLOCKED_EXTENSIONS = new Set([
   ".js",
@@ -39,6 +46,7 @@ export const IMAGE_EXTENSIONS = new Set([
   ".webp",
   ".heic",
   ".heif",
+  ".avif",
 ]);
 
 export const VIDEO_EXTENSIONS = new Set([

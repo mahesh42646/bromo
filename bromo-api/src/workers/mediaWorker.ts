@@ -1,23 +1,21 @@
 /**
  * In-process media job queue — MVP without Redis/BullMQ dependency.
  *
- * Jobs run sequentially (one at a time) to avoid saturating CPU on single-server
- * deployments. Swap for BullMQ when horizontal scaling is needed.
- *
  * Flow:
- *   enqueueMediaJob(jobId) → job picked up by runLoop() →
- *     video: packageHls → update Post + MediaJob → createNotification
- *     image: normalizeImage → update Post + MediaJob → createNotification
+ *   enqueueMediaJob(jobId) → runLoop() →
+ *     video: packageHls + encodeMezzanineMp4 → update Post + MediaJob → notify + emitStoryNew
+ *     image: normalizeImage → update Post + MediaJob → notify
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { MediaJob, type MediaJobDoc } from "../models/MediaJob.js";
 import { Post } from "../models/Post.js";
-import { packageHls } from "../services/hlsPackager.js";
+import { User } from "../models/User.js";
+import { packageHls, encodeMezzanineMp4 } from "../services/hlsPackager.js";
 import { normalizeImage } from "../services/imageNormalize.js";
 import { createNotification } from "../models/Notification.js";
-import { emitNotification } from "../services/socketService.js";
+import { emitNotification, emitStoryNew } from "../services/socketService.js";
 import { publicUrlForUploadRelative } from "../utils/uploadFiles.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
 
@@ -26,7 +24,6 @@ const UPLOAD_DIR = uploadsRoot();
 const queue: string[] = [];
 let running = false;
 
-/** Add a job ID to the in-process queue. */
 export function enqueueMediaJob(jobId: string): void {
   queue.push(jobId);
   if (!running) {
@@ -82,15 +79,14 @@ async function processJob(jobId: string): Promise<void> {
   }
 }
 
-async function processVideoJob(
-  job: MediaJobDoc,
-  jobId: string,
-): Promise<void> {
+async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
   const result = await packageHls(job.rawRelPath, jobId, (pct) => {
-    MediaJob.updateOne({ _id: job._id }, { progress: pct }).catch(() => null);
+    MediaJob.updateOne({ _id: job._id }, { progress: Math.min(89, Math.round(pct)) }).catch(() => null);
   });
 
+  const mezzanineRel = await encodeMezzanineMp4(job.rawRelPath, jobId, result.probe, result.rungs);
   const masterUrl = publicUrlForUploadRelative(result.masterRelPath);
+  const mezzanineUrl = publicUrlForUploadRelative(mezzanineRel);
 
   await MediaJob.updateOne(
     { _id: job._id },
@@ -108,23 +104,28 @@ async function processVideoJob(
       {
         processingStatus: "ready",
         hlsMasterUrl: masterUrl,
-        // Store cell master in processingError field? No — store as metadata on job.
-        // The mobile client picks master_cell.m3u8 by convention.
+        mediaUrl: mezzanineUrl,
         isActive: true,
       },
     );
-    // Cleanup raw file after successful HLS packaging
+
+    const post = await Post.findById(job.postDraftId).select("type authorId").lean();
+    if (post?.type === "story") {
+      emitStoryNew(String(post.authorId));
+    }
+
+    await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
+      console.warn("[mediaWorker] postsCount increment failed:", e),
+    );
+
     safeUnlinkRaw(job.rawRelPath);
   }
 
   await notifyUser(job.userId.toString(), job.postDraftId?.toString(), "ready");
-  console.info(`[mediaWorker] job ${jobId} done → ${masterUrl}`);
+  console.info(`[mediaWorker] job ${jobId} done → HLS ${masterUrl}, MP4 ${mezzanineUrl}`);
 }
 
-async function processImageJob(
-  job: MediaJobDoc,
-  jobId: string,
-): Promise<void> {
+async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
   await MediaJob.updateOne({ _id: job._id }, { progress: 20 });
   const newRel = await normalizeImage(job.rawRelPath);
   const imageUrl = publicUrlForUploadRelative(newRel);
@@ -143,6 +144,12 @@ async function processImageJob(
         isActive: true,
       },
     );
+
+    await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
+      console.warn("[mediaWorker] postsCount increment failed:", e),
+    );
+
+    safeUnlinkRaw(job.rawRelPath);
   }
 
   await notifyUser(job.userId.toString(), job.postDraftId?.toString(), "ready");
@@ -168,7 +175,6 @@ async function notifyUser(
       message,
     });
 
-    // Emit real-time socket notification if user is connected
     emitNotification(userId, "media_ready", userId, postId ?? "", message);
   } catch (err) {
     console.warn("[mediaWorker] notification failed:", err);

@@ -225,8 +225,10 @@ export async function markStorySeenPost(storyPostId: string): Promise<void> {
   }).catch(() => null);
 }
 
-/** Publish the given reel/video post as your story (reuses media on server). */
-export async function createStoryFromReel(sourcePostId: string): Promise<{post: Post}> {
+/** Publish the given reel/video post as your story (server copies file + HLS/MP4 pipeline). */
+export async function createStoryFromReel(
+  sourcePostId: string,
+): Promise<{post: Post; jobId?: string}> {
   const res = await authedFetch('/posts/story-from-reel', {
     method: 'POST',
     body: JSON.stringify({sourcePostId}),
@@ -235,7 +237,7 @@ export async function createStoryFromReel(sourcePostId: string): Promise<{post: 
     const body = await res.json().catch(() => ({}));
     throw new Error((body as {message?: string}).message ?? 'Could not add to story');
   }
-  return res.json() as Promise<{post: Post}>;
+  return res.json() as Promise<{post: Post; jobId?: string}>;
 }
 
 export async function recordShare(postId: string): Promise<void> {

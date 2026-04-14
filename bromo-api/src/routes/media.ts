@@ -11,6 +11,7 @@ import { MediaJob } from "../models/MediaJob.js";
 import { Post } from "../models/Post.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
 import { normalizeMediaAfterUpload } from "../services/videoNormalize.js";
+import { normalizeImage } from "../services/imageNormalize.js";
 import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 import {
   publicUrlForUploadRelative,
@@ -99,6 +100,16 @@ mediaRouter.post(
           /* ignore */
         }
         return res.status(400).json({ message: msg });
+      }
+    }
+
+    if (mediaType === "image") {
+      try {
+        const prev = rel;
+        rel = await normalizeImage(rel);
+        if (rel !== prev) converted = true;
+      } catch (e) {
+        console.warn("[media] WebP normalize failed:", e);
       }
     }
 

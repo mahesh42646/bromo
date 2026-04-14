@@ -122,10 +122,6 @@ export function CreateHubScreen() {
       if (initialMode) {
         setMode(initialMode);
       }
-      // Story mode gets its own dedicated Instagram-like creator — redirect immediately.
-      if (initialMode === 'story') {
-        navigation.replace('StoryCreator');
-      }
     }, [reset, route.params?.bootstrapTs, route.params?.mode, setMode, navigation]),
   );
 

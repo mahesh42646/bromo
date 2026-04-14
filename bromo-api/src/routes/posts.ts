@@ -1,4 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { Router, type Response } from "express";
 import mongoose from "mongoose";
 import {
@@ -7,6 +9,7 @@ import {
   type FirebaseAuthedRequest,
 } from "../middleware/firebaseAuth.js";
 import { Post } from "../models/Post.js";
+import { MediaJob } from "../models/MediaJob.js";
 import { StorySeen } from "../models/StorySeen.js";
 import { Like } from "../models/Like.js";
 import { Comment } from "../models/Comment.js";
@@ -22,6 +25,13 @@ import {
   emitNotification,
 } from "../services/socketService.js";
 import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
+import {
+  publicUrlForUploadRelative,
+  uploadRelativePathFromUrl,
+  uploadsRoot,
+} from "../utils/uploadFiles.js";
+import { generateVideoThumbnail } from "../services/mediaProcessor.js";
+import { enqueueMediaJob } from "../workers/mediaWorker.js";
 
 export const postsRouter = Router();
 
@@ -443,24 +453,45 @@ postsRouter.post(
         return res.status(400).json({ message: "Only video posts can be added to your story" });
       }
 
-      const mediaUrl =
+      const srcMediaUrl =
         typeof src.mediaUrl === "string" ? rewritePublicMediaUrl(src.mediaUrl) : String(src.mediaUrl ?? "");
-      const thumbnailUrl =
+      const srcRel = uploadRelativePathFromUrl(srcMediaUrl);
+      if (!srcRel) {
+        return res.status(400).json({
+          message: "Source video must be stored on this server (relative /uploads/ path required).",
+        });
+      }
+
+      const uploadsDir = uploadsRoot();
+      const srcAbs = path.join(uploadsDir, ...srcRel.split("/"));
+      if (!fs.existsSync(srcAbs)) {
+        return res.status(404).json({ message: "Source media file not found on server" });
+      }
+
+      const ext = path.extname(srcAbs) || ".mp4";
+      const destRel = `stories/${user._id}/${randomBytes(8).toString("hex")}${ext}`;
+      const destAbs = path.join(uploadsDir, ...destRel.split("/"));
+      fs.mkdirSync(path.dirname(destAbs), { recursive: true });
+      fs.copyFileSync(srcAbs, destAbs);
+
+      let thumbnailUrl =
         typeof src.thumbnailUrl === "string" && src.thumbnailUrl.trim()
           ? rewritePublicMediaUrl(src.thumbnailUrl)
           : "";
-      // If source already has HLS, reuse it directly — no re-transcode needed.
-      const srcHlsMaster =
-        typeof src.hlsMasterUrl === "string" && src.hlsMasterUrl.trim()
-          ? src.hlsMasterUrl
-          : undefined;
+      if (!thumbnailUrl) {
+        try {
+          const thumbRel = await generateVideoThumbnail(destRel);
+          thumbnailUrl = publicUrlForUploadRelative(thumbRel);
+        } catch {
+          thumbnailUrl = "";
+        }
+      }
 
-      const storyPost = await Post.create({
+      const draftPost = await Post.create({
         authorId: user._id,
         type: "story",
-        mediaUrl,
+        mediaUrl: publicUrlForUploadRelative(destRel),
         thumbnailUrl,
-        hlsMasterUrl: srcHlsMaster,
         mediaType: "video",
         caption: "",
         location: "",
@@ -468,20 +499,28 @@ postsRouter.post(
         tags: [],
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         isDeleted: false,
-        processingStatus: srcHlsMaster ? "ready" : undefined,
-        isActive: true,
+        processingStatus: "pending",
+        isActive: false,
       });
 
-      await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
-      const populated = await Post.findById(storyPost._id).populate("authorId", AUTHOR_SELECT).lean();
+      const job = await MediaJob.create({
+        userId: user._id,
+        rawRelPath: destRel,
+        category: "stories",
+        mediaType: "video",
+        postDraftId: draftPost._id,
+        status: "queued",
+      });
+      await Post.updateOne({ _id: draftPost._id }, { mediaJobId: job._id });
+      enqueueMediaJob(String(job._id));
+
+      const populated = await Post.findById(draftPost._id).populate("authorId", AUTHOR_SELECT).lean();
       const result = {
         ...populated,
-        hlsMasterUrl: srcHlsMaster,
         author: populated?.authorId,
         authorId: undefined,
       };
-      emitStoryNew(String(user._id));
-      return res.status(201).json({ post: result });
+      return res.status(201).json({ post: result, jobId: String(job._id) });
     } catch (err) {
       console.error("[posts] story-from-reel error:", err);
       return res.status(500).json({ message: "Failed to add reel to story" });

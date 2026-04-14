@@ -103,9 +103,13 @@ export type NetworkVideoProps = {
    * Only applies when uri is an HLS master playlist.
    */
   maxBitRate?: number | null;
+  /**
+   * Progressive MP4 (or other non-HLS) URL — if the primary `uri` (e.g. HLS) errors, retry once with this.
+   */
+  fallbackUri?: string;
   /** Fires once when the first frame is ready or playback has started (whichever comes first). */
   onDecoderReady?: () => void;
-  /** Notified when playback fails (after logging to Metro). */
+  /** Notified when playback fails after any fallback attempt (after logging to Metro). */
   onPlaybackError?: (detail: string) => void;
   /** Passthrough from `react-native-video` (throttle in parent if needed). */
   onLoad?: (d: OnLoadData) => void;
@@ -120,8 +124,13 @@ export type NetworkVideoProps = {
  * On Android, `viewType=ViewType.TEXTURE` is mandatory: SurfaceView renders behind ALL
  * React Native views (including transparent wrappers), making every video black.
  */
+function uriLooksLikeHls(u: string): boolean {
+  return /\.m3u8(\?|$)/i.test(u);
+}
+
 export function NetworkVideo({
   uri,
+  fallbackUri,
   posterUri,
   style,
   muted = false,
@@ -141,7 +150,18 @@ export function NetworkVideo({
   onProgress: onProgressProp,
   onEnd,
 }: NetworkVideoProps) {
-  const resolvedBufferConfig = bufferConfig ?? BUFFER_PRESETS[context] ?? BUFFER_PRESETS.feed;
+  const [playbackUri, setPlaybackUri] = useState(uri);
+  const fallbackTried = useRef(false);
+
+  useEffect(() => {
+    setPlaybackUri(uri);
+    fallbackTried.current = false;
+  }, [uri]);
+
+  const bufferKey = uriLooksLikeHls(playbackUri)
+    ? context
+    : context.replace(/-hls$/, '') || 'reel';
+  const resolvedBufferConfig = bufferConfig ?? BUFFER_PRESETS[bufferKey] ?? BUFFER_PRESETS.feed;
   const [ready, setReady] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [buffering, setBuffering] = useState(false);
@@ -167,23 +187,23 @@ export function NetworkVideo({
     setBuffering(false);
     progressed.current = false;
     decoderReadyFired.current = false;
-  }, [uri]);
+  }, [playbackUri]);
 
   // Safety net: if first-frame callbacks never fire (stalled decoder, slow network),
   // unblock poster after a context-appropriate delay. Stories get more time.
   useEffect(() => {
-    if (!uri?.trim()) return;
-    const ms = SAFETY_MS[context] ?? 2000;
+    if (!playbackUri?.trim()) return;
+    const ms = SAFETY_MS[bufferKey] ?? SAFETY_MS[context] ?? 2000;
     const t = setTimeout(() => {
       fireDecoderReadyRef.current();
     }, ms);
     return () => clearTimeout(t);
-  }, [uri, context]);
+  }, [playbackUri, context, bufferKey]);
 
   const onLoad = useCallback(
     (d: OnLoadData) => {
       if (__DEV__) {
-        console.info(logPrefix, 'onLoad metadata ready', uri);
+        console.info(logPrefix, 'onLoad metadata ready', playbackUri);
       }
       // Only propagate metadata (duration, dimensions). Do NOT fire decoder-ready here.
       // onLoad fires when the container/codec headers are parsed — the frame pipeline
@@ -191,7 +211,7 @@ export function NetworkVideo({
       // We wait for onReadyForDisplay (iOS) or onProgress (Android) instead.
       onLoadProp?.(d);
     },
-    [logPrefix, onLoadProp, uri],
+    [logPrefix, onLoadProp, playbackUri],
   );
 
   const onReadyForDisplay = useCallback(() => {
@@ -212,19 +232,38 @@ export function NetworkVideo({
   const onBuffer = useCallback(({isBuffering}: {isBuffering: boolean}) => {
     setBuffering(isBuffering);
     if (__DEV__ && isBuffering) {
-      console.info(logPrefix, 'buffering', uri);
+      console.info(logPrefix, 'buffering', playbackUri);
     }
-  }, [logPrefix, uri]);
+  }, [logPrefix, playbackUri]);
 
   const onError = useCallback(
     (e: unknown) => {
       const msg = formatVideoError(e);
+      const fb = fallbackUri?.trim();
+      if (
+        fb &&
+        !fallbackTried.current &&
+        uriLooksLikeHls(playbackUri) &&
+        playbackUri !== fb
+      ) {
+        fallbackTried.current = true;
+        if (__DEV__) {
+          console.warn(logPrefix, 'HLS failed, falling back to progressive', {playbackUri, fb, msg});
+        }
+        setErrorText(null);
+        setReady(false);
+        setBuffering(false);
+        progressed.current = false;
+        decoderReadyFired.current = false;
+        setPlaybackUri(fb);
+        return;
+      }
       setErrorText(msg);
       setReady(true);
-      console.error(logPrefix, 'playback failed', {uri, error: msg, raw: e});
+      console.error(logPrefix, 'playback failed', {uri: playbackUri, error: msg, raw: e});
       onPlaybackError?.(msg);
     },
-    [logPrefix, onPlaybackError, uri],
+    [logPrefix, onPlaybackError, playbackUri, fallbackUri],
   );
 
   if (!uri?.trim()) {
@@ -246,7 +285,7 @@ export function NetworkVideo({
           {errorText}
         </Text>
         <Text style={styles.errUri} numberOfLines={2}>
-          {uri}
+          {playbackUri}
         </Text>
       </View>
     );
@@ -258,7 +297,7 @@ export function NetworkVideo({
     <View style={[styles.wrap, style]}>
       <Video
         source={{
-          uri,
+          uri: playbackUri,
           headers: {
             'User-Agent': 'BromoMobile/1 (react-native-video)',
           },
@@ -286,7 +325,7 @@ export function NetworkVideo({
         preventsDisplaySleepDuringVideoPlayback={preventsDisplaySleepDuringVideoPlayback}
         // ABR ceiling: cap bitrate on cellular to prevent buffering stalls.
         // AVPlayer (iOS) + ExoPlayer (Android) both honour maxBitRate on HLS streams.
-        maxBitRate={maxBitRate ?? undefined}
+        maxBitRate={uriLooksLikeHls(playbackUri) ? maxBitRate ?? undefined : undefined}
       />
       {showPoster ? (
         <Image

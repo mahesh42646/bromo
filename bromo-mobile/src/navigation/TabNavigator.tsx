@@ -42,16 +42,16 @@ function CreateTabButton({style, children: _children, accessibilityState, testID
           if (!parent) return;
           const tabState = navigation.getState();
           const tabName = tabState?.routes[tabState.index ?? 0]?.name;
-          // Reels tab → reel creator; Home → story creator directly; others → post creator
+          // Reels tab → reel; Home tab → story; others → post (same create stack, mode from tab)
           if (tabName === 'Reels') {
             parent.navigate('CreateFlow', {
               screen: 'CreateHub',
               params: {mode: 'reel', bootstrapTs: Date.now()},
             });
           } else if (tabName === 'Home') {
-            // Direct story creation from Home tab — Instagram-style
             parent.navigate('CreateFlow', {
-              screen: 'StoryCreator',
+              screen: 'CreateHub',
+              params: {mode: 'story', bootstrapTs: Date.now()},
             });
           } else {
             parent.navigate('CreateFlow', {
