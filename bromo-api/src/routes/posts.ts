@@ -273,7 +273,13 @@ postsRouter.get(
         if (!grouped[authorId]) {
           grouped[authorId] = { author: s.authorId, stories: [] };
         }
-        grouped[authorId].stories.push({ ...s, authorId: undefined });
+        grouped[authorId].stories.push({
+          ...s,
+          mediaUrl: typeof s.mediaUrl === "string" ? rewritePublicMediaUrl(s.mediaUrl) : s.mediaUrl,
+          thumbnailUrl:
+            typeof s.thumbnailUrl === "string" ? rewritePublicMediaUrl(s.thumbnailUrl) : s.thumbnailUrl,
+          authorId: undefined,
+        });
       }
 
       return res.json({ stories: Object.values(grouped) });

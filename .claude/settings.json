@@ -3,26 +3,20 @@
     "PostToolUse": [
       {
         "matcher": "Edit|Write|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/scripts/crg-hook.sh\" update --quiet",
-            "timeout": 120,
-            "async": true
-          }
-        ]
+        "command": "code-review-graph update --quiet",
+        "timeout": 5000
       }
     ],
     "SessionStart": [
       {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/scripts/crg-hook.sh\" status",
-            "timeout": 30
-          }
-        ]
+        "command": "code-review-graph status --json",
+        "timeout": 3000
+      }
+    ],
+    "PreCommit": [
+      {
+        "command": "code-review-graph detect-changes --brief",
+        "timeout": 10000
       }
     ]
   }

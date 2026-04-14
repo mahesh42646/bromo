@@ -5,7 +5,7 @@ description: Navigate and understand codebase structure using the knowledge grap
 
 ## Explore Codebase
 
-**Mandatory:** use code-review-graph MCP tools before Grep/Glob/wide file reads (see `.cursor/rules/code-review-graph.mdc`).
+Use the code-review-graph MCP tools to explore and understand the codebase.
 
 ### Steps
 

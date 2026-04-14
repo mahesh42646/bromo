@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {ComponentType} from 'react';
 import {
   ActivityIndicator,
@@ -56,8 +56,10 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
-import {getFeed, getStories, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
+import {getFeed, getExplore, getStories, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
+import {getUnreadCount} from '../api/notificationsApi';
+import {getConversations} from '../api/chatApi';
 import {socketService} from '../services/socketService';
 
 type IconComp = ComponentType<{size?: number; color?: string}>;
@@ -70,6 +72,31 @@ const CATEGORIES: {id: string; label: string; Icon: IconComp}[] = [
   {id: 'shopping', label: 'Shopping', Icon: ShoppingBag},
   {id: 'tech', label: 'Tech', Icon: Laptop},
 ];
+
+function filterPostsByCategory(posts: Post[], category: string): Post[] {
+  if (category === 'home' || category === 'trending') return posts;
+  const keywordMap: Record<string, string[]> = {
+    politics: ['politic', 'election', 'government', 'policy', 'vote', 'parliament'],
+    sports: ['sport', 'match', 'game', 'football', 'cricket', 'basketball', 'tournament'],
+    shopping: ['shop', 'shopping', 'deal', 'offer', 'sale', 'product', 'buy'],
+    tech: ['tech', 'ai', 'startup', 'software', 'app', 'device', 'gadget'],
+  };
+  const keys = keywordMap[category];
+  if (!keys) return posts;
+  return posts.filter(post => {
+    const bag = [
+      post.caption,
+      post.location,
+      post.music,
+      post.author.username,
+      post.author.displayName,
+      ...(post.tags ?? []),
+    ]
+      .join(' ')
+      .toLowerCase();
+    return keys.some(k => bag.includes(k));
+  });
+}
 
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -84,6 +111,31 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function HeaderBadge({count}: {count: number}) {
+  if (count <= 0) return null;
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        top: -6,
+        right: -8,
+        minWidth: 18,
+        height: 18,
+        borderRadius: 9,
+        paddingHorizontal: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#ef4444',
+        borderWidth: 1,
+        borderColor: '#ffffff',
+      }}>
+      <Text style={{color: '#ffffff', fontSize: 10, fontWeight: '800'}}>
+        {count > 99 ? '99+' : String(count)}
+      </Text>
+    </View>
+  );
 }
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
@@ -376,8 +428,13 @@ export function HomeScreen() {
   const [activeCategory, setActiveCategory] = useState('home');
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
+  const [notificationUnread, setNotificationUnread] = useState(0);
+  const [messagesUnread, setMessagesUnread] = useState(0);
   const {borderRadiusScale} = contract.brandGuidelines;
   const chipRadius = borderRadiusScale === 'bold' ? 999 : 12;
+  const brandIconUri = resolveMediaUrl(
+    contract.branding.faviconUrl || contract.branding.logoUrl,
+  );
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
@@ -413,26 +470,28 @@ export function HomeScreen() {
   const loadData = useCallback(async (reset = false) => {
     try {
       const p = reset ? 1 : page;
+      const feedFetcher = activeCategory === 'trending' ? getExplore : getFeed;
       const [feedRes, storiesRes, suggestionsRes] = await Promise.all([
-        getFeed(p),
+        feedFetcher(p),
         reset ? getStories() : Promise.resolve(null),
         reset ? getUserSuggestions(6) : Promise.resolve(null),
       ]);
+      const filteredPosts = filterPostsByCategory(feedRes.posts, activeCategory);
 
       if (reset) {
-        setPosts(feedRes.posts);
+        setPosts(filteredPosts);
         if (storiesRes) setStoryGroups(storiesRes.stories);
         if (suggestionsRes) setSuggestions(suggestionsRes.users);
         setPage(2);
       } else {
-        setPosts(prev => [...prev, ...feedRes.posts]);
+        setPosts(prev => [...prev, ...filteredPosts]);
         setPage(p + 1);
       }
       setHasMore(feedRes.hasMore);
     } catch (err) {
       console.error('[HomeScreen] loadData error:', err);
     }
-  }, [page]);
+  }, [page, activeCategory]);
 
   // Wait for Firebase auth to restore session before hitting the API.
   useEffect(() => {
@@ -443,6 +502,12 @@ export function HomeScreen() {
     loadData(true).finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    setLoading(true);
+    loadData(true).finally(() => setLoading(false));
+  }, [activeCategory, authReady, loadData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -481,7 +546,35 @@ export function HomeScreen() {
     setPosts(prev => prev.filter(p => p._id !== postId));
   }, []);
 
-  // Real-time feed: listen for new posts, likes, and story arrivals
+  const refreshHeaderCounts = useCallback(async () => {
+    if (!authReady || !dbUser?._id) {
+      setNotificationUnread(0);
+      setMessagesUnread(0);
+      return;
+    }
+    const [notificationCount, conversationsRes] = await Promise.all([
+      getUnreadCount().catch(() => 0),
+      getConversations().catch(() => ({conversations: []})),
+    ]);
+    setNotificationUnread(notificationCount);
+    setMessagesUnread(
+      conversationsRes.conversations.reduce(
+        (sum, conv) => sum + Math.max(0, conv.unreadCount || 0),
+        0,
+      ),
+    );
+  }, [authReady, dbUser?._id]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    refreshHeaderCounts().catch(() => null);
+    const timer = setInterval(() => {
+      refreshHeaderCounts().catch(() => null);
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [authReady, refreshHeaderCounts]);
+
+  // Real-time feed: listen for new posts, likes, story arrivals, and header counter updates
   useEffect(() => {
     const unsubLike = socketService.on('post:like', ({postId, likesCount, liked}) => {
       setPosts(prev =>
@@ -500,13 +593,17 @@ export function HomeScreen() {
       // Refresh story bar on new story from following
       getStories().then(r => setStoryGroups(r.stories)).catch(() => null);
     });
+    const unsubNotification = socketService.on('notification', () => {
+      refreshHeaderCounts().catch(() => null);
+    });
     return () => {
       unsubLike();
       unsubDelete();
       unsubComment();
       unsubStory();
+      unsubNotification();
     };
-  }, []);
+  }, [refreshHeaderCounts]);
 
   const collapseSearch = useCallback(() => {
     setSearchExpanded(false);
@@ -514,6 +611,13 @@ export function HomeScreen() {
   }, []);
 
   const myAvatar = dbUser?.profilePicture || undefined;
+  const profileInitials = useMemo(() => {
+    const source = (dbUser?.displayName || dbUser?.username || dbUser?.email || '').trim();
+    if (!source) return '';
+    const parts = source.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return source.slice(0, 2).toUpperCase();
+  }, [dbUser?.displayName, dbUser?.username, dbUser?.email]);
 
   // Interleave posts and suggestions (insert suggestions after 1st post)
   type FeedItem =
@@ -534,34 +638,47 @@ export function HomeScreen() {
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* Header */}
+      {/* Header: brand icon + title (left), flexible gap, actions (right, spaced) */}
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-          minHeight: 52,
+          paddingHorizontal: 12,
+          paddingVertical: 12,
+          minHeight: 56,
           backgroundColor: palette.background,
           borderBottomWidth: 1,
           borderBottomColor: palette.border,
-          gap: 10,
         }}>
-        <ThemedText
-          variant="heading"
-          numberOfLines={1}
-          style={{
-            fontSize: 22,
-            fontStyle: 'italic',
-            letterSpacing: -1,
-            color: palette.primary,
-            maxWidth: searchExpanded ? 100 : undefined,
-          }}>
-          {contract.branding.appTitle || 'BROMO'}
-        </ThemedText>
-
         {searchExpanded ? (
           <>
+            {brandIconUri ? (
+              <Image
+                source={{uri: brandIconUri}}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  marginRight: 10,
+                  backgroundColor: palette.surface,
+                }}
+                resizeMode="contain"
+              />
+            ) : null}
+            <ThemedText
+              variant="heading"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{
+                fontSize: 20,
+                fontStyle: 'italic',
+                letterSpacing: -0.5,
+                color: palette.primary,
+                maxWidth: 96,
+                marginRight: 8,
+              }}>
+              {contract.branding.appTitle || 'BROMO'}
+            </ThemedText>
             <SearchBar
               style={{flex: 1, minWidth: 0}}
               placeholder="Search BROMO..."
@@ -574,45 +691,113 @@ export function HomeScreen() {
                 collapseSearch();
               }}
             />
-            <Pressable onPress={collapseSearch} hitSlop={12} style={{padding: 4}}>
+            <Pressable onPress={collapseSearch} hitSlop={14} style={{padding: 6, marginLeft: 10}}>
               <X size={22} color={palette.foreground} />
             </Pressable>
           </>
         ) : (
           <>
-            <View style={{flex: 1}} />
-            <Pressable
-              onPress={() => setSearchExpanded(true)}
-              hitSlop={12}
+            <View
               style={{
-                width: 40, height: 40, borderRadius: 20,
-                borderWidth: 1, borderColor: palette.border,
-                backgroundColor: palette.input,
-                alignItems: 'center', justifyContent: 'center',
+                flexDirection: 'row',
+                alignItems: 'center',
+                flexShrink: 1,
+                minWidth: 0,
+                marginRight: 12,
+                gap: 12,
               }}>
-              <Search size={20} color={palette.foreground} />
-            </Pressable>
-            <Pressable hitSlop={8} onPress={() => parentNavigate(navigation, 'Notifications')}>
-              <Bell size={22} color={palette.foreground} />
-            </Pressable>
-            <Pressable hitSlop={8} onPress={() => parentNavigate(navigation, 'MessagesFlow')}>
-              <MessageCircle size={22} color={palette.foreground} />
-            </Pressable>
-            <Pressable
-              onPress={() => parentNavigate(navigation, 'Profile')}
-              hitSlop={8}
+              {/* {brandIconUri ? (
+                <Image
+                  source={{uri: brandIconUri}}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    // borderRadius: 10,
+                    // backgroundColor: palette.surface,
+                    // borderWidth: 1,
+                    // borderColor: palette.border,
+                  }}
+                  resizeMode="contain"
+                />
+              ) : null} */}
+              <ThemedText
+                variant="heading"
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={{
+                  fontSize: 22,
+                  fontStyle: 'italic',
+                  letterSpacing: -1,
+                  color: palette.primary,
+                  flexShrink: 1,
+                  minWidth: 0,
+                }}>
+                {contract.branding.appTitle || 'BROMO'}
+              </ThemedText>
+            </View>
+            <View style={{flex: 1, minWidth: 16}} />
+            <View
               style={{
-                width: 36, height: 36, borderRadius: 18,
-                borderWidth: 1, borderColor: palette.border,
-                overflow: 'hidden', alignItems: 'center', justifyContent: 'center',
-                backgroundColor: palette.muted,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 16,
+                flexShrink: 0,
               }}>
-              {myAvatar ? (
-                <Image source={{uri: myAvatar}} style={{width: 36, height: 36, borderRadius: 18}} />
-              ) : (
-                <User size={20} color={palette.foreground} />
-              )}
-            </Pressable>
+              <Pressable
+                onPress={() => setSearchExpanded(true)}
+                hitSlop={10}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  backgroundColor: palette.input,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                <Search size={20} color={palette.foreground} />
+              </Pressable>
+              <View style={{position: 'relative'}}>
+                <Pressable hitSlop={12} onPress={() => parentNavigate(navigation, 'Notifications')}>
+                  <Bell size={22} color={palette.foreground} />
+                </Pressable>
+                <HeaderBadge count={notificationUnread} />
+              </View>
+              <View style={{position: 'relative'}}>
+                <Pressable hitSlop={12} onPress={() => parentNavigate(navigation, 'MessagesFlow')}>
+                  <MessageCircle size={22} color={palette.foreground} />
+                </Pressable>
+                <HeaderBadge count={messagesUnread} />
+              </View>
+              <Pressable
+                onPress={() => parentNavigate(navigation, 'Profile')}
+                hitSlop={10}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  overflow: 'hidden',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: palette.muted,
+                }}>
+                {myAvatar ? (
+                  <Image source={{uri: myAvatar}} style={{width: 38, height: 38, borderRadius: 19}} />
+                ) : (
+                  <Text
+                    style={{
+                      color: palette.foreground,
+                      fontSize: 13,
+                      fontWeight: '700',
+                    }}>
+                    {profileInitials}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
           </>
         )}
       </View>

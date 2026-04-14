@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
@@ -23,12 +24,33 @@ import {NetworkVideo} from '../components/media/NetworkVideo';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {parentNavigate} from '../navigation/parentNavigate';
+import type {OnLoadData, OnProgressData} from 'react-native-video';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'StoryView'>;
 
-const STORY_DURATION = 5000;
+const STORY_DURATION_IMAGE_MS = 5000;
+const STORY_DURATION_VIDEO_FALLBACK_MS = 15000;
+const STORY_DURATION_VIDEO_MIN_MS = 4000;
+const STORY_DURATION_VIDEO_MAX_MS = 30000;
+const PREFETCH_LOOKAHEAD = 6;
+const STORY_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_KEY = '@bromo/story_media_cache_v1';
 const {width: W, height: H} = Dimensions.get('window');
+
+type StoryMediaCache = Record<string, number>;
+
+function storyExpiresAt(createdAt: string): number {
+  const createdMs = new Date(createdAt).getTime();
+  return (Number.isFinite(createdMs) ? createdMs : Date.now()) + STORY_TTL_MS;
+}
+
+async function warmVideo(url: string): Promise<void> {
+  // Warm CDN/OS cache with the first chunk. Ignore failures silently.
+  try {
+    await fetch(url, {headers: {Range: 'bytes=0-262143'}});
+  } catch {}
+}
 
 export function StoryViewScreen() {
   const navigation = useNavigation<Nav>();
@@ -46,10 +68,36 @@ export function StoryViewScreen() {
   const [liked, setLiked] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [showReply, setShowReply] = useState(false);
+  const [mediaReady, setMediaReady] = useState(false);
+  const [storyDurationMs, setStoryDurationMs] = useState(STORY_DURATION_IMAGE_MS);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [showVideoPoster, setShowVideoPoster] = useState(true);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   const progressRef = useRef<Animated.CompositeAnimation | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const mediaCacheRef = useRef<StoryMediaCache>({});
+
+  const loadCacheIndex = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as StoryMediaCache;
+      const now = Date.now();
+      const cleaned: StoryMediaCache = {};
+      for (const [k, exp] of Object.entries(parsed)) {
+        if (exp > now) cleaned[k] = exp;
+      }
+      mediaCacheRef.current = cleaned;
+      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(cleaned));
+    } catch {}
+  }, []);
+
+  const saveCacheIndex = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(mediaCacheRef.current));
+    } catch {}
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -59,7 +107,18 @@ export function StoryViewScreen() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    loadCacheIndex().finally(() => null);
+    load();
+  }, [load, loadCacheIndex]);
+
+  // Keep stories synced so removed/expired stories disappear quickly.
+  useEffect(() => {
+    const t = setInterval(() => {
+      load();
+    }, 20000);
+    return () => clearInterval(t);
+  }, [load]);
 
   // Find the group for the given userId
   useEffect(() => {
@@ -72,6 +131,30 @@ export function StoryViewScreen() {
   const group = groups[groupIdx];
   const stories = group?.stories ?? [];
   const current = stories[storyIdx];
+
+  const allStories = useMemo(() => groups.flatMap(g => g.stories), [groups]);
+
+  const warmStoryMedia = useCallback(
+    async (story: StoryGroup['stories'][number] | undefined) => {
+      if (!story) return;
+      const mediaUri = resolveMediaUrl(story.mediaUrl);
+      if (!mediaUri) return;
+      const expiresAt = storyExpiresAt(story.createdAt);
+      const known = mediaCacheRef.current[story._id] ?? 0;
+      if (known > Date.now()) return;
+
+      if (story.mediaType === 'image') {
+        await Image.prefetch(mediaUri).catch(() => false);
+      } else {
+        const thumb = postThumbnailUri(story);
+        if (thumb) await Image.prefetch(resolveMediaUrl(thumb)).catch(() => false);
+        await warmVideo(mediaUri);
+      }
+      mediaCacheRef.current[story._id] = expiresAt;
+      saveCacheIndex().catch(() => null);
+    },
+    [saveCacheIndex],
+  );
 
   const goNext = useCallback(() => {
     if (storyIdx < stories.length - 1) {
@@ -95,13 +178,13 @@ export function StoryViewScreen() {
     setLiked(false);
   }, [storyIdx, groupIdx]);
 
-  // Auto-advance timer
+  // Auto-advance timer (images only). Videos move on `onEnd`.
   useEffect(() => {
-    if (!current || paused || showReply) return;
+    if (!current || current.mediaType !== 'image' || paused || showReply || !mediaReady) return;
     progressAnim.setValue(0);
     const anim = Animated.timing(progressAnim, {
       toValue: 1,
-      duration: STORY_DURATION,
+      duration: storyDurationMs,
       useNativeDriver: false,
     });
     progressRef.current = anim;
@@ -109,7 +192,31 @@ export function StoryViewScreen() {
       if (finished) goNext();
     });
     return () => { anim.stop(); };
-  }, [current?._id, paused, showReply, goNext]);
+  }, [current?._id, current?.mediaType, paused, showReply, goNext, mediaReady, storyDurationMs]);
+
+  useEffect(() => {
+    setMediaReady(false);
+    setVideoProgress(0);
+    setShowVideoPoster(true);
+    setStoryDurationMs(
+      current?.mediaType === 'video'
+        ? STORY_DURATION_VIDEO_FALLBACK_MS
+        : STORY_DURATION_IMAGE_MS,
+    );
+  }, [current?._id, current?.mediaType]);
+
+  // Warm current + next stories for smoother playback.
+  useEffect(() => {
+    if (!current) return;
+    const currentIndex = allStories.findIndex(s => s._id === current._id);
+    if (currentIndex < 0) return;
+    warmStoryMedia(current).catch(() => null);
+    for (let i = 1; i <= PREFETCH_LOOKAHEAD; i++) {
+      const next = allStories[currentIndex + i];
+      if (!next) break;
+      warmStoryMedia(next).catch(() => null);
+    }
+  }, [allStories, current?._id, warmStoryMedia, current]);
 
   const handleLike = useCallback(async () => {
     if (!current) return;
@@ -167,20 +274,54 @@ export function StoryViewScreen() {
 
       {/* Media */}
       {current.mediaType === 'video' ? (
-        <NetworkVideo
-          key={current._id}
-          context="story"
-          uri={mediaUri}
-          posterUri={poster}
-          style={{width: W, height: H}}
-          repeat={false}
-          muted={false}
-          paused={paused || showReply}
-          resizeMode="cover"
-          posterOverlayUntilReady
-        />
+        <>
+          <NetworkVideo
+            key={current._id}
+            context="story"
+            uri={mediaUri}
+            posterUri={poster}
+            style={{width: W, height: H}}
+            repeat={false}
+            muted={false}
+            paused={paused || showReply}
+            resizeMode="cover"
+            posterOverlayUntilReady={false}
+            onDecoderReady={() => {
+              setMediaReady(true);
+              setShowVideoPoster(false);
+            }}
+            onLoad={(d: OnLoadData) => {
+              const sec = Number(d.duration);
+              if (Number.isFinite(sec) && sec > 0) {
+                const ms = Math.round(sec * 1000);
+                setStoryDurationMs(
+                  Math.min(STORY_DURATION_VIDEO_MAX_MS, Math.max(STORY_DURATION_VIDEO_MIN_MS, ms)),
+                );
+              } else {
+                setStoryDurationMs(STORY_DURATION_VIDEO_FALLBACK_MS);
+              }
+            }}
+            onProgress={(d: OnProgressData) => {
+              const dur = Number(d.seekableDuration || 0);
+              if (dur > 0) {
+                setVideoProgress(Math.max(0, Math.min(1, d.currentTime / dur)));
+              }
+            }}
+            onEnd={goNext}
+          />
+          {showVideoPoster && poster ? (
+            <Image source={{uri: poster}} style={{position: 'absolute', width: W, height: H}} resizeMode="cover" />
+          ) : null}
+        </>
       ) : (
-        <Image source={{uri: mediaUri}} style={{width: W, height: H}} resizeMode="cover" />
+        <Image
+          source={{uri: mediaUri}}
+          style={{width: W, height: H}}
+          resizeMode="cover"
+          onLoadEnd={() => setMediaReady(true)}
+          progressiveRenderingEnabled
+          fadeDuration={120}
+        />
       )}
 
       {/* Progress bars */}
@@ -190,10 +331,20 @@ export function StoryViewScreen() {
             {i < storyIdx ? (
               <View style={{flex: 1, backgroundColor: '#fff'}} />
             ) : i === storyIdx ? (
-              <Animated.View style={{
-                height: 2, backgroundColor: '#fff',
-                width: progressAnim.interpolate({inputRange: [0, 1], outputRange: ['0%', '100%']}),
-              }} />
+              current.mediaType === 'video' ? (
+                <View
+                  style={{
+                    height: 2,
+                    backgroundColor: '#fff',
+                    width: `${Math.round(videoProgress * 100)}%`,
+                  }}
+                />
+              ) : (
+                <Animated.View style={{
+                  height: 2, backgroundColor: '#fff',
+                  width: progressAnim.interpolate({inputRange: [0, 1], outputRange: ['0%', '100%']}),
+                }} />
+              )
             ) : null}
           </View>
         ))}

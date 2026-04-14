@@ -113,8 +113,21 @@ export function needsTranscodeToMp4(ext: string, probe: ProbeInfo): boolean {
   return false;
 }
 
-function runTranscodeToMp4(inputAbs: string, outputAbs: string, hasAudio: boolean): Promise<void> {
+function runTranscodeToMp4(
+  inputAbs: string,
+  outputAbs: string,
+  hasAudio: boolean,
+  opts?: { forStory?: boolean },
+): Promise<void> {
   return new Promise((resolve, reject) => {
+    const storyOpts = opts?.forStory
+      ? [
+          "-vf scale=1280:720:force_original_aspect_ratio=decrease",
+          "-b:v 1800k",
+          "-maxrate 2200k",
+          "-bufsize 3600k",
+        ]
+      : [];
     const cmd = ffmpeg(inputAbs)
       .outputOptions([
         "-c:v libx264",
@@ -123,6 +136,7 @@ function runTranscodeToMp4(inputAbs: string, outputAbs: string, hasAudio: boolea
         "-pix_fmt yuv420p",
         "-movflags",
         "+faststart",
+        ...storyOpts,
       ])
       .on("end", () => resolve())
       .on("error", (e) => reject(e));
@@ -188,13 +202,16 @@ export async function normalizeMediaAfterUpload(
     return { rel, mediaType: "image", converted: false };
   }
 
-  if (!needsTranscodeToMp4(ext, probe)) {
+  const shouldAlwaysTranscodeStory = cat === "stories" && probe.hasVideoStream;
+  if (!shouldAlwaysTranscodeStory && !needsTranscodeToMp4(ext, probe)) {
     return { rel, mediaType: "video", converted: false };
   }
 
   const tmpOut = path.join(dir, `${stem}-bromoenc-${Date.now()}.mp4`);
   try {
-    await runTranscodeToMp4(abs, tmpOut, probe.hasAudioStream);
+    await runTranscodeToMp4(abs, tmpOut, probe.hasAudioStream, {
+      forStory: cat === "stories",
+    });
   } catch (e) {
     console.error("[videoNormalize] transcode failed:", e);
     try {
