@@ -21,6 +21,7 @@ import {useMessaging} from '../messaging/MessagingContext';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {toggleLike, type StoryGroup} from '../api/postsApi';
 import {loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
+import {prefetchStoryVideoToDisk, resolveStoryVideoPlayUri} from '../lib/storyVideoCache';
 import {NetworkVideo} from '../components/media/NetworkVideo';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
@@ -63,13 +64,6 @@ function storyExpiresAt(createdAt: string): number {
   return (Number.isFinite(createdMs) ? createdMs : Date.now()) + STORY_TTL_MS;
 }
 
-async function warmVideo(url: string): Promise<void> {
-  // Warm CDN / OS HTTP cache with the first 512 KB chunk.
-  try {
-    await fetch(url, {headers: {'Range': 'bytes=0-524287'}});
-  } catch {}
-}
-
 export function StoryViewScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -88,6 +82,8 @@ export function StoryViewScreen() {
   const [showReply, setShowReply] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
   const [storyDurationMs, setStoryDurationMs] = useState(STORY_DURATION_IMAGE_MS);
+  /** null = resolving disk vs remote; avoids mounting the player on `https://` when a cache hit will use `file://`. */
+  const [storyVideoPlayUri, setStoryVideoPlayUri] = useState<string | null>(null);
 
   // Animated values — never setState on progress tick to avoid re-renders
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -96,6 +92,7 @@ export function StoryViewScreen() {
 
   const inputRef = useRef<TextInput>(null);
   const mediaCacheRef = useRef<StoryMediaCache>({});
+  const activeStoryIdRef = useRef<string | undefined>(undefined);
 
   // ─── critical fix: only position group/story on the INITIAL groups load ──────
   // Without this, the 20-second refresh resets storyIdx every time, causing the
@@ -174,13 +171,14 @@ export function StoryViewScreen() {
   const group = groups[groupIdx];
   const stories = group?.stories ?? [];
   const current = stories[storyIdx];
+  activeStoryIdRef.current = current?._id;
 
   const allStories = useMemo(() => groups.flatMap(g => g.stories), [groups]);
 
   const warmStoryMedia = useCallback(
     async (
       story: StoryGroup['stories'][number] | undefined,
-      opts?: {prefetchVideo?: boolean},
+      opts?: {prefetchToDisk?: boolean},
     ) => {
       if (!story) return;
       const mediaUri = resolveMediaUrl(story.mediaUrl);
@@ -194,8 +192,8 @@ export function StoryViewScreen() {
       } else {
         const thumb = postThumbnailUri(story);
         if (thumb) await Image.prefetch(resolveMediaUrl(thumb)).catch(() => false);
-        if (opts?.prefetchVideo !== false) {
-          await warmVideo(mediaUri);
+        if (opts?.prefetchToDisk) {
+          prefetchStoryVideoToDisk(mediaUri, story._id);
         }
       }
       mediaCacheRef.current[story._id] = expiresAt;
@@ -203,6 +201,30 @@ export function StoryViewScreen() {
     },
     [saveCacheIndex],
   );
+
+  useEffect(() => {
+    if (!current || current.mediaType !== 'video') {
+      setStoryVideoPlayUri(null);
+      return;
+    }
+    const remote = resolveMediaUrl(current.mediaUrl);
+    if (!remote?.trim()) {
+      setStoryVideoPlayUri(null);
+      return;
+    }
+    const storyId = current._id;
+    setStoryVideoPlayUri(null);
+    let alive = true;
+    void (async () => {
+      const uri = await resolveStoryVideoPlayUri(remote, storyId);
+      if (!alive) return;
+      if (activeStoryIdRef.current !== storyId) return;
+      setStoryVideoPlayUri(uri);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [current?._id, current?.mediaType, current?.mediaUrl]);
 
   const goNext = useCallback(() => {
     if (storyIdx < stories.length - 1) {
@@ -215,6 +237,14 @@ export function StoryViewScreen() {
     }
     setLiked(false);
   }, [storyIdx, stories.length, groupIdx, groups.length, navigation]);
+
+  const onStoryVideoEnd = useCallback(() => {
+    if (current?.mediaType === 'video') {
+      const u = resolveMediaUrl(current.mediaUrl);
+      if (u?.trim()) prefetchStoryVideoToDisk(u, current._id);
+    }
+    goNext();
+  }, [current, goNext]);
 
   const goPrev = useCallback(() => {
     if (storyIdx > 0) {
@@ -261,7 +291,7 @@ export function StoryViewScreen() {
     for (let i = 1; i <= PREFETCH_LOOKAHEAD; i++) {
       const next = allStories[idx + i];
       if (!next) break;
-      warmStoryMedia(next, {prefetchVideo: i === 1}).catch(() => null);
+      warmStoryMedia(next, {prefetchToDisk: i === 1}).catch(() => null);
     }
   }, [allStories, current?._id, warmStoryMedia, current]);
 
@@ -337,35 +367,47 @@ export function StoryViewScreen() {
       {isColorBg ? (
         <View style={{width: W, height: H, backgroundColor: bgColor}} />
       ) : current.mediaType === 'video' ? (
-        <NetworkVideo
-          key={current._id}
-          context="story"
-          uri={mediaUri}
-          posterUri={poster}
-          style={{width: W, height: H}}
-          repeat={false}
-          muted={false}
-          paused={paused || showReply}
-          resizeMode="cover"
-          // Use built-in poster management: stays visible until onReadyForDisplay fires.
-          // This is the fix for the black-frame flash — we no longer hide the poster
-          // prematurely on onLoad (metadata ready).
-          posterOverlayUntilReady
-          onDecoderReady={() => setMediaReady(true)}
-          onLoad={(d: OnLoadData) => {
-            const sec = Number(d.duration);
-            if (Number.isFinite(sec) && sec > 0) {
-              const ms = Math.round(sec * 1000);
-              setStoryDurationMs(
-                Math.min(STORY_DURATION_VIDEO_MAX_MS, Math.max(STORY_DURATION_VIDEO_MIN_MS, ms)),
-              );
-            } else {
-              setStoryDurationMs(STORY_DURATION_VIDEO_FALLBACK_MS);
-            }
-          }}
-          onProgress={onVideoProgress}
-          onEnd={goNext}
-        />
+        storyVideoPlayUri == null ? (
+          poster ? (
+            <Image
+              source={{uri: resolveMediaUrl(poster) ?? poster}}
+              style={{width: W, height: H}}
+              resizeMode="cover"
+              onLoadEnd={() => setMediaReady(true)}
+            />
+          ) : (
+            <View style={{width: W, height: H, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center'}}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          )
+        ) : (
+          <NetworkVideo
+            key={`${current._id}-${storyVideoPlayUri.startsWith('file') ? 'local' : 'net'}`}
+            context="story"
+            uri={storyVideoPlayUri}
+            posterUri={poster}
+            style={{width: W, height: H}}
+            repeat={false}
+            muted={false}
+            paused={paused || showReply}
+            resizeMode="cover"
+            posterOverlayUntilReady
+            onDecoderReady={() => setMediaReady(true)}
+            onLoad={(d: OnLoadData) => {
+              const sec = Number(d.duration);
+              if (Number.isFinite(sec) && sec > 0) {
+                const ms = Math.round(sec * 1000);
+                setStoryDurationMs(
+                  Math.min(STORY_DURATION_VIDEO_MAX_MS, Math.max(STORY_DURATION_VIDEO_MIN_MS, ms)),
+                );
+              } else {
+                setStoryDurationMs(STORY_DURATION_VIDEO_FALLBACK_MS);
+              }
+            }}
+            onProgress={onVideoProgress}
+            onEnd={onStoryVideoEnd}
+          />
+        )
       ) : (
         <Image
           source={{uri: mediaUri}}
