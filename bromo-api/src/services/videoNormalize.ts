@@ -179,12 +179,12 @@ export async function normalizeMediaAfterUpload(
     probe = await ffprobeFile(abs);
   } catch (e) {
     console.error("[videoNormalize] probe failed:", e);
-    try {
-      fs.unlinkSync(abs);
-    } catch {
-      /* ignore */
+    // Fail-open for real-world device uploads: keep original bytes instead of blocking user.
+    // The player may still handle many containers even when probe fails.
+    if (VIDEO_EXTENSIONS.has(ext)) {
+      return { rel, mediaType: "video", converted: false };
     }
-    throw new Error("Could not read this media file. Try MP4 or MOV.");
+    throw new Error("Could not read this media file.");
   }
 
   if (cat === "reels" && !probe.hasVideoStream) {
@@ -219,12 +219,8 @@ export async function normalizeMediaAfterUpload(
     } catch {
       /* ignore */
     }
-    try {
-      fs.unlinkSync(abs);
-    } catch {
-      /* ignore */
-    }
-    throw new Error("Video conversion failed. Try a shorter clip or MP4/H.264.");
+    // Never block uploads on optimizer failure — keep original media.
+    return { rel, mediaType: "video", converted: false };
   }
 
   try {

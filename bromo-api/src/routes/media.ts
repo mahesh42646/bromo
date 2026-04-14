@@ -15,7 +15,11 @@ import {
   relativeUploadPathFromAbs,
   normalizeUploadCategory,
 } from "../utils/uploadFiles.js";
-import { validateUploadForCategory } from "../utils/uploadPolicy.js";
+import {
+  validateUploadForCategory,
+  isVideoLike,
+  extFromOriginalName,
+} from "../utils/uploadPolicy.js";
 
 export const mediaRouter = Router();
 
@@ -77,12 +81,20 @@ mediaRouter.post(
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Media processing failed";
       console.warn("[media] normalize failed:", msg);
-      try {
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      } catch {
-        /* ignore */
+      // Fail-open for user uploads: keep original video when optimization fails.
+      const ext = extFromOriginalName(req.file.originalname || "");
+      const isVideoUpload = isVideoLike(req.file.mimetype, ext);
+      if (isVideoUpload) {
+        mediaType = "video";
+        converted = false;
+      } else {
+        try {
+          if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        } catch {
+          /* ignore */
+        }
+        return res.status(400).json({ message: msg });
       }
-      return res.status(400).json({ message: msg });
     }
 
     const url = urlFromStoredOrRelative(rel);
