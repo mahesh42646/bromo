@@ -1,5 +1,5 @@
 import auth from '@react-native-firebase/auth';
-import {authedFetch, apiBase} from './authApi';
+import {authedFetch, apiBase, authorizedFetch} from './authApi';
 import {buildMediaUploadPart} from '../lib/mediaUploadPart';
 
 export type PostAuthor = {
@@ -307,9 +307,7 @@ export async function uploadMedia(
   localUri: string,
   meta?: {type: 'image' | 'video'; fileName?: string | null; category?: 'posts' | 'reels' | 'stories' | 'public'},
 ): Promise<{url: string; thumbnailUrl?: string; mediaType?: 'image' | 'video'; converted?: boolean}> {
-  const user = auth().currentUser;
-  if (!user) throw new Error('Not authenticated');
-  const token = await user.getIdToken(false);
+  if (!auth().currentUser) throw new Error('Not authenticated');
   const base = apiBase();
   const category = meta?.category ?? 'posts';
 
@@ -317,9 +315,8 @@ export async function uploadMedia(
   const form = new FormData();
   form.append('file', {uri: part.uri, type: part.type, name: part.name} as unknown as Blob);
 
-  const res = await fetch(`${base}/media/upload?category=${encodeURIComponent(category)}`, {
+  const res = await authorizedFetch(`${base}/media/upload?category=${encodeURIComponent(category)}`, {
     method: 'POST',
-    headers: {Authorization: `Bearer ${token}`},
     body: form,
   });
 
@@ -360,9 +357,7 @@ export async function uploadMediaAsync(
     tags?: string[];
   },
 ): Promise<{jobId: string; postId: string; thumbnailUrl?: string}> {
-  const user = auth().currentUser;
-  if (!user) throw new Error('Not authenticated');
-  const token = await user.getIdToken(false);
+  if (!auth().currentUser) throw new Error('Not authenticated');
   const base = apiBase();
   const category = meta.category ?? 'posts';
 
@@ -374,9 +369,8 @@ export async function uploadMediaAsync(
   if (meta.music) form.append('music', meta.music);
   if (meta.tags?.length) form.append('tags', meta.tags.join(','));
 
-  const res = await fetch(`${base}/media/upload-async?category=${encodeURIComponent(category)}`, {
+  const res = await authorizedFetch(`${base}/media/upload-async?category=${encodeURIComponent(category)}`, {
     method: 'POST',
-    headers: {Authorization: `Bearer ${token}`},
     body: form,
   });
 

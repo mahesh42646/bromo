@@ -44,6 +44,8 @@ import { mediaJobsRouter } from "./routes/mediaJobs.js";
 import { chatRouter } from "./routes/chat.js";
 import { liveRouter } from "./routes/live.js";
 import { notificationsRouter } from "./routes/notifications.js";
+import { adsAdminRouter } from "./routes/ads.js";
+import { adServeRouter } from "./routes/adServe.js";
 import { initFirebase } from "./config/firebase.js";
 
 export function createApp() {
@@ -137,6 +139,8 @@ export function createApp() {
   app.use("/chat", chatRouter);
   app.use("/live", liveRouter);
   app.use("/notifications", notificationsRouter);
+  app.use("/admin/ads", adsAdminRouter);
+  app.use("/ads", adServeRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });

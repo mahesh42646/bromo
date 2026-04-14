@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   Link2,
+  Megaphone,
   Palette,
   Plug,
   Settings,
@@ -140,6 +141,18 @@ export const ADMIN_NAVIGATION: AdminNavGroup[] = [
         description:
           "Tax IDs, invoice runs, and export packages for finance stakeholders.",
         icon: FileText,
+      },
+    ],
+  },
+  {
+    label: "Monetization",
+    items: [
+      {
+        title: "Ads manager",
+        href: "/admin/monetization/ads",
+        description:
+          "Create image, carousel, and video ads served in feeds, reels, stories, and explore.",
+        icon: Megaphone,
       },
     ],
   },

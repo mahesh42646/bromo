@@ -59,6 +59,8 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {getFeed, getExplore, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
+import {fetchAds, type Ad} from '../api/adsApi';
+import {AdCard} from '../components/AdCard';
 import {clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped} from '../lib/storiesFeedCache';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getUnreadCount} from '../api/notificationsApi';
@@ -442,6 +444,7 @@ export function HomeScreen() {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+  const [feedAds, setFeedAds] = useState<Ad[]>([]);
 
   const myStoryGroup = useMemo(
     () => (dbUser?._id ? storyGroups.find(g => g.author._id === dbUser._id) : undefined),
@@ -503,10 +506,11 @@ export function HomeScreen() {
     try {
       const p = reset ? 1 : page;
       const feedFetcher = activeCategory === 'trending' ? getExplore : getFeed;
-      const [feedRes, storiesRes, suggestionsRes] = await Promise.all([
+      const [feedRes, storiesRes, suggestionsRes, adsRes] = await Promise.all([
         feedFetcher(p),
         reset ? loadStoriesFeedDeduped() : Promise.resolve(null),
         reset ? getUserSuggestions(6) : Promise.resolve(null),
+        reset ? fetchAds('feed', 5) : Promise.resolve(null),
       ]);
       const filteredPosts = filterPostsByCategory(feedRes.posts, activeCategory);
 
@@ -514,6 +518,7 @@ export function HomeScreen() {
         setPosts(filteredPosts);
         if (storiesRes) setStoryGroups(storiesRes);
         if (suggestionsRes) setSuggestions(suggestionsRes.users);
+        if (adsRes) setFeedAds(adsRes);
         setPage(2);
       } else {
         setPosts(prev => [...prev, ...filteredPosts]);
@@ -699,11 +704,12 @@ export function HomeScreen() {
     return source.slice(0, 2).toUpperCase();
   }, [dbUser?.displayName, dbUser?.username, dbUser?.email]);
 
-  // Interleave posts and suggestions (insert suggestions after 1st post)
+  // Interleave posts, suggestions, and ads
   type FeedItem =
     | {kind: 'post'; post: Post; key: string}
     | {kind: 'suggestions'; key: string}
-    | {kind: 'stories'; key: string};
+    | {kind: 'stories'; key: string}
+    | {kind: 'ad'; ad: Ad; key: string};
 
   const feedItems: FeedItem[] = [];
   feedItems.push({kind: 'stories', key: 'stories'});
@@ -713,6 +719,23 @@ export function HomeScreen() {
       feedItems.push({kind: 'suggestions', key: 'suggestions'});
     }
   });
+  // Inject ads after every 7th post (positions 7, 15, 23 … accounting for already-inserted items)
+  if (feedAds.length > 0) {
+    let adIdx = 0;
+    let postCount = 0;
+    let i = 0;
+    while (i < feedItems.length && adIdx < feedAds.length) {
+      if (feedItems[i].kind === 'post') {
+        postCount++;
+        if (postCount % 7 === 0) {
+          feedItems.splice(i + 1, 0, {kind: 'ad', ad: feedAds[adIdx], key: `ad_${feedAds[adIdx]._id}`});
+          adIdx++;
+          i++; // skip past the inserted ad
+        }
+      }
+      i++;
+    }
+  }
 
   return (
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
@@ -1044,6 +1067,10 @@ export function HomeScreen() {
                   isVideoVisible={item.post.mediaType === 'video' && item.post._id === visiblePostId}
                 />
               );
+            }
+
+            if (item.kind === 'ad') {
+              return <AdCard ad={item.ad} placement="feed" />;
             }
 
             return null;

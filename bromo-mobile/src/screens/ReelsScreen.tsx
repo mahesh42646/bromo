@@ -52,6 +52,8 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {followUser} from '../api/followApi';
 import {createStoryFromReel, getReels, toggleLike, recordView, recordShare, resolveVideoUrl, type Post} from '../api/postsApi';
+import {fetchAds, type Ad} from '../api/adsApi';
+import {AdReelItem} from '../components/AdReelItem';
 import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
@@ -71,6 +73,10 @@ function formatCount(n: number): string {
 }
 
 type ReelFeedTab = 'forYou' | 'friends';
+
+type ReelFeedItem =
+  | {_itemType: 'reel'; data: Post; _id: string}
+  | {_itemType: 'ad'; data: Ad; _id: string};
 
 function ReelMoreSheet({
   visible,
@@ -569,6 +575,7 @@ export function ReelsScreen() {
   const [reelWidth, setReelWidth] = useState(win.width);
   const {isCellular, maxBitRate} = usePlaybackNetworkCap();
   const [reels, setReels] = useState<Post[]>([]);
+  const [reelAds, setReelAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -584,10 +591,27 @@ export function ReelsScreen() {
   const displayReelsLenRef = useRef(0);
   const reelHeightRef = useRef(reelHeight);
 
-  const displayReels = useMemo(
-    () => (feedTab === 'friends' ? reels.filter(r => r.isFollowing) : reels),
-    [feedTab, reels],
-  );
+  const displayReels = useMemo((): ReelFeedItem[] => {
+    const basePosts = feedTab === 'friends' ? reels.filter(r => r.isFollowing) : reels;
+    const items: ReelFeedItem[] = basePosts.map(p => ({_itemType: 'reel', data: p, _id: p._id}));
+    // Inject ads at every 5th reel position
+    let adIdx = 0;
+    let reelCount = 0;
+    let i = 0;
+    while (i < items.length && adIdx < reelAds.length) {
+      if (items[i]._itemType === 'reel') {
+        reelCount++;
+        if (reelCount % 5 === 0) {
+          const ad = reelAds[adIdx];
+          items.splice(i + 1, 0, {_itemType: 'ad', data: ad, _id: `ad_${ad._id}`});
+          adIdx++;
+          i++;
+        }
+      }
+      i++;
+    }
+    return items;
+  }, [feedTab, reels, reelAds]);
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;
@@ -619,9 +643,13 @@ export function ReelsScreen() {
   const loadReels = useCallback(async (reset = false) => {
     const p = reset ? 1 : pageRef.current;
     try {
-      const res = await getReels(p);
+      const [res, adsRes] = await Promise.all([
+        getReels(p),
+        reset ? fetchAds('reels', 3) : Promise.resolve(null),
+      ]);
       if (reset) {
         setReels(res.posts);
+        if (adsRes) setReelAds(adsRes);
         pageRef.current = 2;
         setPage(2);
       } else {
@@ -873,21 +901,34 @@ export function ReelsScreen() {
             </View>
           ) : null
         }
-        renderItem={({item, index}) => (
-          <ReelItem
-            item={item}
-            isActive={screenFocused && index === activeIndex}
-            reelHeight={reelHeight}
-            reelWidth={reelWidth}
-            navigation={navigation}
-            onLike={handleLike}
-            autoScroll={autoScroll}
-            onAutoScrollChange={setAutoScroll}
-            onAutoAdvanceClip={onAutoAdvanceClip}
-            isCellular={isCellular}
-            maxBitRate={maxBitRate}
-          />
-        )}
+        renderItem={({item, index}) => {
+          if (item._itemType === 'ad') {
+            return (
+              <AdReelItem
+                ad={item.data}
+                isActive={screenFocused && index === activeIndex}
+                reelHeight={reelHeight}
+                reelWidth={reelWidth}
+                placement="reels"
+              />
+            );
+          }
+          return (
+            <ReelItem
+              item={item.data}
+              isActive={screenFocused && index === activeIndex}
+              reelHeight={reelHeight}
+              reelWidth={reelWidth}
+              navigation={navigation}
+              onLike={handleLike}
+              autoScroll={autoScroll}
+              onAutoScrollChange={setAutoScroll}
+              onAutoAdvanceClip={onAutoAdvanceClip}
+              isCellular={isCellular}
+              maxBitRate={maxBitRate}
+            />
+          );
+        }}
       />
 
       {/* Quality picker */}

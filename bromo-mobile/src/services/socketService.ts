@@ -4,7 +4,7 @@
  */
 import {io, type Socket} from 'socket.io-client';
 import auth from '@react-native-firebase/auth';
-import {apiBase} from '../api/authApi';
+import {apiBase, getIdToken} from '../api/authApi';
 import type {Post} from '../api/postsApi';
 
 type SocketEvents = {
@@ -36,7 +36,7 @@ class SocketService {
 
     let token: string;
     try {
-      token = await user.getIdToken(false);
+      token = await getIdToken(false);
     } catch {
       return;
     }

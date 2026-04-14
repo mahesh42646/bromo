@@ -1,4 +1,4 @@
-import {authedFetch, apiBase} from './authApi';
+import {authedFetch, apiBase, authorizedFetch} from './authApi';
 import {buildMediaUploadPart, type MediaKind} from '../lib/mediaUploadPart';
 
 export type ConversationParticipant = {
@@ -112,19 +112,16 @@ export async function uploadChatMedia(
   localUri: string,
   meta?: {kind?: MediaKind; fileName?: string | null},
 ): Promise<{url: string}> {
-  const auth = (await import('@react-native-firebase/auth')).default;
-  const user = auth().currentUser;
-  if (!user) throw new Error('Not authenticated');
-  const token = await user.getIdToken(false);
+  const firebaseAuth = (await import('@react-native-firebase/auth')).default;
+  if (!firebaseAuth().currentUser) throw new Error('Not authenticated');
   const base = apiBase();
 
   const part = buildMediaUploadPart(localUri, meta?.kind ?? 'image', meta?.fileName);
   const form = new FormData();
   form.append('file', {uri: part.uri, type: part.type, name: part.name} as unknown as Blob);
 
-  const res = await fetch(`${base}/media/upload?category=public`, {
+  const res = await authorizedFetch(`${base}/media/upload?category=public`, {
     method: 'POST',
-    headers: {Authorization: `Bearer ${token}`},
     body: form,
   });
   if (!res.ok) {

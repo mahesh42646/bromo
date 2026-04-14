@@ -1,5 +1,6 @@
 import auth from '@react-native-firebase/auth';
 import {settings} from '../config/settings';
+import {navigationRef, resetToAuth} from '../navigation/rootNavigation';
 
 export function apiBase(): string {
   const base = settings.apiBaseUrl?.trim().replace(/\/+$/, '');
@@ -7,45 +8,103 @@ export function apiBase(): string {
   return 'https://bromo.darkunde.in';
 }
 
-// Token cache: Firebase tokens are valid for 1 hour; refresh at 55 min
-let _cachedToken: string | null = null;
-let _tokenExpiresAt = 0;
-const TOKEN_TTL_MS = 55 * 60 * 1000;
-
-async function getIdToken(): Promise<string> {
+/**
+ * Firebase **ID tokens** always expire (~1h). The SDK refreshes them using the long-lived
+ * refresh token when you call `getIdToken`. Do not cache the JWT string against a wall-clock
+ * TTL — that can return an expired token after the real `exp` has passed.
+ */
+export async function getIdToken(forceRefresh = false): Promise<string> {
   const user = auth().currentUser;
   if (!user) throw new Error('Not authenticated');
-  const now = Date.now();
-  if (_cachedToken && now < _tokenExpiresAt) return _cachedToken;
-  _cachedToken = await user.getIdToken(false);
-  _tokenExpiresAt = now + TOKEN_TTL_MS;
-  return _cachedToken;
+  return user.getIdToken(forceRefresh);
 }
 
+/** @deprecated Firebase holds token state; kept for call sites that clear after logout. */
 export function invalidateTokenCache(): void {
-  _cachedToken = null;
-  _tokenExpiresAt = 0;
+  /* no-op */
 }
 
 const FETCH_TIMEOUT_MS = 12_000;
 
-export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+let sessionExpiredPromise: Promise<void> | null = null;
+
+function scheduleResetToAuth(attempt = 0): void {
+  if (navigationRef.isReady()) {
+    resetToAuth();
+    return;
+  }
+  if (attempt < 30) {
+    setTimeout(() => scheduleResetToAuth(attempt + 1), 100);
+  }
+}
+
+async function handleSessionExpiredAndNavigate(): Promise<void> {
+  if (sessionExpiredPromise) {
+    await sessionExpiredPromise;
+    return;
+  }
+  sessionExpiredPromise = (async () => {
+    try {
+      const {socketService} = await import('../services/socketService');
+      socketService.disconnect();
+      await auth().signOut();
+      scheduleResetToAuth();
+    } catch {
+      scheduleResetToAuth();
+    }
+  })();
+  try {
+    await sessionExpiredPromise;
+  } finally {
+    sessionExpiredPromise = null;
+  }
+}
+
+function mergeAuthHeaders(init: RequestInit, token: string): RequestInit {
+  const h = new Headers(init.headers as ConstructorParameters<typeof Headers>[0]);
+  h.set('Authorization', `Bearer ${token}`);
+  if (!(init.body instanceof FormData) && !h.has('Content-Type')) {
+    h.set('Content-Type', 'application/json');
+  }
+  return {...init, headers: h};
+}
+
+/**
+ * Authenticated `fetch` with timeout, one 401 retry using a forced ID-token refresh,
+ * then sign-out + navigate to Auth if the session cannot be recovered.
+ */
+export async function authorizedFetch(fullUrl: string, init: RequestInit = {}): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const token = await getIdToken();
-    return await fetch(`${apiBase()}${path}`, {
-      ...init,
-      signal: ctrl.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...(init.headers as Record<string, string> | undefined),
-      },
-    });
+    let token = await getIdToken(false);
+    let res = await fetch(fullUrl, {...mergeAuthHeaders(init, token), signal: ctrl.signal});
+    if (res.status === 401) {
+      try {
+        token = await getIdToken(true);
+        res = await fetch(fullUrl, {...mergeAuthHeaders(init, token), signal: ctrl.signal});
+      } catch {
+        await handleSessionExpiredAndNavigate();
+        return res;
+      }
+      if (res.status === 401) {
+        await handleSessionExpiredAndNavigate();
+      }
+    }
+    return res;
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return authorizedFetch(`${apiBase()}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init.headers as Record<string, string> | undefined),
+    },
+  });
 }
 
 export type DbUser = {
@@ -186,7 +245,6 @@ export async function updateProfile(data: {
 }
 
 export async function uploadAvatar(localUri: string): Promise<{url: string}> {
-  const token = await getIdToken();
   const base = apiBase();
 
   const form = new FormData();
@@ -195,9 +253,8 @@ export async function uploadAvatar(localUri: string): Promise<{url: string}> {
   const mimeMap: Record<string, string> = {jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp'};
   form.append('avatar', {uri: localUri, type: mimeMap[ext] ?? 'image/jpeg', name: filename} as unknown as Blob);
 
-  const res = await fetch(`${base}/media/avatar`, {
+  const res = await authorizedFetch(`${base}/media/avatar`, {
     method: 'POST',
-    headers: {Authorization: `Bearer ${token}`},
     body: form,
   });
   if (!res.ok) {
