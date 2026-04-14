@@ -4,6 +4,7 @@ import {
   type FirebaseAuthedRequest,
 } from "../middleware/firebaseAuth.js";
 import { Notification } from "../models/Notification.js";
+import { emitNotificationUnreadForUser } from "../services/socketService.js";
 
 export const notificationsRouter = Router();
 
@@ -78,6 +79,7 @@ notificationsRouter.post(
         { recipientId: req.dbUser._id, read: false },
         { $set: { read: true } },
       );
+      void emitNotificationUnreadForUser(String(req.dbUser._id));
       return res.json({ ok: true });
     } catch {
       return res.json({ ok: true });
@@ -96,6 +98,7 @@ notificationsRouter.patch(
         { _id: req.params.id, recipientId: req.dbUser._id },
         { $set: { read: true } },
       );
+      void emitNotificationUnreadForUser(String(req.dbUser._id));
       return res.json({ ok: true });
     } catch {
       return res.json({ ok: true });

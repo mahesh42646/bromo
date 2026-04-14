@@ -7,6 +7,7 @@ import {
 import { Conversation } from "../models/Conversation.js";
 import { Message } from "../models/Message.js";
 import { User } from "../models/User.js";
+import { emitChatUnreadForUser } from "../services/socketService.js";
 
 export const chatRouter = Router();
 
@@ -118,6 +119,8 @@ chatRouter.get(
       conversation.unreadCounts = counts;
       await conversation.save();
 
+      void emitChatUnreadForUser(String(user._id));
+
       return res.json({
         messages: messages.reverse(),
         page,
@@ -178,6 +181,12 @@ chatRouter.post(
       conversation.lastMessageSenderId = user._id;
       conversation.unreadCounts = counts;
       await conversation.save();
+
+      for (const pid of conversation.participants) {
+        if (String(pid) !== String(user._id)) {
+          void emitChatUnreadForUser(String(pid));
+        }
+      }
 
       const populated = await Message.findById(message._id)
         .populate("senderId", USER_SELECT)
@@ -290,6 +299,8 @@ chatRouter.post(
       counts.set(String(user._id), 0);
       conversation.unreadCounts = counts;
       await conversation.save();
+
+      void emitChatUnreadForUser(String(user._id));
 
       return res.json({ ok: true });
     } catch (err) {

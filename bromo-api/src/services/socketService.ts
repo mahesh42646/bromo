@@ -1,8 +1,58 @@
 import {type Server as HttpServer} from "node:http";
+import mongoose from "mongoose";
 import {Server, type Socket} from "socket.io";
 import admin from "firebase-admin";
+import { User } from "../models/User.js";
+import { Notification } from "../models/Notification.js";
+import { Conversation } from "../models/Conversation.js";
 
 let io: Server | null = null;
+
+function sumConversationUnreadForUser(
+  conversations: Array<{ unreadCounts?: unknown }>,
+  sid: string,
+): number {
+  let total = 0;
+  for (const c of conversations) {
+    const raw = c.unreadCounts as Record<string, number> | Map<string, number> | undefined;
+    if (!raw) continue;
+    const n = raw instanceof Map ? raw.get(sid) : raw[sid];
+    total += Math.max(0, Number(n) || 0);
+  }
+  return total;
+}
+
+/** Recompute notification badge and push to the user's socket room (Mongo user id). */
+export async function emitNotificationUnreadForUser(recipientMongoId: string): Promise<void> {
+  if (!io || !mongoose.Types.ObjectId.isValid(recipientMongoId)) return;
+  try {
+    const count = await Notification.countDocuments({
+      recipientId: recipientMongoId,
+      read: false,
+    });
+    io.to(`user:${recipientMongoId}`).emit("notification:unread", { count });
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Recompute total DMs unread across conversations for one user. */
+export async function emitChatUnreadForUser(mongoUserId: string): Promise<void> {
+  if (!io || !mongoose.Types.ObjectId.isValid(mongoUserId)) return;
+  try {
+    const sid = String(mongoUserId);
+    const convs = await Conversation.find({
+      participants: new mongoose.Types.ObjectId(mongoUserId),
+      isActive: true,
+    })
+      .select("unreadCounts")
+      .lean();
+    const total = sumConversationUnreadForUser(convs, sid);
+    io.to(`user:${sid}`).emit("chat:unread", { total });
+  } catch {
+    /* ignore */
+  }
+}
 
 export function initSocketServer(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
@@ -17,7 +67,9 @@ export function initSocketServer(httpServer: HttpServer): Server {
     if (!token) return next(new Error("No auth token"));
     try {
       const decoded = await admin.auth().verifyIdToken(token);
-      socket.data.uid = decoded.uid;
+      socket.data.firebaseUid = decoded.uid;
+      const dbUser = await User.findOne({ firebaseUid: decoded.uid }).select("_id").lean();
+      socket.data.mongoUserId = dbUser ? String(dbUser._id) : null;
       next();
     } catch {
       next(new Error("Invalid token"));
@@ -25,8 +77,13 @@ export function initSocketServer(httpServer: HttpServer): Server {
   });
 
   io.on("connection", (socket: Socket) => {
-    const uid = socket.data.uid as string;
-    socket.join(`user:${uid}`);
+    const mongoId = socket.data.mongoUserId as string | null;
+    const firebaseUid = socket.data.firebaseUid as string;
+    if (mongoId) {
+      socket.join(`user:${mongoId}`);
+      void emitNotificationUnreadForUser(mongoId);
+      void emitChatUnreadForUser(mongoId);
+    }
 
     // Live room join/leave
     socket.on("live:join", ({streamId}: {streamId: string}) => {
@@ -48,14 +105,14 @@ export function initSocketServer(httpServer: HttpServer): Server {
     socket.on("live:send_comment", ({streamId, text}: {streamId: string; text: string}) => {
       io?.to(`live:${streamId}`).emit("live:comment", {
         streamId,
-        userId: uid,
+        userId: firebaseUid,
         text,
         createdAt: new Date().toISOString(),
       });
     });
 
     socket.on("live:send_like", ({streamId}: {streamId: string}) => {
-      io?.to(`live:${streamId}`).emit("live:like", {streamId, userId: uid});
+      io?.to(`live:${streamId}`).emit("live:like", {streamId, userId: firebaseUid});
     });
 
     socket.on("disconnect", () => {
@@ -95,7 +152,7 @@ export function emitLiveEnd(streamId: string): void {
   io?.emit("live:end", {streamId});
 }
 
-/** Send notification to a specific user */
+/** Send notification to a specific user (userId = MongoDB User id, matches socket room). */
 export function emitNotification(
   userId: string,
   type: string,

@@ -13,6 +13,10 @@ type SocketEvents = {
   'post:like': (data: {postId: string; likesCount: number; liked: boolean; userId: string}) => void;
   'post:comment': (data: {postId: string; commentsCount: number; comment: object}) => void;
   'post:delete': (data: {postId: string}) => void;
+  /** Accurate notification badge — prefer this over polling `/notifications/unread-count`. */
+  'notification:unread': (data: {count: number}) => void;
+  /** Total unread across all DM conversations for the current user. */
+  'chat:unread': (data: {total: number}) => void;
   'story:new': (data: {authorId: string}) => void;
   'live:start': (data: {streamId: string; userId: string; title: string; viewerCount: number}) => void;
   'live:end': (data: {streamId: string}) => void;

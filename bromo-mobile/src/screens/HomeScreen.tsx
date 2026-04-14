@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {ComponentType} from 'react';
 import {
   ActivityIndicator,
+  AppState,
   DeviceEventEmitter,
   FlatList,
   Image,
@@ -434,8 +435,9 @@ export function HomeScreen() {
   const [messagesUnread, setMessagesUnread] = useState(0);
   const {borderRadiusScale} = contract.brandGuidelines;
   const chipRadius = borderRadiusScale === 'bold' ? 999 : 12;
-  const brandIconUri = resolveMediaUrl(
-    contract.branding.faviconUrl || contract.branding.logoUrl,
+  const brandIconUri = useMemo(
+    () => resolveMediaUrl(contract.branding.faviconUrl || contract.branding.logoUrl),
+    [contract.branding.faviconUrl, contract.branding.logoUrl],
   );
 
   const [posts, setPosts] = useState<Post[]>([]);
@@ -444,6 +446,25 @@ export function HomeScreen() {
   const myStoryGroup = useMemo(
     () => (dbUser?._id ? storyGroups.find(g => g.author._id === dbUser._id) : undefined),
     [storyGroups, dbUser?._id],
+  );
+
+  const storyTrayEntries = useMemo(
+    () =>
+      storyGroups.map(group => {
+        const firstUnseen = group.stories.find(s => !s.seenByMe);
+        const preview = firstUnseen ?? group.stories[0];
+        const ringUri =
+          preview != null
+            ? preview.mediaType === 'video'
+              ? preview.thumbnailUrl || preview.mediaUrl
+              : preview.mediaUrl
+            : group.author.profilePicture ||
+              `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}`;
+        const ringUriResolved = resolveMediaUrl(ringUri) || ringUri;
+        const allSeen = group.stories.length > 0 && group.stories.every(s => s.seenByMe === true);
+        return {group, ringUriResolved, allSeen};
+      }),
+    [storyGroups],
   );
   const myStoriesAllSeen =
     myStoryGroup && myStoryGroup.stories.length > 0
@@ -579,10 +600,29 @@ export function HomeScreen() {
   useEffect(() => {
     if (!authReady) return;
     refreshHeaderCounts().catch(() => null);
-    const timer = setInterval(() => {
-      refreshHeaderCounts().catch(() => null);
-    }, 20000);
-    return () => clearInterval(timer);
+  }, [authReady, refreshHeaderCounts]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    const unsubNu = socketService.on('notification:unread', ({count}) => {
+      setNotificationUnread(count);
+    });
+    const unsubCu = socketService.on('chat:unread', ({total}) => {
+      setMessagesUnread(total);
+    });
+    return () => {
+      unsubNu();
+      unsubCu();
+    };
+  }, [authReady]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active' && authReady && !socketService.isConnected()) {
+        refreshHeaderCounts().catch(() => null);
+      }
+    });
+    return () => sub.remove();
   }, [authReady, refreshHeaderCounts]);
 
   // Real-time feed: listen for new posts, likes, story arrivals, and header counter updates
@@ -631,17 +671,13 @@ export function HomeScreen() {
         .then(s => setStoryGroups(s))
         .catch(() => null);
     });
-    const unsubNotification = socketService.on('notification', () => {
-      refreshHeaderCounts().catch(() => null);
-    });
-       return () => {
+    return () => {
       unsubLike();
       unsubDelete();
       unsubComment();
       unsubStory();
       unsubNew();
       unsubSeen.remove();
-      unsubNotification();
     };
   }, [refreshHeaderCounts, dbUser?._id]);
 
@@ -651,6 +687,10 @@ export function HomeScreen() {
   }, []);
 
   const myAvatar = dbUser?.profilePicture || undefined;
+  const myAvatarResolved = useMemo(
+    () => (myAvatar ? resolveMediaUrl(myAvatar) || myAvatar : undefined),
+    [myAvatar],
+  );
   const profileInitials = useMemo(() => {
     const source = (dbUser?.displayName || dbUser?.username || dbUser?.email || '').trim();
     if (!source) return '';
@@ -825,7 +865,7 @@ export function HomeScreen() {
                   backgroundColor: palette.muted,
                 }}>
                 {myAvatar ? (
-                  <Image source={{uri: myAvatar}} style={{width: 38, height: 38, borderRadius: 19}} />
+                  <Image source={{uri: myAvatarResolved || myAvatar}} style={{width: 38, height: 38, borderRadius: 19}} />
                 ) : (
                   <Text
                     style={{
@@ -930,7 +970,7 @@ export function HomeScreen() {
                     onPress={() => parentNavigate(navigation, 'CreateFlow', {mode: 'story'})}>
                     <View style={{position: 'relative'}}>
                       <StoryRing
-                        uri={myAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(dbUser?.displayName ?? 'You')}`}
+                        uri={myAvatarResolved || `https://ui-avatars.com/api/?name=${encodeURIComponent(dbUser?.displayName ?? 'You')}`}
                         size={58}
                         seen={myStoriesAllSeen}
                       />
@@ -948,34 +988,17 @@ export function HomeScreen() {
                   </Pressable>
 
                   {/* Following stories */}
-                  {storyGroups.map(group => {
-                    const firstUnseen = group.stories.find(s => !s.seenByMe);
-                    const preview = firstUnseen ?? group.stories[0];
-                    const ringUri =
-                      preview != null
-                        ? preview.mediaType === 'video'
-                          ? preview.thumbnailUrl || preview.mediaUrl
-                          : preview.mediaUrl
-                        : group.author.profilePicture ||
-                          `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}`;
-                    const allSeen =
-                      group.stories.length > 0 && group.stories.every(s => s.seenByMe === true);
-                    return (
+                  {storyTrayEntries.map(({group, ringUriResolved, allSeen}) => (
                     <Pressable
                       key={group.author._id}
                       style={{alignItems: 'center', gap: 5}}
                       onPress={() => parentNavigate(navigation, 'StoryView', {userId: group.author._id})}>
-                      <StoryRing
-                        uri={resolveMediaUrl(ringUri) || ringUri}
-                        size={60}
-                        seen={allSeen}
-                      />
+                      <StoryRing uri={ringUriResolved} size={60} seen={allSeen} />
                       <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>
                         {group.author.username}
                       </ThemedText>
                     </Pressable>
-                    );
-                  })}
+                  ))}
                 </ScrollView>
               );
             }

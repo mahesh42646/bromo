@@ -60,6 +60,10 @@ export async function createNotification(data: {
   }
   try {
     await Notification.create(data);
+    const rid = String(data.recipientId);
+    void import("../services/socketService.js").then(({ emitNotificationUnreadForUser }) =>
+      emitNotificationUnreadForUser(rid),
+    );
   } catch {
     // never block the caller
   }
