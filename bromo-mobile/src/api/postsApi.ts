@@ -60,6 +60,8 @@ export type Post = {
   createdAt: string;
   isDeleted?: boolean;
   deletedAt?: string;
+  /** Home feed bucket (post/reel). */
+  feedCategory?: string;
   /** Story-only: overlays and background color */
   storyMeta?: StoryMeta;
   /** Story tray: whether the current user has finished this segment (server). */
@@ -111,6 +113,12 @@ export type FeedResponse = {
   page: number;
   hasMore: boolean;
   nextCursor?: string | null;
+  tab?: string;
+  forYouPhase?: 'friends' | 'general';
+  hasMoreFriends?: boolean;
+  hasMoreGeneral?: boolean;
+  nextCursorFriends?: string | null;
+  nextCursorGeneral?: string | null;
 };
 
 export type CommentsResponse = {
@@ -119,10 +127,36 @@ export type CommentsResponse = {
   hasMore: boolean;
 };
 
-export async function getFeed(page = 1): Promise<FeedResponse> {
-  const res = await authedFetch(`/posts/feed?page=${page}`);
+function feedQuery(opts: {
+  tab?: string;
+  fyPhase?: 'friends' | 'general';
+  cf?: string | null;
+  cg?: string | null;
+  page?: number;
+}): string {
+  const q = new URLSearchParams();
+  if (opts.tab) q.set('tab', opts.tab);
+  if (opts.fyPhase) q.set('fyPhase', opts.fyPhase);
+  if (opts.cf) q.set('cf', opts.cf);
+  if (opts.cg) q.set('cg', opts.cg);
+  if (opts.page != null) q.set('page', String(opts.page));
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+export async function getFeed(
+  pageOrOpts: number | {tab?: string; fyPhase?: 'friends' | 'general'; cf?: string | null; cg?: string | null; page?: number} = 1,
+): Promise<FeedResponse> {
+  const opts = typeof pageOrOpts === 'number' ? {page: pageOrOpts} : pageOrOpts;
+  const res = await authedFetch(`/posts/feed${feedQuery(opts)}`);
   if (!res.ok) throw new Error('Failed to fetch feed');
   return res.json() as Promise<FeedResponse>;
+}
+
+export async function getTrendingReels(limit = 6): Promise<{posts: Post[]}> {
+  const res = await authedFetch(`/posts/trending-reels?limit=${limit}`);
+  if (!res.ok) throw new Error('Failed to fetch trending reels');
+  return res.json() as Promise<{posts: Post[]}>;
 }
 
 export async function getReels(page = 1): Promise<FeedResponse> {
@@ -188,6 +222,7 @@ export async function createPost(data: {
   music?: string;
   tags?: string[];
   storyMeta?: StoryMeta;
+  feedCategory?: string;
 }): Promise<{post: Post}> {
   const res = await authedFetch('/posts', {
     method: 'POST',
@@ -355,6 +390,7 @@ export async function uploadMediaAsync(
     location?: string;
     music?: string;
     tags?: string[];
+    feedCategory?: string;
   },
 ): Promise<{jobId: string; postId: string; thumbnailUrl?: string}> {
   if (!auth().currentUser) throw new Error('Not authenticated');
@@ -368,6 +404,7 @@ export async function uploadMediaAsync(
   if (meta.location) form.append('location', meta.location);
   if (meta.music) form.append('music', meta.music);
   if (meta.tags?.length) form.append('tags', meta.tags.join(','));
+  if (meta.feedCategory && meta.feedCategory !== 'general') form.append('feedCategory', meta.feedCategory);
 
   const res = await authorizedFetch(`${base}/media/upload-async?category=${encodeURIComponent(category)}`, {
     method: 'POST',

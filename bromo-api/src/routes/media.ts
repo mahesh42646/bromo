@@ -24,6 +24,7 @@ import {
   extFromOriginalName,
 } from "../utils/uploadPolicy.js";
 import { enqueueMediaJob } from "../workers/mediaWorker.js";
+import { normalizeFeedCategory } from "../utils/feedCategory.js";
 
 export const mediaRouter = Router();
 
@@ -193,6 +194,8 @@ mediaRouter.post(
 
     const storyExpiresAt =
       postType === "story" ? new Date(Date.now() + 24 * 60 * 60 * 1000) : undefined;
+    const feedCategory =
+      postType === "story" ? "general" : normalizeFeedCategory(body.feedCategory);
 
     // Create draft post — hidden until processingStatus === ready
     const draftPost = await Post.create({
@@ -205,6 +208,7 @@ mediaRouter.post(
       location,
       music,
       tags,
+      feedCategory,
       expiresAt: storyExpiresAt,
       processingStatus: "pending",
       isActive: false, // hidden from feeds until HLS ready

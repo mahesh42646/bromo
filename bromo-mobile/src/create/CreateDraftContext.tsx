@@ -17,6 +17,8 @@ import type {
 } from './createTypes';
 import {DEFAULT_ADJUSTMENTS, DEFAULT_ADVANCED} from './createTypes';
 
+export type FeedCategoryPreset = 'general' | 'politics' | 'sports' | 'shopping' | 'tech';
+
 type Draft = {
   mode: CreateMode;
   assets: MediaAsset[];
@@ -43,6 +45,9 @@ type Draft = {
   storyShareOffPlatform: boolean;
   liveAudience: 'everyone' | 'followers';
   liveTitle: string;
+  /** Post/reel home-feed bucket; manual input overrides preset when non-empty. */
+  feedCategoryPreset: FeedCategoryPreset;
+  feedCategoryManual: string;
 };
 
 const initialPoll: PollState = {
@@ -79,6 +84,8 @@ const initialDraft: Draft = {
   storyShareOffPlatform: false,
   liveAudience: 'everyone',
   liveTitle: '',
+  feedCategoryPreset: 'general',
+  feedCategoryManual: '',
 };
 
 type Ctx = {
@@ -111,6 +118,8 @@ type Ctx = {
   setAdvanced: (o: Partial<AdvancedPostOptions>) => void;
   setStoryOptions: (o: Partial<Pick<Draft, 'storyAllowReplies' | 'storyShareOffPlatform'>>) => void;
   setLiveMeta: (o: Partial<Pick<Draft, 'liveAudience' | 'liveTitle'>>) => void;
+  setFeedCategoryPreset: (p: FeedCategoryPreset) => void;
+  setFeedCategoryManual: (s: string) => void;
   reset: () => void;
 };
 
@@ -281,6 +290,14 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
     [],
   );
 
+  const setFeedCategoryPreset = useCallback((p: FeedCategoryPreset) => {
+    setDraft(d => ({...d, feedCategoryPreset: p, feedCategoryManual: ''}));
+  }, []);
+
+  const setFeedCategoryManual = useCallback((s: string) => {
+    setDraft(d => ({...d, feedCategoryManual: s}));
+  }, []);
+
   const value = useMemo<Ctx>(
     () => ({
       draft,
@@ -312,6 +329,8 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
       setAdvanced,
       setStoryOptions,
       setLiveMeta,
+      setFeedCategoryPreset,
+      setFeedCategoryManual,
       reset,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

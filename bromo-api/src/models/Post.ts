@@ -57,6 +57,8 @@ export interface PostDoc extends Document {
   processingError?: string;
   /** Reference to the MediaJob driving this post's transcode. */
   mediaJobId?: Types.ObjectId;
+  /** Home / explore bucket (post + reel). Default general. */
+  feedCategory: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -93,6 +95,7 @@ const postSchema = new Schema<PostDoc>(
     },
     processingError: { type: String },
     mediaJobId: { type: Schema.Types.ObjectId, ref: "MediaJob" },
+    feedCategory: { type: String, default: "general", index: true },
   },
   { timestamps: true },
 );
@@ -108,6 +111,8 @@ postSchema.index({ type: 1, isActive: 1, isDeleted: 1, authorId: 1, expiresAt: 1
 // Explore sort (viewsCount desc) + trending
 postSchema.index({ type: 1, isActive: 1, isDeleted: 1, viewsCount: -1, createdAt: -1 });
 postSchema.index({ trendingScore: -1, createdAt: -1 });
+postSchema.index({ feedCategory: 1, isActive: 1, isDeleted: 1, _id: -1 });
+postSchema.index({ type: 1, feedCategory: 1, trendingScore: -1, createdAt: -1 });
 postSchema.index({ mediaJobId: 1 }, { sparse: true });
 postSchema.index({ processingStatus: 1, authorId: 1 }, { sparse: true });
 

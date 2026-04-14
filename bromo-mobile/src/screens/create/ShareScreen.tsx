@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
@@ -33,7 +34,7 @@ import {
   Users,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import {useCreateDraft} from '../../create/CreateDraftContext';
+import {useCreateDraft, type FeedCategoryPreset} from '../../create/CreateDraftContext';
 import {FILTER_LAYERS} from '../../create/filterStyles';
 import type {Visibility} from '../../create/createTypes';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
@@ -46,10 +47,36 @@ const {width: W} = Dimensions.get('window');
 
 type SharePhase = 'review' | 'posting' | 'processing' | 'done';
 
+const FEED_CATEGORY_CHIPS: Array<{preset: FeedCategoryPreset; label: string}> = [
+  {preset: 'general', label: 'General'},
+  {preset: 'politics', label: 'Politics'},
+  {preset: 'sports', label: 'Sports'},
+  {preset: 'shopping', label: 'Shopping'},
+  {preset: 'tech', label: 'Tech'},
+];
+
+function slugFeedCategory(manual: string, preset: string): string {
+  const t = manual
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .slice(0, 48);
+  return t || preset;
+}
+
 export function ShareScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
-  const {draft, setVisibility, setStoryOptions, votePoll, reset} = useCreateDraft();
+  const {
+    draft,
+    setVisibility,
+    setStoryOptions,
+    votePoll,
+    reset,
+    setFeedCategoryPreset,
+    setFeedCategoryManual,
+  } = useCreateDraft();
 
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<SharePhase>('review');
@@ -94,6 +121,10 @@ export function ShareScreen() {
       const uploadCategory: 'reels' | 'stories' | 'posts' =
         draft.mode === 'reel' ? 'reels' : draft.mode === 'story' ? 'stories' : 'posts';
       const caption = [draft.caption, ...draft.hashtags].filter(Boolean).join(' ') || undefined;
+      const feedCategory =
+        draft.mode === 'story'
+          ? undefined
+          : slugFeedCategory(draft.feedCategoryManual, draft.feedCategoryPreset);
 
       // Use async pipeline for video reels/stories/posts — server does HLS transcode in background
       const useAsync = asset.type === 'video' && (draft.mode === 'reel' || draft.mode === 'story' || draft.mode === 'post');
@@ -108,6 +139,7 @@ export function ShareScreen() {
           location: draft.location?.name,
           music: draft.selectedAudio?.title,
           tags: draft.tagged.map(t => t.username),
+          feedCategory,
         });
         setPhase('processing');
       } else {
@@ -128,6 +160,7 @@ export function ShareScreen() {
           location: draft.location?.name,
           music: draft.selectedAudio?.title,
           tags: draft.tagged.map(t => t.username),
+          ...(postType !== 'story' && feedCategory ? {feedCategory} : {}),
         });
         setPhase('done');
       }
@@ -374,6 +407,59 @@ export function ShareScreen() {
             </View>
           )}
         </View>
+
+        {/* Feed category (posts & reels) */}
+        {(draft.mode === 'post' || draft.mode === 'reel') && (
+          <>
+            <Text style={[styles.section, {color: palette.foreground}]}>Feed category</Text>
+            <Text style={{fontSize: 12, marginBottom: 8, paddingHorizontal: 16, color: palette.foregroundMuted}}>
+              Default is General. Pick a topic or type a custom label.
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{paddingHorizontal: 16, gap: 8, paddingBottom: 8}}>
+              {FEED_CATEGORY_CHIPS.map(c => {
+                const on =
+                  draft.feedCategoryManual.trim() === '' && draft.feedCategoryPreset === c.preset;
+                return (
+                  <Pressable
+                    key={c.preset}
+                    onPress={() => setFeedCategoryPreset(c.preset)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: on ? palette.accent : palette.border,
+                      backgroundColor: on ? palette.accent : palette.surface,
+                    }}>
+                    <Text style={{fontSize: 12, fontWeight: '700', color: on ? palette.accentForeground : palette.foreground}}>
+                      {c.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={{paddingHorizontal: 16, marginBottom: 12}}>
+              <TextInput
+                value={draft.feedCategoryManual}
+                onChangeText={setFeedCategoryManual}
+                placeholder="Custom category (optional)"
+                placeholderTextColor={palette.foregroundMuted}
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: palette.foreground,
+                  backgroundColor: palette.input,
+                }}
+              />
+            </View>
+          </>
+        )}
 
         {/* Visibility */}
         <Text style={[styles.section, {color: palette.foreground}]}>Visibility</Text>

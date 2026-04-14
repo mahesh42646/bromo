@@ -33,6 +33,7 @@ import {
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
 import { enqueueMediaJob } from "../workers/mediaWorker.js";
 import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
+import { normalizeFeedCategory } from "../utils/feedCategory.js";
 
 export const postsRouter = Router();
 
@@ -59,6 +60,12 @@ function recomputeTrending(postId: string): void {
 
 const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
 const PAGE_SIZE = 20;
+const TRENDING_WINDOW_MS = 48 * 3600 * 1000;
+const FEED_TOPIC_TABS = new Set(["politics", "sports", "shopping", "tech"]);
+const FEED_TYPES = { type: { $in: ["post", "reel"] } } as const;
+const GENERAL_CATEGORY_CLAUSE = {
+  $or: [{ feedCategory: "general" }, { feedCategory: { $exists: false } }, { feedCategory: "" }],
+} as const;
 
 /** Public listings: active, not soft-deleted, and not still processing. */
 const VISIBLE_POST = {
@@ -102,11 +109,15 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
     typeof p.hlsMasterUrl === "string" && p.hlsMasterUrl.trim()
       ? rewritePublicMediaUrl(p.hlsMasterUrl)
       : undefined;
+  const rawFc = (p as { feedCategory?: unknown }).feedCategory;
+  const feedCategory =
+    typeof rawFc === "string" && rawFc.trim() ? rawFc.trim() : "general";
   return {
     ...p,
     mediaUrl,
     thumbnailUrl,
     hlsMasterUrl,
+    feedCategory,
     likesCount: Number(p.likesCount) || 0,
     commentsCount: Number(p.commentsCount) || 0,
     viewsCount: Number(p.viewsCount) || 0,
@@ -131,55 +142,157 @@ postsRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const dbUser = req.dbUser;
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const cursor = req.query.cursor as string | undefined;
-      const skip = cursor ? 0 : (page - 1) * PAGE_SIZE;
-
-      // Fetch following list in parallel with nothing yet — resolved immediately
-      let followingIds: mongoose.Types.ObjectId[] = [];
-      if (dbUser) {
-        const follows = await Follow.find({ followerId: dbUser._id, status: "accepted" })
-          .select("followingId")
-          .lean();
-        followingIds = follows.map((f) => f.followingId);
+      const tabRaw = String(req.query.tab ?? "for-you").toLowerCase();
+      let tab = tabRaw === "home" ? "for-you" : tabRaw;
+      if (tab !== "for-you" && tab !== "trending" && !FEED_TOPIC_TABS.has(tab)) {
+        tab = "for-you";
       }
 
-      // When the user follows nobody yet, fall back to explore (public posts),
-      // so the feed is never empty on first open.
+      const follows = dbUser
+        ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
+        : [];
+      const followingIds = follows.map((f) => f.followingId);
       const hasFollows = followingIds.length > 0;
-      const feedTypes = { type: { $in: ["post", "reel"] } } as const;
-      const baseQuery = dbUser && hasFollows
-        ? { authorId: { $in: [...followingIds, dbUser._id] }, ...feedTypes, ...VISIBLE_POST }
-        : { ...feedTypes, ...VISIBLE_POST };
 
-      const query = cursor
-        ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
-        : baseQuery;
-
-      // Run posts query + likes query in parallel
-      const [posts, likes] = await Promise.all([
-        Post.find(query)
-          .sort({ _id: -1 })
-          .skip(cursor ? 0 : skip)
-          .limit(PAGE_SIZE)
-          .populate("authorId", AUTHOR_SELECT)
-          .lean(),
-        dbUser
-          ? Like.find({ userId: dbUser._id, targetType: "post" })
-              .select("targetId")
-              .lean()
-          : Promise.resolve([]),
-      ]);
-
+      const likes = dbUser
+        ? await Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean()
+        : [];
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
       const followingSet = new Set(followingIds.map(String));
-      const result = posts.map((p) =>
-        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
-      );
-      const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
+
+      const mapPosts = (posts: Record<string, unknown>[]) =>
+        posts.map((p) =>
+          normalizePost(p, likedSet, followingSet, String(dbUser?._id)),
+        );
 
       res.setHeader("Cache-Control", "private, no-store");
-      return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE, nextCursor });
+
+      if (tab === "for-you") {
+        const fyPhaseRaw = String(req.query.fyPhase ?? "friends").toLowerCase();
+        const fyPhase = fyPhaseRaw === "general" ? "general" : "friends";
+        const cf = req.query.cf as string | undefined;
+        const cg = req.query.cg as string | undefined;
+
+        const wantFriends = fyPhase === "friends" && hasFollows && dbUser;
+
+        if (wantFriends) {
+          const baseQuery = {
+            authorId: { $in: [...followingIds, dbUser._id] },
+            ...FEED_TYPES,
+            ...VISIBLE_POST,
+          };
+          const query =
+            cf && mongoose.Types.ObjectId.isValid(cf)
+              ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cf) } }
+              : baseQuery;
+
+          const posts = await Post.find(query)
+            .sort({ _id: -1 })
+            .limit(PAGE_SIZE)
+            .populate("authorId", AUTHOR_SELECT)
+            .lean();
+
+          const hasMoreFriends = posts.length === PAGE_SIZE;
+          const nextCursorFriends = hasMoreFriends ? String(posts[posts.length - 1]._id) : null;
+
+          return res.json({
+            posts: mapPosts(posts as unknown as Record<string, unknown>[]),
+            tab: "for-you",
+            forYouPhase: "friends",
+            hasMoreFriends,
+            hasMoreGeneral: true,
+            nextCursorFriends,
+            nextCursorGeneral: null,
+            page: 1,
+          });
+        }
+
+        const excludeAuthors =
+          hasFollows && dbUser ? [...followingIds, dbUser._id] : dbUser ? [dbUser._id] : [];
+
+        const genBase: Record<string, unknown> = {
+          ...FEED_TYPES,
+          ...VISIBLE_POST,
+          ...GENERAL_CATEGORY_CLAUSE,
+        };
+        if (excludeAuthors.length) {
+          genBase.authorId = { $nin: excludeAuthors };
+        }
+
+        const gQuery =
+          cg && mongoose.Types.ObjectId.isValid(cg)
+            ? { ...genBase, _id: { $lt: new mongoose.Types.ObjectId(cg) } }
+            : genBase;
+
+        const posts = await Post.find(gQuery)
+          .sort({ _id: -1 })
+          .limit(PAGE_SIZE)
+          .populate("authorId", AUTHOR_SELECT)
+          .lean();
+
+        const hasMoreGeneral = posts.length === PAGE_SIZE;
+        const nextCursorGeneral = hasMoreGeneral ? String(posts[posts.length - 1]._id) : null;
+
+        return res.json({
+          posts: mapPosts(posts as unknown as Record<string, unknown>[]),
+          tab: "for-you",
+          forYouPhase: "general",
+          hasMoreFriends: false,
+          hasMoreGeneral,
+          nextCursorFriends: null,
+          nextCursorGeneral,
+          page: 1,
+        });
+      }
+
+      if (tab === "trending") {
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const skip = (page - 1) * PAGE_SIZE;
+        const since = new Date(Date.now() - TRENDING_WINDOW_MS);
+
+        const posts = await Post.find({
+          ...FEED_TYPES,
+          ...VISIBLE_POST,
+          createdAt: { $gte: since },
+        })
+          .sort({ trendingScore: -1, _id: -1 })
+          .skip(skip)
+          .limit(PAGE_SIZE)
+          .populate("authorId", AUTHOR_SELECT)
+          .lean();
+
+        return res.json({
+          posts: mapPosts(posts as unknown as Record<string, unknown>[]),
+          tab: "trending",
+          page,
+          hasMore: posts.length === PAGE_SIZE,
+        });
+      }
+
+      if (FEED_TOPIC_TABS.has(tab)) {
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const skip = (page - 1) * PAGE_SIZE;
+
+        const posts = await Post.find({
+          ...FEED_TYPES,
+          ...VISIBLE_POST,
+          feedCategory: tab,
+        })
+          .sort({ _id: -1 })
+          .skip(skip)
+          .limit(PAGE_SIZE)
+          .populate("authorId", AUTHOR_SELECT)
+          .lean();
+
+        return res.json({
+          posts: mapPosts(posts as unknown as Record<string, unknown>[]),
+          tab,
+          page,
+          hasMore: posts.length === PAGE_SIZE,
+        });
+      }
+
+      return res.status(500).json({ message: "Feed tab handler missing" });
     } catch (err) {
       console.error("[posts] feed error:", err);
       return res.status(500).json({ message: "Failed to fetch feed" });
@@ -280,6 +393,50 @@ postsRouter.get(
     } catch (err) {
       console.error("[posts] explore error:", err);
       return res.status(500).json({ message: "Failed to fetch explore" });
+    }
+  },
+);
+
+// ── GET /posts/trending-reels ───────────────────────────────────────
+postsRouter.get(
+  "/trending-reels",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const dbUser = req.dbUser;
+      const limit = Math.min(20, Math.max(1, parseInt(req.query.limit as string) || 6));
+      const since = new Date(Date.now() - TRENDING_WINDOW_MS);
+
+      const follows = dbUser
+        ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
+        : [];
+      const followingIds = follows.map((f) => f.followingId);
+      const followingSet = new Set(followingIds.map(String));
+
+      const likeRows = dbUser
+        ? await Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean()
+        : [];
+      const likedSet = new Set(likeRows.map((l) => String(l.targetId)));
+
+      const posts = await Post.find({
+        type: "reel" as const,
+        ...VISIBLE_POST,
+        createdAt: { $gte: since },
+      })
+        .sort({ trendingScore: -1, _id: -1 })
+        .limit(limit)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean();
+
+      const result = posts.map((p) =>
+        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+      );
+
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.json({ posts: result });
+    } catch (err) {
+      console.error("[posts] trending-reels error:", err);
+      return res.status(500).json({ message: "Failed to fetch trending reels" });
     }
   },
 );
@@ -639,7 +796,18 @@ postsRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
-      const { type, mediaUrl, thumbnailUrl, mediaType, caption, location, music, tags, storyMeta } = req.body as {
+      const {
+        type,
+        mediaUrl,
+        thumbnailUrl,
+        mediaType,
+        caption,
+        location,
+        music,
+        tags,
+        storyMeta,
+        feedCategory: feedCategoryRaw,
+      } = req.body as {
         type: "post" | "reel" | "story";
         mediaUrl: string;
         thumbnailUrl?: string;
@@ -649,6 +817,7 @@ postsRouter.post(
         music?: string;
         tags?: string[];
         storyMeta?: { bgColor?: string; overlays?: unknown[] };
+        feedCategory?: string;
       };
 
       // For color-background stories, mediaUrl may be the sentinel "color-bg"
@@ -665,6 +834,8 @@ postsRouter.post(
       }
 
       const expiresAt = type === "story" ? new Date(Date.now() + 24 * 60 * 60 * 1000) : undefined;
+      const feedCategory =
+        type === "story" ? "general" : normalizeFeedCategory(feedCategoryRaw);
 
       const post = await Post.create({
         authorId: user._id,
@@ -678,6 +849,7 @@ postsRouter.post(
         tags: tags ?? [],
         expiresAt,
         isDeleted: false,
+        feedCategory,
         ...(type === "story" && storyMeta ? { storyMeta } : {}),
       });
 

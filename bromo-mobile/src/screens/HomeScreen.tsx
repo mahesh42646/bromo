@@ -34,6 +34,7 @@ import {
   MoreHorizontal,
   Music2,
   MapPin,
+  Play,
   Plus,
   Search,
   Send,
@@ -58,7 +59,7 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
-import {getFeed, getExplore, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
+import {getFeed, getTrendingReels, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
 import {fetchAds, type Ad} from '../api/adsApi';
 import {AdCard} from '../components/AdCard';
 import {clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped} from '../lib/storiesFeedCache';
@@ -77,31 +78,6 @@ const CATEGORIES: {id: string; label: string; Icon: IconComp}[] = [
   {id: 'shopping', label: 'Shopping', Icon: ShoppingBag},
   {id: 'tech', label: 'Tech', Icon: Laptop},
 ];
-
-function filterPostsByCategory(posts: Post[], category: string): Post[] {
-  if (category === 'home' || category === 'trending') return posts;
-  const keywordMap: Record<string, string[]> = {
-    politics: ['politic', 'election', 'government', 'policy', 'vote', 'parliament'],
-    sports: ['sport', 'match', 'game', 'football', 'cricket', 'basketball', 'tournament'],
-    shopping: ['shop', 'shopping', 'deal', 'offer', 'sale', 'product', 'buy'],
-    tech: ['tech', 'ai', 'startup', 'software', 'app', 'device', 'gadget'],
-  };
-  const keys = keywordMap[category];
-  if (!keys) return posts;
-  return posts.filter(post => {
-    const bag = [
-      post.caption,
-      post.location,
-      post.music,
-      post.author.username,
-      post.author.displayName,
-      ...(post.tags ?? []),
-    ]
-      .join(' ')
-      .toLowerCase();
-    return keys.some(k => bag.includes(k));
-  });
-}
 
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -474,12 +450,17 @@ export function HomeScreen() {
       ? myStoryGroup.stories.every(s => s.seenByMe === true)
       : false;
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+  const [trendingReels, setTrendingReels] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [page, setPage] = useState(1);
+  const topicPageRef = useRef(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const initialLoadDone = useRef(false);
+  const forYouPhaseRef = useRef<'friends' | 'general'>('friends');
+  const cfRef = useRef<string | null>(null);
+  const cgRef = useRef<string | null>(null);
+  const activeCategoryRef = useRef(activeCategory);
   /** ID of the currently-visible video post (only this one autoplays). */
   const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
 
@@ -487,6 +468,10 @@ export function HomeScreen() {
     itemVisiblePercentThreshold: 60,
     minimumViewTime: 200,
   }).current;
+
+  useEffect(() => {
+    activeCategoryRef.current = activeCategory;
+  }, [activeCategory]);
 
   const onFeedViewableItemsChanged = useRef(({viewableItems}: {viewableItems: ViewToken[]}) => {
     // Find the first viewable item that is a video post
@@ -504,31 +489,106 @@ export function HomeScreen() {
 
   const loadData = useCallback(async (reset = false) => {
     try {
-      const p = reset ? 1 : page;
-      const feedFetcher = activeCategory === 'trending' ? getExplore : getFeed;
-      const [feedRes, storiesRes, suggestionsRes, adsRes] = await Promise.all([
-        feedFetcher(p),
+      const cat = activeCategory;
+      const isHome = cat === 'home';
+
+      if (reset && isHome) {
+        forYouPhaseRef.current = 'friends';
+        cfRef.current = null;
+        cgRef.current = null;
+      }
+
+      const [storiesRes, suggestionsRes, adsRes, trendingRes] = await Promise.all([
         reset ? loadStoriesFeedDeduped() : Promise.resolve(null),
         reset ? getUserSuggestions(6) : Promise.resolve(null),
         reset ? fetchAds('feed', 5) : Promise.resolve(null),
+        reset && isHome ? getTrendingReels(6).catch(() => ({posts: [] as Post[]})) : Promise.resolve(null),
       ]);
-      const filteredPosts = filterPostsByCategory(feedRes.posts, activeCategory);
 
       if (reset) {
-        setPosts(filteredPosts);
         if (storiesRes) setStoryGroups(storiesRes);
         if (suggestionsRes) setSuggestions(suggestionsRes.users);
         if (adsRes) setFeedAds(adsRes);
-        setPage(2);
-      } else {
-        setPosts(prev => [...prev, ...filteredPosts]);
-        setPage(p + 1);
+        if (isHome) {
+          if (
+            trendingRes != null &&
+            typeof trendingRes === 'object' &&
+            Array.isArray((trendingRes as {posts?: Post[]}).posts)
+          ) {
+            setTrendingReels((trendingRes as {posts: Post[]}).posts);
+          } else {
+            setTrendingReels([]);
+          }
+        } else {
+          setTrendingReels([]);
+        }
       }
-      setHasMore(feedRes.hasMore);
+
+      if (isHome) {
+        let res = await getFeed({
+          tab: 'for-you',
+          fyPhase: forYouPhaseRef.current,
+          cf: forYouPhaseRef.current === 'friends' ? cfRef.current : undefined,
+          cg: forYouPhaseRef.current === 'general' ? cgRef.current : undefined,
+        });
+
+        if (res.forYouPhase === 'friends' && res.hasMoreFriends === false) {
+          forYouPhaseRef.current = 'general';
+          cfRef.current = null;
+          cgRef.current = null;
+          const extra = await getFeed({
+            tab: 'for-you',
+            fyPhase: 'general',
+            cg: undefined,
+          });
+          res = {
+            ...extra,
+            posts: [...res.posts, ...extra.posts],
+            forYouPhase: 'general',
+            hasMoreFriends: false,
+            hasMoreGeneral: extra.hasMoreGeneral,
+            nextCursorGeneral: extra.nextCursorGeneral,
+          };
+        }
+
+        if (res.forYouPhase === 'friends') {
+          forYouPhaseRef.current = 'friends';
+          if (res.nextCursorFriends) cfRef.current = res.nextCursorFriends;
+        } else {
+          forYouPhaseRef.current = 'general';
+          cgRef.current = res.nextCursorGeneral ?? null;
+        }
+
+        const mergedPosts = res.posts;
+        if (reset) {
+          setPosts(mergedPosts);
+        } else {
+          setPosts(prev => [...prev, ...mergedPosts]);
+        }
+
+        const more =
+          res.forYouPhase === 'friends'
+            ? Boolean(res.hasMoreFriends || res.hasMoreGeneral)
+            : Boolean(res.hasMoreGeneral);
+        setHasMore(more);
+      } else {
+        const tab = cat === 'trending' ? 'trending' : cat;
+        if (reset) topicPageRef.current = 1;
+        const p = topicPageRef.current;
+        const res = await getFeed({tab, page: p});
+        if (reset) {
+          setPosts(res.posts);
+          topicPageRef.current = 2;
+        } else {
+          setPosts(prev => [...prev, ...res.posts]);
+          topicPageRef.current += 1;
+        }
+        setHasMore(res.hasMore ?? false);
+      }
     } catch (err) {
       console.error('[HomeScreen] loadData error:', err);
     }
-  }, [page, activeCategory]);
+  }, [activeCategory]);
 
   // Wait for Firebase auth to restore session before hitting the API.
   useEffect(() => {
@@ -653,6 +713,9 @@ export function HomeScreen() {
     });
     const unsubNew = socketService.on('post:new', p => {
       if (p.type === 'story') return;
+      const cat = activeCategoryRef.current;
+      if (cat === 'trending') return;
+      if (['politics', 'sports', 'shopping', 'tech'].includes(cat) && p.feedCategory !== cat) return;
       const myId = dbUser?._id;
       const aid = p.author?._id;
       const isSelf = Boolean(myId && aid && String(aid) === String(myId));
@@ -667,6 +730,7 @@ export function HomeScreen() {
         sharesCount: p.sharesCount ?? 0,
         avgWatchTimeMs: p.avgWatchTimeMs ?? 0,
         trendingScore: p.trendingScore ?? 0,
+        feedCategory: p.feedCategory ?? 'general',
       };
       setPosts(prev => (prev.some(x => x._id === enriched._id) ? prev : [enriched, ...prev]));
     });
@@ -709,10 +773,14 @@ export function HomeScreen() {
     | {kind: 'post'; post: Post; key: string}
     | {kind: 'suggestions'; key: string}
     | {kind: 'stories'; key: string}
+    | {kind: 'trendingReels'; key: string}
     | {kind: 'ad'; ad: Ad; key: string};
 
   const feedItems: FeedItem[] = [];
   feedItems.push({kind: 'stories', key: 'stories'});
+  if (activeCategory === 'home' && trendingReels.length > 0) {
+    feedItems.push({kind: 'trendingReels', key: 'trending-reels'});
+  }
   posts.forEach((p, i) => {
     feedItems.push({kind: 'post', post: p, key: p._id});
     if (i === 0 && suggestions.length > 0) {
@@ -1023,6 +1091,69 @@ export function HomeScreen() {
                     </Pressable>
                   ))}
                 </ScrollView>
+              );
+            }
+
+            if (item.kind === 'trendingReels') {
+              return (
+                <View style={{borderBottomWidth: 1, borderBottomColor: palette.border, paddingBottom: 14}}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingHorizontal: 14,
+                      paddingTop: 10,
+                      paddingBottom: 10,
+                    }}>
+                    <ThemedText variant="heading" style={{fontSize: 15, fontWeight: '800'}}>
+                      Trending Reels
+                    </ThemedText>
+                    <Pressable onPress={() => parentNavigate(navigation, 'Reels')} hitSlop={8}>
+                      <Text style={{color: palette.primary, fontWeight: '800', fontSize: 12}}>SEE MORE</Text>
+                    </Pressable>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{paddingHorizontal: 14, gap: 10}}>
+                    {trendingReels.map(reel => {
+                      const thumb = postThumbnailUri(reel);
+                      return (
+                        <Pressable
+                          key={reel._id}
+                          onPress={() => parentNavigate(navigation, 'PostDetail', {postId: reel._id})}
+                          style={{width: 118}}>
+                          <View style={{position: 'relative', borderRadius: 16, overflow: 'hidden', backgroundColor: palette.surface}}>
+                            <Image
+                              source={{uri: thumb}}
+                              style={{width: '100%', aspectRatio: 9 / 16, backgroundColor: palette.muted}}
+                              resizeMode="cover"
+                            />
+                            <View
+                              style={{
+                                position: 'absolute',
+                                left: 8,
+                                bottom: 8,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                                backgroundColor: 'rgba(0,0,0,0.55)',
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 8,
+                              }}>
+                              <Play size={12} color="#fff" />
+                              <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>
+                                {formatCount(reel.viewsCount)} VIEWS
+                              </Text>
+                            </View>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
               );
             }
 
