@@ -50,7 +50,14 @@ export async function createNotification(data: {
   postId?: string | Types.ObjectId;
   message: string;
 }): Promise<void> {
-  if (data.type !== "milestone" && String(data.recipientId) === String(data.actorId)) return;
+  /** Self-notifications are allowed for milestones and upload pipeline (`media_ready`). */
+  if (
+    data.type !== "milestone" &&
+    data.type !== "media_ready" &&
+    String(data.recipientId) === String(data.actorId)
+  ) {
+    return;
+  }
   try {
     await Notification.create(data);
   } catch {

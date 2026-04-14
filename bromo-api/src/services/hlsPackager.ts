@@ -62,6 +62,58 @@ export function displaySizeForRung(sourceW: number, sourceH: number, rungH: numb
   return { w, h };
 }
 
+/**
+ * Parse ffmpeg -i stderr for the first video stream.
+ * Resolution often appears *after* pixel-format commas, e.g.
+ * `Video: h264 (...), yuv420p(...), 1080x1920` — a naive `codec, WxH` regex fails.
+ */
+function parseVideoStreamFromStderr(stderr: string): {
+  width: number;
+  height: number;
+  videoCodec: string;
+  fps: number;
+} {
+  let width = 0;
+  let height = 0;
+  let videoCodec = "h264";
+  let fps = 30;
+
+  const lineRe =
+    /Stream\s+#\d+:\d+(?:\[[^\]]+])?(?:\([^)]*\))?:\s*Video:\s*([^\n]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = lineRe.exec(stderr)) !== null) {
+    const rest = m[1].trim();
+    const codecM = rest.match(/^([a-zA-Z0-9_-]+)/);
+    if (codecM) videoCodec = codecM[1].toLowerCase();
+
+    const dimMatches = [...rest.matchAll(/\b(\d{2,})x(\d{2,})\b/g)];
+    for (const d of dimMatches) {
+      const w = Number(d[1]);
+      const h = Number(d[2]);
+      if (w >= 16 && h >= 16 && w <= 8192 && h <= 8192) {
+        width = w;
+        height = h;
+        break;
+      }
+    }
+
+    const fpsLocal = rest.match(/(\d+(?:\.\d+)?)\s*(?:fps|tbr)\b/i);
+    if (fpsLocal) fps = Math.min(Number(fpsLocal[1]), 30);
+
+    if (width > 0 && height > 0) break;
+  }
+
+  if (width === 0 || height === 0) {
+    const loose = stderr.match(/\b(\d{2,})x(\d{2,})\b/);
+    if (loose) {
+      width = Number(loose[1]);
+      height = Number(loose[2]);
+    }
+  }
+
+  return { width, height, videoCodec, fps };
+}
+
 /** Probe source file to get resolution, fps, duration. */
 export function probeSource(absPath: string): ProbeResult {
   const bin = bundledFfmpegPath;
@@ -80,14 +132,7 @@ export function probeSource(absPath: string): ProbeResult {
   const durM = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
   const durationSec = durM ? Number(durM[1]) * 3600 + Number(durM[2]) * 60 + Number(durM[3]) : 0;
 
-  const vidM = stderr.match(/Stream.*Video:\s*([a-zA-Z0-9_]+)[^,]*, (\d+)x(\d+)/);
-  const width = vidM ? Number(vidM[2]) : 0;
-  const height = vidM ? Number(vidM[3]) : 0;
-  const videoCodec = vidM ? vidM[1].toLowerCase() : "h264";
-
-  const fpsM = stderr.match(/(\d+(?:\.\d+)?)\s+(?:fps|tbr)/);
-  const fps = fpsM ? Math.min(Number(fpsM[1]), 30) : 30;
-
+  const { width, height, videoCodec, fps } = parseVideoStreamFromStderr(stderr);
   const hasAudio = /Stream.*Audio:/i.test(stderr);
 
   return { width, height, durationSec, fps, hasAudio, videoCodec };
