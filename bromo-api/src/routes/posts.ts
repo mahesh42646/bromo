@@ -138,7 +138,15 @@ function splicePromotedIntoFeed(
   const allPosts = [...organicMapped];
   if (promoted[0]) allPosts.splice(Math.min(3, allPosts.length), 0, promoted[0]);
   if (promoted[1]) allPosts.splice(Math.min(9, allPosts.length), 0, promoted[1]);
-  return allPosts;
+  const deduped: Record<string, unknown>[] = [];
+  const ids = new Set<string>();
+  for (const row of allPosts) {
+    const id = String((row as { _id?: unknown })._id ?? "");
+    if (!id || ids.has(id)) continue;
+    ids.add(id);
+    deduped.push(row);
+  }
+  return deduped;
 }
 
 /** Story tray rings from active promotions (non-followed advertisers only). */
@@ -448,6 +456,24 @@ postsRouter.get(
         const cf = req.query.cf as string | undefined;
         const cg = req.query.cg as string | undefined;
 
+        // No follows: home still uses "friends" phase but only surfaces promoted content (no organic stranger posts).
+        if (fyPhase === "friends" && dbUser && !hasFollows) {
+          const promotedRaw = await getPromotedPostDocs([dbUser._id], ["feed", "explore"], 8);
+          const onlyPromoted = promotedRaw.map((p) =>
+            normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
+          );
+          return res.json({
+            posts: onlyPromoted,
+            tab: "for-you",
+            forYouPhase: "friends",
+            hasMoreFriends: false,
+            hasMoreGeneral: false,
+            nextCursorFriends: null,
+            nextCursorGeneral: null,
+            page: 1,
+          });
+        }
+
         const wantFriends = fyPhase === "friends" && hasFollows && dbUser;
 
         if (wantFriends) {
@@ -489,7 +515,8 @@ postsRouter.get(
             tab: "for-you",
             forYouPhase: "friends",
             hasMoreFriends,
-            hasMoreGeneral: true,
+            // Do not imply a blended "general" discover tail on home — client should not chain-fetch stranger posts.
+            hasMoreGeneral: false,
             nextCursorFriends,
             nextCursorGeneral: null,
             page: 1,
@@ -499,37 +526,18 @@ postsRouter.get(
         const excludeAuthors =
           hasFollows && dbUser ? [...followingIds, dbUser._id] : dbUser ? [dbUser._id] : [];
 
-        const genBase: Record<string, unknown> = {
-          ...FEED_TYPES,
-          ...VISIBLE_POST,
-          ...GENERAL_CATEGORY_CLAUSE,
-          ...DISCOVER_PUBLIC_POST,
-        };
-        if (excludeAuthors.length) {
-          genBase.authorId = { $nin: excludeAuthors };
-        }
+        // For-you "general" is deprecated for the home firehose: no organic stranger wall posts here (use /posts/explore).
+        // Only promoted injections reach non-followers on this tab.
+        const posts: Array<Record<string, unknown>> = [];
+        const hasMoreGeneral = false;
+        const nextCursorGeneral = null;
 
-        const gQuery =
-          cg && mongoose.Types.ObjectId.isValid(cg)
-            ? { ...genBase, _id: { $lt: new mongoose.Types.ObjectId(cg) } }
-            : genBase;
-
-        const posts = await Post.find(gQuery)
-          .sort({ _id: -1 })
-          .limit(PAGE_SIZE)
-          .populate("authorId", AUTHOR_SELECT)
-          .lean();
-
-        const hasMoreGeneral = posts.length === PAGE_SIZE;
-        const nextCursorGeneral = hasMoreGeneral ? String(posts[posts.length - 1]._id) : null;
-
-        // Inject up to 2 promoted posts (on first general page only)
-        let allPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
-        if (!cg && dbUser) {
+        let allPosts = mapPosts(posts);
+        if (dbUser) {
           const promotedRaw = await getPromotedPostDocs(
             excludeAuthors as mongoose.Types.ObjectId[],
             ["feed", "explore"],
-            2,
+            6,
           );
           allPosts = splicePromotedIntoFeed(
             allPosts,

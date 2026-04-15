@@ -94,6 +94,14 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+function dedupePostsById(posts: Post[]): Post[] {
+  const m = new Map<string, Post>();
+  for (const p of posts) {
+    if (!m.has(p._id)) m.set(p._id, p);
+  }
+  return [...m.values()];
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -863,24 +871,8 @@ export function HomeScreen() {
           cg: forYouPhaseRef.current === 'general' ? cgRef.current : undefined,
         });
 
-        if (res.forYouPhase === 'friends' && res.hasMoreFriends === false) {
-          forYouPhaseRef.current = 'general';
-          cfRef.current = null;
-          cgRef.current = null;
-          const extra = await getFeed({
-            tab: 'for-you',
-            fyPhase: 'general',
-            cg: undefined,
-          });
-          res = {
-            ...extra,
-            posts: [...res.posts, ...extra.posts],
-            forYouPhase: 'general',
-            hasMoreFriends: false,
-            hasMoreGeneral: extra.hasMoreGeneral,
-            nextCursorGeneral: extra.nextCursorGeneral,
-          };
-        }
+        // Never chain-fetch "general" discover into the same home list when friends runs out — that
+        // surfaced every stranger's post. Explore/topic tabs use separate feed requests.
 
         if (res.forYouPhase === 'friends') {
           forYouPhaseRef.current = 'friends';
@@ -890,16 +882,16 @@ export function HomeScreen() {
           cgRef.current = res.nextCursorGeneral ?? null;
         }
 
-        const mergedPosts = res.posts;
+        const mergedPosts = dedupePostsById(res.posts);
         if (reset) {
           setPosts(mergedPosts);
         } else {
-          setPosts(prev => [...prev, ...mergedPosts]);
+          setPosts(prev => dedupePostsById([...prev, ...mergedPosts]));
         }
 
         const more =
           res.forYouPhase === 'friends'
-            ? Boolean(res.hasMoreFriends || res.hasMoreGeneral)
+            ? Boolean(res.hasMoreFriends)
             : Boolean(res.hasMoreGeneral);
         setHasMore(more);
       } else {
@@ -1120,9 +1112,9 @@ export function HomeScreen() {
     if (activeCategory === 'home' && trendingReels.length > 0) {
       items.push({kind: 'trendingReels', key: 'trending-reels'});
     }
-    posts.forEach((p, i) => {
-      items.push({kind: 'post', post: p, key: p._id});
-      if (i === 0 && suggestions.length > 0) {
+    posts.forEach((p, idx) => {
+      items.push({kind: 'post', post: p, key: `post-${p._id}`});
+      if (idx === 0 && suggestions.length > 0) {
         items.push({kind: 'suggestions', key: 'suggestions'});
       }
     });
@@ -1463,7 +1455,11 @@ export function HomeScreen() {
                   {/* Following stories */}
                   {storyTrayEntries.map(({group, ringUriResolved, allSeen}) => (
                     <Pressable
-                      key={group.isPromoted && group.promotionId ? `promo-${group.promotionId}` : group.author._id}
+                      key={
+                        group.isPromoted && group.promotionId
+                          ? `story-promo-${group.promotionId}`
+                          : `story-${group.author._id}`
+                      }
                       style={{alignItems: 'center', gap: 5}}
                       onPress={() => parentNavigate(navigation, 'StoryView', {userId: group.author._id})}>
                       <View style={{position: 'relative'}}>
