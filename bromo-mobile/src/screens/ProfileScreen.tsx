@@ -252,9 +252,10 @@ export function ProfileScreen() {
     setPostsLoading(true);
     try {
       const typeMap: Record<string, string> = {posts: 'post', reels: 'reel', saved: 'saved'};
-      const res = await getUserPosts(dbUser._id, typeMap[tab] ?? 'post');
+      const res = await getUserPosts(String(dbUser._id), typeMap[tab] ?? 'post');
       setUserPosts(res.posts);
-    } catch {
+    } catch (e) {
+      console.error('[Profile] getUserPosts failed', tab, e);
       setUserPosts([]);
     } finally {
       setPostsLoading(false);

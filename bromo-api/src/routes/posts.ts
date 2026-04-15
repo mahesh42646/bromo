@@ -956,13 +956,26 @@ postsRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const dbUser = req.dbUser;
-      const { userId } = req.params;
+      const userId = String(req.params.userId ?? "").trim();
       const type = (req.query.type as string) || "post";
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = (page - 1) * PAGE_SIZE;
 
+      if (!userId) {
+        return res.status(400).json({ message: "userId required" });
+      }
+
       const targetUser = await User.findById(userId).lean();
       if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+      /** Same Firebase account as profile owner even if req.dbUser failed to attach (edge cases). */
+      const isOwnProfile =
+        (dbUser != null && String(dbUser._id) === String(userId)) ||
+        Boolean(
+          req.firebaseUser &&
+            typeof targetUser.firebaseUid === "string" &&
+            targetUser.firebaseUid === req.firebaseUser.uid,
+        );
 
       if (type === "saved") {
         if (!dbUser || String(userId) !== String(dbUser._id)) {
@@ -1005,12 +1018,22 @@ postsRouter.get(
         return res.json({ posts: result, page, hasMore: saves.length === PAGE_SIZE });
       }
 
-      const isOwnProfile = dbUser != null && String(dbUser._id) === String(userId);
       const listVisibility = isOwnProfile ? PROFILE_OR_SAVED_POST : VISIBLE_POST;
 
+      const authorIdFilter = mongoose.Types.ObjectId.isValid(userId)
+        ? new mongoose.Types.ObjectId(userId)
+        : userId;
+
+      /**
+       * Profile "Posts" grid must match what home/friends feeds show (FEED_TYPES: post + reel).
+       * Clients send type=post for that tab; only the Reels tab sends type=reel.
+       */
+      const typeFilter =
+        type === "reel" ? { type: "reel" as const } : { type: { $in: ["post", "reel"] as const } };
+
       const posts = await Post.find({
-        authorId: userId,
-        type,
+        authorId: authorIdFilter,
+        ...typeFilter,
         ...listVisibility,
       })
         .sort({ createdAt: -1 })

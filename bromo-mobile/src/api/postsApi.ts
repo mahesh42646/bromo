@@ -214,7 +214,8 @@ export async function fetchStories(ifNoneMatch?: string | null): Promise<FetchSt
 }
 
 export async function getUserPosts(userId: string, type = 'post', page = 1): Promise<FeedResponse> {
-  const res = await authedFetch(`/posts/user/${userId}?type=${type}&page=${page}`);
+  const uid = encodeURIComponent(userId);
+  const res = await authedFetch(`/posts/user/${uid}?type=${encodeURIComponent(type)}&page=${page}`);
   if (!res.ok) throw new Error('Failed to fetch user posts');
   return res.json() as Promise<FeedResponse>;
 }
