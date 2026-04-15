@@ -34,7 +34,7 @@ const SNAP_HALF = SCREEN_H * 0.5;
 const SNAP_FULL = 60;
 const DISMISS_THRESHOLD = SCREEN_H * 0.72;
 
-const QUICK_EMOJIS = ['❤️', '🙌', '🔥', '💯', '😍', '😂', '😮', '👏', '👀', '👍', '👎', '🤔', '🤷', '🤷‍♂️', '🤷‍♀️', '🤷‍♂️', '🤷‍♀️'];
+const QUICK_EMOJIS = ['❤️', '🙌', '🔥', '💯', '😍', '😂', '😮', '👏', '👀', '👍', '👎', '🤔', '🤷‍♀️'];
 const MENTION_BLUE = '#3b82f6';
 
 type ThreadBundle = {
@@ -559,9 +559,9 @@ export function CommentsScreen() {
                   }}
                   keyboardShouldPersistTaps="handled"
                 >
-                  {QUICK_EMOJIS.map(e => (
+                  {QUICK_EMOJIS.map((e, i) => (
                     <Pressable
-                      key={e}
+                      key={`quick-emoji-${i}`}
                       onPress={() => setText(t => t + e)}
                       style={{
                         width: 34,

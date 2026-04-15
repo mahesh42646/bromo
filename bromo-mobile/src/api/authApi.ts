@@ -1,4 +1,4 @@
-import {getAuth} from '@react-native-firebase/auth';
+import {getAuth, getIdToken as firebaseGetIdToken} from '@react-native-firebase/auth';
 import {settings} from '../config/settings';
 import {navigationRef, resetToAuth} from '../navigation/rootNavigation';
 
@@ -16,7 +16,7 @@ export function apiBase(): string {
 export async function getIdToken(forceRefresh = false): Promise<string> {
   const user = getAuth().currentUser;
   if (!user) throw new Error('Not authenticated');
-  return user.getIdToken(forceRefresh);
+  return firebaseGetIdToken(user, forceRefresh);
 }
 
 /** @deprecated Firebase holds token state; kept for call sites that clear after logout. */

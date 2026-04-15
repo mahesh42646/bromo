@@ -46,7 +46,8 @@ class SocketService {
     const base = apiBase();
     this.socket = io(base, {
       auth: {token},
-      transports: ['websocket', 'polling'],
+      // Polling first: many reverse proxies break immediate WebSocket handshakes; upgrade when possible.
+      transports: ['polling', 'websocket'],
       upgrade: true,
       rememberUpgrade: true,
       reconnection: true,
