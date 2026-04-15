@@ -3,7 +3,7 @@
  * Install: npm install socket.io-client
  */
 import {io, type Socket} from 'socket.io-client';
-import auth from '@react-native-firebase/auth';
+import {getAuth} from '@react-native-firebase/auth';
 import {apiBase, getIdToken} from '../api/authApi';
 import type {Post} from '../api/postsApi';
 
@@ -27,11 +27,13 @@ type SocketEvents = {
 
 class SocketService {
   private socket: Socket | null = null;
+  private lastErrLogAt = 0;
+  private lastErrMsg = '';
 
   async connect(): Promise<void> {
     if (this.socket?.connected) return;
 
-    const user = auth().currentUser;
+    const user = getAuth().currentUser;
     if (!user) return;
 
     let token: string;
@@ -44,11 +46,14 @@ class SocketService {
     const base = apiBase();
     this.socket = io(base, {
       auth: {token},
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
+      upgrade: true,
+      rememberUpgrade: true,
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
-      timeout: 10000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1500,
+      reconnectionDelayMax: 8000,
+      timeout: 15000,
     });
 
     this.socket.on('connect', () => {
@@ -60,7 +65,13 @@ class SocketService {
     });
 
     this.socket.on('connect_error', err => {
-      console.warn('[Socket] Connect error:', err.message);
+      const msg = err?.message || 'unknown';
+      const now = Date.now();
+      if (msg !== this.lastErrMsg || now - this.lastErrLogAt > 8000) {
+        this.lastErrMsg = msg;
+        this.lastErrLogAt = now;
+        console.warn('[Socket] Connect error:', msg);
+      }
     });
   }
 

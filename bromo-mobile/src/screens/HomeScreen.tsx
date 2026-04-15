@@ -696,7 +696,7 @@ export function HomeScreen() {
     setVisiblePostId(feedPost.mediaType === 'video' ? feedPost._id : null);
   }).current;
 
-  const loadData = useCallback(async (reset = false) => {
+  const loadData = useCallback(async (reset = false, retry = 0) => {
     try {
       const cat = activeCategory;
       const isHome = cat === 'home';
@@ -797,7 +797,15 @@ export function HomeScreen() {
         setHasMore(res.hasMore ?? false);
       }
     } catch (err) {
-      console.error('[HomeScreen] loadData error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      const transient = /aborted|network request failed|timeout/i.test(msg);
+      if (transient && retry < 1) {
+        await loadData(reset, retry + 1);
+        return;
+      }
+      if (!transient) {
+        console.error('[HomeScreen] loadData error:', err);
+      }
     }
   }, [activeCategory]);
 

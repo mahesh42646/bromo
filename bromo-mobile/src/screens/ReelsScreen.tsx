@@ -712,7 +712,7 @@ export function ReelsScreen() {
     }
   }, []);
 
-  const loadReels = useCallback(async (reset = false) => {
+  const loadReels = useCallback(async (reset = false, retry = 0) => {
     const p = reset ? 1 : pageRef.current;
     try {
       const [res, adsRes] = await Promise.all([
@@ -736,7 +736,15 @@ export function ReelsScreen() {
       hasMoreRef.current = res.hasMore;
       setHasMore(res.hasMore);
     } catch (err) {
-      console.error('[ReelsScreen] load error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      const transient = /aborted|network request failed|timeout/i.test(msg);
+      if (transient && retry < 1) {
+        await loadReels(reset, retry + 1);
+        return;
+      }
+      if (!transient) {
+        console.error('[ReelsScreen] load error:', err);
+      }
     }
   }, []);
 

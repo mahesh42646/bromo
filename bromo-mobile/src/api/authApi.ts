@@ -1,4 +1,4 @@
-import auth from '@react-native-firebase/auth';
+import {getAuth} from '@react-native-firebase/auth';
 import {settings} from '../config/settings';
 import {navigationRef, resetToAuth} from '../navigation/rootNavigation';
 
@@ -14,7 +14,7 @@ export function apiBase(): string {
  * TTL — that can return an expired token after the real `exp` has passed.
  */
 export async function getIdToken(forceRefresh = false): Promise<string> {
-  const user = auth().currentUser;
+  const user = getAuth().currentUser;
   if (!user) throw new Error('Not authenticated');
   return user.getIdToken(forceRefresh);
 }
@@ -24,7 +24,7 @@ export function invalidateTokenCache(): void {
   /* no-op */
 }
 
-const FETCH_TIMEOUT_MS = 12_000;
+const FETCH_TIMEOUT_MS = 20_000;
 
 let sessionExpiredPromise: Promise<void> | null = null;
 
@@ -47,7 +47,7 @@ async function handleSessionExpiredAndNavigate(): Promise<void> {
     try {
       const {socketService} = await import('../services/socketService');
       socketService.disconnect();
-      await auth().signOut();
+      await getAuth().signOut();
       scheduleResetToAuth();
     } catch {
       scheduleResetToAuth();
@@ -74,27 +74,42 @@ function mergeAuthHeaders(init: RequestInit, token: string): RequestInit {
  * then sign-out + navigate to Auth if the session cannot be recovered.
  */
 export async function authorizedFetch(fullUrl: string, init: RequestInit = {}): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    let token = await getIdToken(false);
-    let res = await fetch(fullUrl, {...mergeAuthHeaders(init, token), signal: ctrl.signal});
-    if (res.status === 401) {
-      try {
-        token = await getIdToken(true);
-        res = await fetch(fullUrl, {...mergeAuthHeaders(init, token), signal: ctrl.signal});
-      } catch {
-        await handleSessionExpiredAndNavigate();
-        return res;
-      }
-      if (res.status === 401) {
-        await handleSessionExpiredAndNavigate();
-      }
+  const doFetchWithTimeout = async (reqInit: RequestInit, timeoutMs: number): Promise<Response> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetch(fullUrl, {...reqInit, signal: ctrl.signal});
+    } finally {
+      clearTimeout(timer);
     }
-    return res;
-  } finally {
-    clearTimeout(timer);
+  };
+  let token = await getIdToken(false);
+  let reqInit = mergeAuthHeaders(init, token);
+  let res: Response;
+  try {
+    res = await doFetchWithTimeout(reqInit, FETCH_TIMEOUT_MS);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/aborted|network request failed|timeout/i.test(msg)) {
+      res = await doFetchWithTimeout(reqInit, FETCH_TIMEOUT_MS + 8_000);
+    } else {
+      throw err;
+    }
   }
+  if (res.status === 401) {
+    try {
+      token = await getIdToken(true);
+      reqInit = mergeAuthHeaders(init, token);
+      res = await doFetchWithTimeout(reqInit, FETCH_TIMEOUT_MS);
+    } catch {
+      await handleSessionExpiredAndNavigate();
+      return res;
+    }
+    if (res.status === 401) {
+      await handleSessionExpiredAndNavigate();
+    }
+  }
+  return res;
 }
 
 export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
