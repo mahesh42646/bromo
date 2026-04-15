@@ -117,7 +117,7 @@ export function ProfessionalHubScreen() {
                 gap: 6,
               }}>
               <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '800'}}>Posts & reels (organic)</Text>
-              <Text style={{color: palette.mutedForeground, fontSize: 13, lineHeight: 18}}>
+              <Text style={{color: palette.foregroundMuted, fontSize: 13, lineHeight: 18}}>
                 {organicReach.gridTotal} items on profile · {organicReach.totalViews.toLocaleString()} views ·{' '}
                 {organicReach.totalImpressions.toLocaleString()} impressions — combined across posts and reels
               </Text>
@@ -149,11 +149,11 @@ export function ProfessionalHubScreen() {
             </View>
             <View style={{flex: 1}}>
               <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '800'}}>Bromo coins</Text>
-              <Text style={{color: palette.mutedForeground, fontSize: 13, marginTop: 2}}>
+              <Text style={{color: palette.foregroundMuted, fontSize: 13, marginTop: 2}}>
                 Balance · {fmtCoins(balance)} coins · Buy packages or spend on promotions
               </Text>
             </View>
-            <ChevronRight size={20} color={palette.mutedForeground} />
+            <ChevronRight size={20} color={palette.foregroundSubtle} />
           </Pressable>
 
           <Pressable
@@ -181,14 +181,14 @@ export function ProfessionalHubScreen() {
             </View>
             <View style={{flex: 1}}>
               <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '800'}}>Promotions</Text>
-              <Text style={{color: palette.mutedForeground, fontSize: 13, marginTop: 2}}>
+              <Text style={{color: palette.foregroundMuted, fontSize: 13, marginTop: 2}}>
                 {activeCampaigns > 0
                   ? `${activeCampaigns} active or pending campaign${activeCampaigns === 1 ? '' : 's'}`
                   : 'Boost posts and reels · Manage budgets'}
                 {promoStatsLine ? `\n${promoStatsLine}` : ''}
               </Text>
             </View>
-            <ChevronRight size={20} color={palette.mutedForeground} />
+            <ChevronRight size={20} color={palette.foregroundSubtle} />
           </Pressable>
 
           {topCampaignId ? (
@@ -207,11 +207,11 @@ export function ProfessionalHubScreen() {
               <TrendingUp size={22} color={palette.primary} />
               <View style={{flex: 1}}>
                 <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '800'}}>Promotion analytics</Text>
-                <Text style={{color: palette.mutedForeground, fontSize: 13, marginTop: 2}}>
+                <Text style={{color: palette.foregroundMuted, fontSize: 13, marginTop: 2}}>
                   Deep dive: spend, reach, and daily breakdown for your latest campaign
                 </Text>
               </View>
-              <ChevronRight size={20} color={palette.mutedForeground} />
+              <ChevronRight size={20} color={palette.foregroundSubtle} />
             </Pressable>
           ) : null}
 
@@ -240,11 +240,11 @@ export function ProfessionalHubScreen() {
             </View>
             <View style={{flex: 1}}>
               <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '800'}}>Profile & content insights</Text>
-              <Text style={{color: palette.mutedForeground, fontSize: 13, marginTop: 2}}>
+              <Text style={{color: palette.foregroundMuted, fontSize: 13, marginTop: 2}}>
                 Organic performance: views, likes, and engagement for your posts and reels
               </Text>
             </View>
-            <ChevronRight size={20} color={palette.mutedForeground} />
+            <ChevronRight size={20} color={palette.foregroundSubtle} />
           </Pressable>
 
           <View
@@ -258,7 +258,7 @@ export function ProfessionalHubScreen() {
               alignItems: 'flex-start',
             }}>
             <TrendingUp size={18} color={palette.success} />
-            <Text style={{flex: 1, color: palette.mutedForeground, fontSize: 13, lineHeight: 19}}>
+            <Text style={{flex: 1, color: palette.foregroundMuted, fontSize: 13, lineHeight: 19}}>
               Platform ads (admin) are separate from your promotions. Buy coins to run promoted posts; analytics for
               campaigns appear under each promotion.
             </Text>

@@ -27,10 +27,10 @@ type Nav = NativeStackNavigationProp<AppStackParamList>;
 function statusColor(status: PromotionStatus, palette: ReturnType<typeof useTheme>['palette']): string {
   switch (status) {
     case 'active': return palette.accent;
-    case 'paused': return palette.mutedForeground;
+    case 'paused': return palette.foregroundSubtle;
     case 'completed': return palette.primary;
     case 'rejected': return palette.destructive;
-    case 'pending_review': return '#f59e0b';
+    case 'pending_review': return palette.warning;
     default: return palette.border;
   }
 }
@@ -135,21 +135,21 @@ export function MyCampaignsScreen() {
             {statusLabel(c.status)}
           </Text>
         </View>
-        <Text style={{color: palette.mutedForeground, fontSize: 11}}>{timeAgo(c.createdAt)}</Text>
+        <Text style={{color: palette.foregroundMuted, fontSize: 11}}>{timeAgo(c.createdAt)}</Text>
       </View>
 
       {/* Content info */}
       <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 14, marginBottom: 4}}>
         {c.contentType.charAt(0).toUpperCase() + c.contentType.slice(1)} · {c.objective}
       </Text>
-      <Text style={{color: palette.mutedForeground, fontSize: 12, marginBottom: 12}}>
+      <Text style={{color: palette.foregroundMuted, fontSize: 12, marginBottom: 12}}>
         {(c.audience.placements ?? []).join(' · ') || 'All placements'}
       </Text>
 
       {/* Budget progress */}
       <View style={{marginBottom: 12}}>
         <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4}}>
-          <Text style={{color: palette.mutedForeground, fontSize: 11}}>
+          <Text style={{color: palette.foregroundMuted, fontSize: 11}}>
             {c.spentCoins.toLocaleString()} / {c.budgetCoins.toLocaleString()} coins
           </Text>
           <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 11}}>
@@ -174,7 +174,7 @@ export function MyCampaignsScreen() {
         ].map(stat => (
           <View key={stat.label}>
             <Text style={{color: palette.foreground, fontWeight: '900', fontSize: 16}}>{stat.value}</Text>
-            <Text style={{color: palette.mutedForeground, fontSize: 10}}>{stat.label}</Text>
+            <Text style={{color: palette.foregroundMuted, fontSize: 10}}>{stat.label}</Text>
           </View>
         ))}
       </View>
@@ -248,7 +248,7 @@ export function MyCampaignsScreen() {
           <View style={{alignItems: 'center', paddingTop: 56, gap: 14, paddingHorizontal: 24}}>
             <Zap size={56} color={palette.border} />
             <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900'}}>No campaigns yet</Text>
-            <Text style={{color: palette.mutedForeground, fontSize: 14, textAlign: 'center'}}>
+            <Text style={{color: palette.foregroundMuted, fontSize: 14, textAlign: 'center'}}>
               Buy Bromo coins, then boost a post or reel from your profile grid, post detail, or the reel menu.
             </Text>
             <Pressable

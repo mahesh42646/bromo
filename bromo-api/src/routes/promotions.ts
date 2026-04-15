@@ -246,16 +246,19 @@ promotionsRouter.get("/:id/analytics", requireVerifiedUser, async (req: Firebase
 // ─── POST /promotions/:id/log-delivery (internal — called from feed/explore) ─
 // Records a delivery event and returns billing category
 promotionsRouter.post("/:id/log-delivery", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
-  const { surface, isFollowerOfAuthor, contentAuthorId } = req.body as {
+  const { surface, isFollowerOfAuthor, contentAuthorId, kind } = req.body as {
     surface?: string;
     isFollowerOfAuthor?: boolean;
     contentAuthorId?: string;
+    kind?: "impression" | "cta_click";
   };
 
   if (!surface || !contentAuthorId) {
     res.status(400).json({ message: "surface and contentAuthorId required" });
     return;
   }
+
+  const deliveryKind = kind === "cta_click" ? "cta_click" : "impression";
 
   const campaign = await PromotionCampaign.findOne({
     _id: req.params.id,
@@ -268,7 +271,11 @@ promotionsRouter.post("/:id/log-delivery", requireVerifiedUser, async (req: Fire
   }
 
   const billingCategory =
-    isFollowerOfAuthor && surface === "feed" ? "organic" : "promoted";
+    deliveryKind === "cta_click"
+      ? "promoted"
+      : isFollowerOfAuthor && surface === "feed"
+        ? "organic"
+        : "promoted";
 
   // Fire-and-forget log creation
   ContentDeliveryLog.create({
@@ -279,15 +286,16 @@ promotionsRouter.post("/:id/log-delivery", requireVerifiedUser, async (req: Fire
     isFollowerOfAuthor: Boolean(isFollowerOfAuthor),
     promotionId: campaign._id,
     billingCategory,
+    deliveryKind,
     billed: false,
   }).catch(() => null);
 
-  // Increment promoted impression counter
   if (billingCategory === "promoted") {
-    PromotionCampaign.updateOne(
-      { _id: campaign._id },
-      { $inc: { promotedImpressions: 1 } },
-    ).catch(() => null);
+    if (deliveryKind === "cta_click") {
+      PromotionCampaign.updateOne({ _id: campaign._id }, { $inc: { ctaClicks: 1 } }).catch(() => null);
+    } else {
+      PromotionCampaign.updateOne({ _id: campaign._id }, { $inc: { promotedImpressions: 1 } }).catch(() => null);
+    }
   } else {
     PromotionCampaign.updateOne(
       { _id: campaign._id },
@@ -295,7 +303,7 @@ promotionsRouter.post("/:id/log-delivery", requireVerifiedUser, async (req: Fire
     ).catch(() => null);
   }
 
-  res.json({ ok: true, billingCategory });
+  res.json({ ok: true, billingCategory, deliveryKind });
 });
 
 // ─── Admin: GET /promotions/admin/all ─────────────────────────────────────────

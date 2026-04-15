@@ -6,6 +6,7 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -63,6 +64,7 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {getFeed, getTrendingReels, toggleLike, hidePost, reportPost, recordView, resolveVideoUrl, type Post, type StoryGroup} from '../api/postsApi';
+import {logPromotionDelivery} from '../api/promotionsApi';
 import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
 import {hashString, pickAdSlots} from '../lib/adSlots';
 import {AdCard} from '../components/AdCard';
@@ -159,6 +161,7 @@ function PostCard({
   const [videoEnded, setVideoEnded] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
   const viewRecordedRef = useRef(false);
+  const promoImpressionLoggedRef = useRef(false);
   const {borderRadiusScale} = contract.brandGuidelines;
   const radius = borderRadiusScale === 'bold' ? 14 : 10;
 
@@ -197,6 +200,21 @@ function PostCard({
     viewRecordedRef.current = true;
     recordView(post._id, 0).catch(() => null);
   }, [isFeedItemVisible, post._id]);
+
+  useEffect(() => {
+    if (!isFeedItemVisible || !post.isPromoted || !post.promotionId) {
+      if (!isFeedItemVisible) promoImpressionLoggedRef.current = false;
+      return;
+    }
+    if (promoImpressionLoggedRef.current) return;
+    promoImpressionLoggedRef.current = true;
+    void logPromotionDelivery(post.promotionId, {
+      surface: 'feed',
+      contentAuthorId: post.author._id,
+      isFollowerOfAuthor: post.isFollowing,
+      kind: 'impression',
+    });
+  }, [isFeedItemVisible, post.isPromoted, post.promotionId, post.author._id, post.isFollowing]);
 
   useEffect(() => {
     setVideoEnded(false);
@@ -338,11 +356,24 @@ function PostCard({
           onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: post.author._id})}>
           <Image source={{uri: avatarUri}} style={{width: 36, height: 36, borderRadius: 18}} />
           <View>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap'}}>
               <ThemedText variant="label" style={{fontSize: 13}}>{post.author.displayName}</ThemedText>
               {post.author.emailVerified && (
                 <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
               )}
+              {post.isPromoted ? (
+                <View
+                  style={{
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 4,
+                    backgroundColor: palette.surfaceHigh,
+                    borderWidth: 1,
+                    borderColor: palette.border,
+                  }}>
+                  <Text style={{fontSize: 9, fontWeight: '900', color: palette.foregroundMuted}}>Promoted</Text>
+                </View>
+              ) : null}
             </View>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1}}>
               {post.location ? (
@@ -380,6 +411,33 @@ function PostCard({
         <View style={{paddingHorizontal: 14, paddingBottom: 8}}>
           <ThemedText variant="body" style={{fontSize: 13, lineHeight: 19}}>{post.caption}</ThemedText>
         </View>
+      ) : null}
+
+      {post.promotionCta && post.promotionId ? (
+        <Pressable
+          onPress={() => {
+            const url = post.promotionCta?.url;
+            if (!url || !post.promotionId) return;
+            void logPromotionDelivery(post.promotionId, {
+              surface: 'feed',
+              contentAuthorId: post.author._id,
+              isFollowerOfAuthor: post.isFollowing,
+              kind: 'cta_click',
+            });
+            Linking.openURL(url).catch(() => null);
+          }}
+          style={{
+            marginHorizontal: 14,
+            marginBottom: 10,
+            paddingVertical: 12,
+            borderRadius: 12,
+            backgroundColor: palette.primary,
+            alignItems: 'center',
+          }}>
+          <Text style={{color: palette.primaryForeground, fontWeight: '900', fontSize: 14}}>
+            {post.promotionCta.label}
+          </Text>
+        </Pressable>
       ) : null}
 
       {post.type === 'reel' ? (
@@ -1405,10 +1463,34 @@ export function HomeScreen() {
                   {/* Following stories */}
                   {storyTrayEntries.map(({group, ringUriResolved, allSeen}) => (
                     <Pressable
-                      key={group.author._id}
+                      key={group.isPromoted && group.promotionId ? `promo-${group.promotionId}` : group.author._id}
                       style={{alignItems: 'center', gap: 5}}
                       onPress={() => parentNavigate(navigation, 'StoryView', {userId: group.author._id})}>
-                      <StoryRing uri={ringUriResolved} size={60} seen={allSeen} />
+                      <View style={{position: 'relative'}}>
+                        <StoryRing uri={ringUriResolved} size={60} seen={allSeen} />
+                        {group.isPromoted ? (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              bottom: -2,
+                              left: 0,
+                              right: 0,
+                              alignItems: 'center',
+                            }}>
+                            <View
+                              style={{
+                                backgroundColor: palette.primary,
+                                paddingHorizontal: 4,
+                                paddingVertical: 1,
+                                borderRadius: 4,
+                              }}>
+                              <Text style={{color: palette.primaryForeground, fontSize: 8, fontWeight: '900'}}>
+                                Ad
+                              </Text>
+                            </View>
+                          </View>
+                        ) : null}
+                      </View>
                       <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>
                         {group.author.username}
                       </ThemedText>

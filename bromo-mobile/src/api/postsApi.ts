@@ -66,6 +66,10 @@ export type Post = {
   storyMeta?: StoryMeta;
   /** Story tray: whether the current user has finished this segment (server). */
   seenByMe?: boolean;
+  /** Injected sponsored post from PromotionCampaign (API). */
+  isPromoted?: boolean;
+  promotionId?: string;
+  promotionCta?: {label: string; url: string};
 };
 
 /** Derive the best video URL from a post — HLS master if available, else legacy mediaUrl. */
@@ -187,6 +191,8 @@ export async function getExplore(page = 1): Promise<FeedResponse> {
 export type StoryGroup = {
   author: PostAuthor;
   stories: Post[];
+  isPromoted?: boolean;
+  promotionId?: string;
 };
 
 export type FetchStoriesResult =

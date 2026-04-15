@@ -2,6 +2,7 @@ import mongoose, { Schema, type Document, type Types } from "mongoose";
 
 export type DeliverySurface = "feed" | "explore" | "reels" | "story_tray" | "search";
 export type BillingCategory = "organic" | "promoted";
+export type DeliveryKind = "impression" | "cta_click";
 
 export interface ContentDeliveryLogDoc extends Document {
   viewerId: Types.ObjectId;
@@ -11,6 +12,8 @@ export interface ContentDeliveryLogDoc extends Document {
   isFollowerOfAuthor: boolean;
   promotionId?: Types.ObjectId;
   billingCategory: BillingCategory;
+  /** impression = feed slot shown; cta_click = sponsored link tap (billed at click rate). */
+  deliveryKind: DeliveryKind;
   // Billed this impression? (set by billing worker)
   billed: boolean;
   coinsCharged?: number;
@@ -30,6 +33,7 @@ const contentDeliveryLogSchema = new Schema<ContentDeliveryLogDoc>(
     isFollowerOfAuthor: { type: Boolean, required: true },
     promotionId: { type: Schema.Types.ObjectId, ref: "PromotionCampaign" },
     billingCategory: { type: String, enum: ["organic", "promoted"], required: true },
+    deliveryKind: { type: String, enum: ["impression", "cta_click"], default: "impression" },
     billed: { type: Boolean, default: false },
     coinsCharged: { type: Number },
   },

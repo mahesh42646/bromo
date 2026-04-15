@@ -148,7 +148,7 @@ export function PromoteCampaignScreen() {
         <Text style={{flex: 1, color: palette.foreground, fontSize: 18, fontWeight: '900'}}>
           Promote {contentType}
         </Text>
-        <Text style={{color: palette.mutedForeground, fontSize: 12}}>
+        <Text style={{color: palette.foregroundSubtle, fontSize: 12}}>
           {step}/4
         </Text>
       </View>
@@ -162,7 +162,7 @@ export function PromoteCampaignScreen() {
               backgroundColor: i < step ? palette.primary : palette.border,
             }} />
             <Text style={{
-              color: i + 1 === step ? palette.primary : palette.mutedForeground,
+              color: i + 1 === step ? palette.primary : palette.foregroundSubtle,
               fontSize: 9, fontWeight: '700',
             }}>
               {title.toUpperCase()}
@@ -201,11 +201,11 @@ export function PromoteCampaignScreen() {
                   backgroundColor: objective === obj.id ? palette.primary : 'transparent',
                   alignItems: 'center', justifyContent: 'center',
                 }}>
-                  {objective === obj.id && <Check size={12} color="#fff" />}
+                  {objective === obj.id && <Check size={12} color={palette.primaryForeground} />}
                 </View>
                 <View style={{flex: 1}}>
                   <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>{obj.label}</Text>
-                  <Text style={{color: palette.mutedForeground, fontSize: 12, marginTop: 2}}>{obj.desc}</Text>
+                  <Text style={{color: palette.foregroundMuted, fontSize: 12, marginTop: 2}}>{obj.desc}</Text>
                 </View>
               </Pressable>
             ))}
@@ -220,7 +220,7 @@ export function PromoteCampaignScreen() {
               <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900'}}>Target audience</Text>
             </View>
 
-            <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6}}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6}}>
               PLACEMENTS
             </Text>
             <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16}}>
@@ -237,7 +237,7 @@ export function PromoteCampaignScreen() {
                       borderColor: active ? palette.primary : palette.border,
                     }}>
                     <Text style={{
-                      color: active ? '#fff' : palette.foreground,
+                      color: active ? palette.primaryForeground : palette.foreground,
                       fontWeight: '700', fontSize: 13,
                     }}>
                       {p.label}
@@ -247,7 +247,7 @@ export function PromoteCampaignScreen() {
               })}
             </View>
 
-            <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6}}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6}}>
               LOCATIONS (optional, comma-separated)
             </Text>
             <TextInput
@@ -257,7 +257,7 @@ export function PromoteCampaignScreen() {
                 fontSize: 14, marginBottom: 16,
               }}
               placeholder="e.g. Mumbai, Delhi, Pune"
-              placeholderTextColor={palette.mutedForeground}
+              placeholderTextColor={palette.placeholder}
               value={(audience.locations ?? []).join(', ')}
               onChangeText={text => setAudience(prev => ({
                 ...prev,
@@ -265,7 +265,7 @@ export function PromoteCampaignScreen() {
               }))}
             />
 
-            <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6}}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6}}>
               INTEREST TAGS (optional, comma-separated)
             </Text>
             <TextInput
@@ -275,7 +275,7 @@ export function PromoteCampaignScreen() {
                 fontSize: 14,
               }}
               placeholder="e.g. fitness, food, travel"
-              placeholderTextColor={palette.mutedForeground}
+              placeholderTextColor={palette.placeholder}
               value={(audience.interestTags ?? []).join(', ')}
               onChangeText={text => setAudience(prev => ({
                 ...prev,
@@ -312,7 +312,7 @@ export function PromoteCampaignScreen() {
               </View>
             )}
 
-            <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 10}}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 10}}>
               QUICK SELECT
             </Text>
             <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16}}>
@@ -327,7 +327,7 @@ export function PromoteCampaignScreen() {
                     borderColor: budget === p && !customBudget ? palette.primary : palette.border,
                   }}>
                   <Text style={{
-                    color: budget === p && !customBudget ? '#fff' : palette.foreground,
+                    color: budget === p && !customBudget ? palette.primaryForeground : palette.foreground,
                     fontWeight: '800', fontSize: 14,
                   }}>
                     {p.toLocaleString()}
@@ -336,7 +336,7 @@ export function PromoteCampaignScreen() {
               ))}
             </View>
 
-            <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6}}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6}}>
               CUSTOM AMOUNT (min 100 coins)
             </Text>
             <TextInput
@@ -345,7 +345,7 @@ export function PromoteCampaignScreen() {
                 color: palette.foreground, borderWidth: 1, borderColor: palette.border, fontSize: 18, fontWeight: '700',
               }}
               placeholder="Enter coins"
-              placeholderTextColor={palette.mutedForeground}
+              placeholderTextColor={palette.placeholder}
               keyboardType="numeric"
               value={customBudget}
               onChangeText={setCustomBudget}
@@ -356,11 +356,11 @@ export function PromoteCampaignScreen() {
               borderWidth: 1, borderColor: palette.border, marginTop: 16, gap: 6,
             }}>
               <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
-                <Text style={{color: palette.mutedForeground, fontSize: 13}}>Budget</Text>
+                <Text style={{color: palette.foregroundMuted, fontSize: 13}}>Budget</Text>
                 <Text style={{color: palette.foreground, fontWeight: '800'}}>{finalBudget.toLocaleString()} coins</Text>
               </View>
               <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
-                <Text style={{color: palette.mutedForeground, fontSize: 13}}>Est. reach</Text>
+                <Text style={{color: palette.foregroundMuted, fontSize: 13}}>Est. reach</Text>
                 <Text style={{color: palette.foreground, fontWeight: '800'}}>{(finalBudget * 8).toLocaleString()} people</Text>
               </View>
             </View>
@@ -386,12 +386,12 @@ export function PromoteCampaignScreen() {
                 flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
                 paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: palette.border,
               }}>
-                <Text style={{color: palette.mutedForeground, fontSize: 14}}>{row.label}</Text>
+                <Text style={{color: palette.foregroundMuted, fontSize: 14}}>{row.label}</Text>
                 <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 14, flex: 1, textAlign: 'right'}}>{row.value}</Text>
               </View>
             ))}
 
-            <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 16, marginBottom: 6}}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 16, marginBottom: 6}}>
               OPTIONAL CTA BUTTON
             </Text>
             <TextInput
@@ -400,7 +400,7 @@ export function PromoteCampaignScreen() {
                 color: palette.foreground, borderWidth: 1, borderColor: palette.border, fontSize: 14, marginBottom: 8,
               }}
               placeholder="CTA label (e.g. Shop Now)"
-              placeholderTextColor={palette.mutedForeground}
+              placeholderTextColor={palette.placeholder}
               value={ctaLabel}
               onChangeText={setCtaLabel}
             />
@@ -410,7 +410,7 @@ export function PromoteCampaignScreen() {
                 color: palette.foreground, borderWidth: 1, borderColor: palette.border, fontSize: 14,
               }}
               placeholder="CTA URL (https://...)"
-              placeholderTextColor={palette.mutedForeground}
+              placeholderTextColor={palette.placeholder}
               value={ctaUrl}
               onChangeText={setCtaUrl}
               autoCapitalize="none"
@@ -422,7 +422,7 @@ export function PromoteCampaignScreen() {
               backgroundColor: `${palette.primary}10`,
               borderWidth: 1, borderColor: `${palette.primary}30`,
             }}>
-              <Text style={{color: palette.mutedForeground, fontSize: 12, lineHeight: 18}}>
+              <Text style={{color: palette.foregroundMuted, fontSize: 12, lineHeight: 18}}>
                 By launching, {finalBudget.toLocaleString()} Bromo coins will be reserved from your wallet. Coins are debited per impression delivered.
               </Text>
             </View>
@@ -457,13 +457,13 @@ export function PromoteCampaignScreen() {
             opacity: pressed || submitting ? 0.7 : 1,
           })}>
           {submitting ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={palette.primaryForeground} />
           ) : (
             <>
-              <Text style={{color: '#fff', fontSize: 16, fontWeight: '900'}}>
+              <Text style={{color: palette.primaryForeground, fontSize: 16, fontWeight: '900'}}>
                 {step < 4 ? 'Continue' : 'Launch Campaign'}
               </Text>
-              {step < 4 && <ChevronRight size={20} color="#fff" />}
+              {step < 4 && <ChevronRight size={20} color={palette.primaryForeground} />}
             </>
           )}
         </Pressable>

@@ -57,8 +57,13 @@ async function runBillingCycle(): Promise<void> {
       const campaign = await PromotionCampaign.findById(campaignId).lean();
       if (!campaign) continue;
 
-      const coinsPerImpression = RATE_CARD.impression;
-      const totalToCharge = campaignLogs.length * coinsPerImpression;
+      const rates = campaignLogs.map((log) => {
+        const k = (log as { deliveryKind?: string }).deliveryKind;
+        return k === "cta_click" ? RATE_CARD.click : RATE_CARD.impression;
+      });
+      const totalToCharge = rates.reduce((a, b) => a + b, 0);
+      if (totalToCharge <= 0) continue;
+
       const remainingBudget = campaign.budgetCoins - campaign.spentCoins;
       const actualCharge = Math.min(totalToCharge, remainingBudget);
 
@@ -81,7 +86,7 @@ async function runBillingCycle(): Promise<void> {
         "promotion_spend",
         "Promotion",
         campaign._id as mongoose.Types.ObjectId,
-        { campaignId, impressions: campaignLogs.length },
+        { campaignId, events: campaignLogs.length },
         idempotencyKey,
       );
 
@@ -106,13 +111,19 @@ async function runBillingCycle(): Promise<void> {
         },
       );
 
-      // Mark logs billed
-      const logIds = campaignLogs.map((l) => l._id);
-      const coinsEach = Math.floor(actualCharge / campaignLogs.length);
-      await ContentDeliveryLog.updateMany(
-        { _id: { $in: logIds } },
-        { billed: true, coinsCharged: coinsEach },
-      );
+      // Split charge across logs by weight (impression vs CTA click)
+      let remaining = actualCharge;
+      for (let i = 0; i < campaignLogs.length; i++) {
+        const log = campaignLogs[i]!;
+        const weight = rates[i] ?? RATE_CARD.impression;
+        const isLast = i === campaignLogs.length - 1;
+        const share = isLast ? remaining : Math.max(0, Math.round((actualCharge * weight) / totalToCharge));
+        remaining -= share;
+        await ContentDeliveryLog.updateOne(
+          { _id: log._id },
+          { billed: true, coinsCharged: share },
+        );
+      }
     }
 
     await pauseExhaustedCampaigns();

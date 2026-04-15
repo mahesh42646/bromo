@@ -38,45 +38,164 @@ import { PromotionCampaign } from "../models/PromotionCampaign.js";
 
 export const postsRouter = Router();
 
-/** Fetch promoted posts eligible for injection into a feed for a given userId. */
-async function getPromotedInjections(
-  viewerFollowingIds: mongoose.Types.ObjectId[],
-  excludeAuthorIds: mongoose.Types.ObjectId[],
-  limit = 2,
-): Promise<Record<string, unknown>[]> {
-  const now = new Date();
-  const campaigns = await PromotionCampaign.find({
-    status: "active",
+const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
+
+/** Public listings: active, not soft-deleted, and not still processing. */
+const VISIBLE_POST = {
+  isActive: true,
+  isDeleted: { $ne: true },
+  // Exclude posts still in the transcode pipeline; allow legacy posts with no processingStatus
+  processingStatus: { $nin: ["pending", "processing", "failed"] },
+} as const;
+
+function activePromotionClause(now: Date) {
+  return {
+    status: "active" as const,
     startAt: { $lte: now },
     $or: [{ endAt: { $gt: now } }, { endAt: null }, { endAt: { $exists: false } }],
     $expr: { $lt: ["$spentCoins", "$budgetCoins"] },
-    "audience.placements": { $in: ["feed", "explore"] },
+  };
+}
+
+/** Match campaigns with no placements (treat as all surfaces) or overlapping placement keys. */
+function campaignPlacementOr(placementKeys: string[]) {
+  return {
+    $or: [
+      { audience: { $exists: false } },
+      { "audience.placements": { $exists: false } },
+      { "audience.placements": { $size: 0 } },
+      { "audience.placements": { $in: placementKeys } },
+    ],
+  };
+}
+
+/**
+ * Promoted post docs for feed/explore/reels/stories injection.
+ * Skips campaign owners the viewer already follows (they get organic delivery instead).
+ */
+async function getPromotedPostDocs(
+  excludeOwnerIds: mongoose.Types.ObjectId[],
+  placementKeys: string[],
+  limit: number,
+  contentType?: "post" | "reel" | "story",
+): Promise<Array<Record<string, unknown>>> {
+  const now = new Date();
+  const typeClause = contentType ? { contentType } : {};
+  const campaigns = await PromotionCampaign.find({
+    ...activePromotionClause(now),
+    ...campaignPlacementOr(placementKeys),
+    ...typeClause,
   })
     .sort({ createdAt: -1 })
-    .limit(limit * 3)
+    .limit(Math.max(limit * 5, 12))
     .lean();
 
   if (!campaigns.length) return [];
 
-  // Exclude campaigns where author is already in the feed (followers see them organically)
-  const eligible = campaigns.filter(
-    (c) => !excludeAuthorIds.map(String).includes(String(c.ownerUserId)),
-  );
+  const ex = new Set(excludeOwnerIds.map(String));
+  const eligible = campaigns.filter((c) => !ex.has(String(c.ownerUserId)));
+  const sliced = eligible.slice(0, limit);
+  const postIds = sliced.map((c) => c.contentId);
+  if (!postIds.length) return [];
 
-  const postIds = eligible.slice(0, limit).map((c) => c.contentId);
   const posts = await Post.find({
     _id: { $in: postIds },
-    isActive: true,
-    isDeleted: { $ne: true },
-    processingStatus: { $nin: ["pending", "processing", "failed"] },
+    ...VISIBLE_POST,
   })
-    .populate("authorId", "username displayName profilePicture isPrivate emailVerified followersCount")
+    .populate("authorId", AUTHOR_SELECT)
     .lean();
 
-  return posts.map((p) => {
-    const matchingCampaign = eligible.find((c) => String(c.contentId) === String(p._id));
-    return { ...p, isPromoted: true, promotionId: matchingCampaign?._id ? String(matchingCampaign._id) : undefined };
-  });
+  const byId = new Map(posts.map((p) => [String(p._id), p]));
+  const out: Array<Record<string, unknown>> = [];
+  for (const c of sliced) {
+    const raw = byId.get(String(c.contentId));
+    if (!raw) continue;
+    out.push({
+      ...raw,
+      isPromoted: true,
+      promotionId: String(c._id),
+      promotionCta:
+        c.cta && typeof (c.cta as { label?: string }).label === "string" && typeof (c.cta as { url?: string }).url === "string"
+          ? { label: (c.cta as { label: string }).label, url: (c.cta as { url: string }).url }
+          : undefined,
+    });
+  }
+  return out;
+}
+
+function splicePromotedIntoFeed(
+  organicMapped: Record<string, unknown>[],
+  promotedRaw: Array<Record<string, unknown>>,
+  likedSet: Set<string>,
+  followingSet: Set<string>,
+  dbUserId: string | undefined,
+): Record<string, unknown>[] {
+  const seen = new Set(organicMapped.map((p) => String(p._id)));
+  const promoted = promotedRaw
+    .filter((p) => !seen.has(String(p._id)))
+    .map((p) => normalizePost(p as Record<string, unknown>, likedSet, followingSet, dbUserId));
+  if (!promoted.length) return organicMapped;
+  const allPosts = [...organicMapped];
+  if (promoted[0]) allPosts.splice(Math.min(3, allPosts.length), 0, promoted[0]);
+  if (promoted[1]) allPosts.splice(Math.min(9, allPosts.length), 0, promoted[1]);
+  return allPosts;
+}
+
+/** Story tray rings from active promotions (non-followed advertisers only). */
+async function getPromotedStoryTrayGroups(
+  viewerId: mongoose.Types.ObjectId,
+  followingIds: mongoose.Types.ObjectId[],
+  seenSet: Set<string>,
+): Promise<Array<{ author: unknown; stories: unknown[]; isPromoted: boolean; promotionId: string }>> {
+  const now = new Date();
+  const campaigns = await PromotionCampaign.find({
+    ...activePromotionClause(now),
+    contentType: "story",
+    ...campaignPlacementOr(["stories", "feed", "explore"]),
+    ownerUserId: { $nin: [viewerId, ...followingIds] },
+  })
+    .sort({ createdAt: -1 })
+    .limit(6)
+    .lean();
+
+  const out: Array<{ author: unknown; stories: unknown[]; isPromoted: boolean; promotionId: string }> = [];
+  for (const c of campaigns) {
+    const s = await Post.findOne({
+      _id: c.contentId,
+      type: "story",
+      ...VISIBLE_POST,
+      expiresAt: { $gt: now },
+    })
+      .populate("authorId", AUTHOR_SELECT)
+      .lean();
+    if (!s) continue;
+    out.push({
+      isPromoted: true,
+      promotionId: String(c._id),
+      author: s.authorId,
+      stories: [
+        {
+          ...s,
+          isPromoted: true,
+          promotionId: String(c._id),
+          promotionCta:
+            c.cta && typeof (c.cta as { label?: string }).label === "string" && typeof (c.cta as { url?: string }).url === "string"
+              ? { label: (c.cta as { label: string }).label, url: (c.cta as { url: string }).url }
+              : undefined,
+          seenByMe: seenSet.has(String(s._id)),
+          mediaUrl: typeof s.mediaUrl === "string" ? rewritePublicMediaUrl(s.mediaUrl) : s.mediaUrl,
+          thumbnailUrl:
+            typeof s.thumbnailUrl === "string" ? rewritePublicMediaUrl(s.thumbnailUrl) : s.thumbnailUrl,
+          hlsMasterUrl:
+            typeof (s as { hlsMasterUrl?: string }).hlsMasterUrl === "string" && (s as { hlsMasterUrl?: string }).hlsMasterUrl!.trim()
+              ? rewritePublicMediaUrl((s as { hlsMasterUrl?: string }).hlsMasterUrl!)
+              : undefined,
+          authorId: undefined,
+        },
+      ],
+    });
+  }
+  return out;
 }
 
 /** Recompute trendingScore for a post (fire-and-forget — never throws). */
@@ -100,7 +219,6 @@ function recomputeTrending(postId: string): void {
     .catch(() => null);
 }
 
-const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
 const PAGE_SIZE = 20;
 const TRENDING_WINDOW_MS = 48 * 3600 * 1000;
 const FEED_TOPIC_TABS = new Set(["politics", "sports", "shopping", "tech"]);
@@ -109,13 +227,13 @@ const GENERAL_CATEGORY_CLAUSE = {
   $or: [{ feedCategory: "general" }, { feedCategory: { $exists: false } }, { feedCategory: "" }],
 } as const;
 
-/** Public listings: active, not soft-deleted, and not still processing. */
-const VISIBLE_POST = {
-  isActive: true,
-  isDeleted: { $ne: true },
-  // Exclude posts still in the transcode pipeline; allow legacy posts with no processingStatus
-  processingStatus: { $nin: ["pending", "processing", "failed"] },
-} as const;
+/** Discover / explore / trending: reels are public; wall posts default to friends-only (`feedCategory: followers`). */
+const DISCOVER_PUBLIC_POST = {
+  $or: [
+    { type: "reel" as const },
+    { type: "post" as const, feedCategory: { $ne: "followers" } },
+  ],
+};
 
 /**
  * Author's own profile grid + saved list: show processing drafts (async uploads) so counts match the grid.
@@ -352,8 +470,22 @@ postsRouter.get(
           const hasMoreFriends = posts.length === PAGE_SIZE;
           const nextCursorFriends = hasMoreFriends ? String(posts[posts.length - 1]._id) : null;
 
+          let friendPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
+          // Inject promoted feed slots for non-followers of the advertiser (friends feed otherwise never shows promos).
+          if (!cf && dbUser) {
+            const excludeAuthors = [...followingIds, dbUser._id] as mongoose.Types.ObjectId[];
+            const promotedRaw = await getPromotedPostDocs(excludeAuthors, ["feed", "explore"], 2);
+            friendPosts = splicePromotedIntoFeed(
+              friendPosts,
+              promotedRaw,
+              likedSet,
+              followingSet,
+              String(dbUser._id),
+            ) as typeof friendPosts;
+          }
+
           return res.json({
-            posts: mapPosts(posts as unknown as Record<string, unknown>[]),
+            posts: friendPosts,
             tab: "for-you",
             forYouPhase: "friends",
             hasMoreFriends,
@@ -371,6 +503,7 @@ postsRouter.get(
           ...FEED_TYPES,
           ...VISIBLE_POST,
           ...GENERAL_CATEGORY_CLAUSE,
+          ...DISCOVER_PUBLIC_POST,
         };
         if (excludeAuthors.length) {
           genBase.authorId = { $nin: excludeAuthors };
@@ -390,22 +523,21 @@ postsRouter.get(
         const hasMoreGeneral = posts.length === PAGE_SIZE;
         const nextCursorGeneral = hasMoreGeneral ? String(posts[posts.length - 1]._id) : null;
 
-        // Inject up to 2 promoted posts every ~10 posts (on first page only)
+        // Inject up to 2 promoted posts (on first general page only)
         let allPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
-        if (!cg) {
-          const promoted = await getPromotedInjections(
-            followingIds as mongoose.Types.ObjectId[],
+        if (!cg && dbUser) {
+          const promotedRaw = await getPromotedPostDocs(
             excludeAuthors as mongoose.Types.ObjectId[],
+            ["feed", "explore"],
             2,
           );
-          if (promoted.length) {
-            const normalizedPromoted = promoted.map((p) =>
-              ({ ...normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)), isPromoted: true }),
-            );
-            // Splice at positions 3 and 8 (0-indexed) for natural insertion
-            if (normalizedPromoted[0]) allPosts.splice(Math.min(3, allPosts.length), 0, normalizedPromoted[0]);
-            if (normalizedPromoted[1]) allPosts.splice(Math.min(9, allPosts.length), 0, normalizedPromoted[1]);
-          }
+          allPosts = splicePromotedIntoFeed(
+            allPosts,
+            promotedRaw,
+            likedSet,
+            followingSet,
+            String(dbUser._id),
+          ) as typeof allPosts;
         }
 
         return res.json({
@@ -428,6 +560,7 @@ postsRouter.get(
         const posts = await Post.find({
           ...FEED_TYPES,
           ...VISIBLE_POST,
+          ...DISCOVER_PUBLIC_POST,
           createdAt: { $gte: since },
         })
           .sort({ trendingScore: -1, _id: -1 })
@@ -451,6 +584,7 @@ postsRouter.get(
         const posts = await Post.find({
           ...FEED_TYPES,
           ...VISIBLE_POST,
+          ...DISCOVER_PUBLIC_POST,
           feedCategory: tab,
         })
           .sort({ _id: -1 })
@@ -529,11 +663,31 @@ postsRouter.get(
       ]);
 
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
-      const followingSet = new Set(follows.map((f) => String(f.followingId)));
+      const followingIds = follows.map((f) => f.followingId);
+      const followingSet = new Set(followingIds.map(String));
 
-      const result = posts.map((p) =>
+      let result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
+
+      if (!cursor && page === 1 && dbUser) {
+        const promotedRaw = await getPromotedPostDocs(
+          [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
+          ["reels", "feed", "explore"],
+          1,
+          "reel",
+        );
+        if (promotedRaw.length) {
+          const rawPr = promotedRaw[0] as Record<string, unknown>;
+          const prId = String(rawPr._id);
+          const p0 = normalizePost(rawPr, likedSet, followingSet, String(dbUser._id));
+          const seen = new Set(result.map((x) => String((x as unknown as {_id: unknown})._id)));
+          if (!seen.has(prId)) {
+            result = [p0, ...result];
+          }
+        }
+      }
+
       const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
 
       res.setHeader("Cache-Control", "private, no-store");
@@ -619,8 +773,13 @@ postsRouter.get(
       const excludeIds = dbUser ? [...followingIds, dbUser._id] : [];
 
       const query = excludeIds.length
-        ? { type: { $in: ["post", "reel"] }, ...VISIBLE_POST, authorId: { $nin: excludeIds } }
-        : { type: { $in: ["post", "reel"] }, ...VISIBLE_POST };
+        ? {
+            type: { $in: ["post", "reel"] },
+            ...VISIBLE_POST,
+            ...DISCOVER_PUBLIC_POST,
+            authorId: { $nin: excludeIds },
+          }
+        : { type: { $in: ["post", "reel"] }, ...VISIBLE_POST, ...DISCOVER_PUBLIC_POST };
 
       const [posts, likes] = await Promise.all([
         Post.find(query)
@@ -636,9 +795,25 @@ postsRouter.get(
 
       const followingSet = new Set(followingIds.map(String));
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
-      const result = posts.map((p) =>
+      let result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
+
+      if (page === 1 && dbUser) {
+        const promotedRaw = await getPromotedPostDocs(
+          [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
+          ["explore", "feed"],
+          2,
+        );
+        result = splicePromotedIntoFeed(
+          result,
+          promotedRaw,
+          likedSet,
+          followingSet,
+          String(dbUser._id),
+        ) as typeof result;
+      }
+
 
       res.setHeader("Cache-Control", "private, no-store");
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
@@ -680,9 +855,27 @@ postsRouter.get(
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
-      const result = posts.map((p) =>
+      let result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
+
+      if (dbUser) {
+        const promotedRaw = await getPromotedPostDocs(
+          [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
+          ["reels", "feed", "explore"],
+          1,
+          "reel",
+        );
+        if (promotedRaw.length) {
+          const rawPr = promotedRaw[0] as Record<string, unknown>;
+          const prId = String(rawPr._id);
+          const p0 = normalizePost(rawPr, likedSet, followingSet, String(dbUser._id));
+          const seen = new Set(result.map((x) => String((x as unknown as {_id: unknown})._id)));
+          if (!seen.has(prId)) {
+            result = [p0, ...result].slice(0, limit);
+          }
+        }
+      }
 
       res.setHeader("Cache-Control", "private, no-store");
       return res.json({ posts: result });
@@ -738,15 +931,26 @@ postsRouter.get(
         .lean();
 
       const slimIds = slim.map((s) => s._id);
-      const seenForEtag = await StorySeen.find({
-        viewerId: dbUser._id,
-        storyPostId: { $in: slimIds },
-      })
-        .select({ storyPostId: 1 })
-        .lean();
+      const [seenForEtag, promoEtagRows] = await Promise.all([
+        StorySeen.find({
+          viewerId: dbUser._id,
+          storyPostId: { $in: slimIds },
+        })
+          .select({ storyPostId: 1 })
+          .lean(),
+        PromotionCampaign.find({
+          ...activePromotionClause(new Date()),
+          contentType: "story",
+          ...campaignPlacementOr(["stories", "feed", "explore"]),
+        })
+          .select({ _id: 1 })
+          .limit(40)
+          .lean(),
+      ]);
       const seenSortedIds = seenForEtag.map((r) => String(r.storyPostId)).sort().join("|");
+      const promoSig = promoEtagRows.map((r) => String(r._id)).sort().join(",");
 
-      const etag = storiesTrayEtag(slim, seenSortedIds);
+      const etag = storiesTrayEtag(slim, `${seenSortedIds}|${promoSig}`);
       const inm = normalizeIfNoneMatch(req.get("if-none-match"));
       if (inm && inm === etag) {
         res.setHeader("ETag", etag);
@@ -800,9 +1004,12 @@ postsRouter.get(
         return maxB - maxA;
       });
 
+      const promotedStoryGroups = await getPromotedStoryTrayGroups(dbUser._id, followingIds, seenSet);
+      const mergedStories = [...promotedStoryGroups, ...groupsArr];
+
       res.setHeader("ETag", etag);
       res.set("Cache-Control", "private, max-age=120, stale-while-revalidate=300");
-      return res.json({ stories: groupsArr });
+      return res.json({ stories: mergedStories });
     } catch (err) {
       console.error("[posts] stories error:", err);
       return res.status(500).json({ message: "Failed to fetch stories" });
@@ -1278,8 +1485,15 @@ postsRouter.post(
       }
 
       const expiresAt = type === "story" ? new Date(Date.now() + 24 * 60 * 60 * 1000) : undefined;
+      // Wall posts + stories default to friends-only in discover; reels stay discoverable (general unless set).
       const feedCategory =
-        type === "story" ? "general" : normalizeFeedCategory(feedCategoryRaw);
+        type === "story"
+          ? "followers"
+          : type === "reel"
+            ? normalizeFeedCategory(feedCategoryRaw)
+            : feedCategoryRaw != null && String(feedCategoryRaw).trim() !== ""
+              ? normalizeFeedCategory(feedCategoryRaw)
+              : "followers";
 
       const post = await Post.create({
         authorId: user._id,

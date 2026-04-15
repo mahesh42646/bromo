@@ -140,32 +140,45 @@ export function WalletScreen() {
           shadowOffset: {width: 0, height: 8},
           elevation: 8,
         }}>
-          <Text style={{color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600', letterSpacing: 0.5, marginBottom: 8}}>
+          <Text style={{
+            color: palette.primaryForeground,
+            opacity: 0.72,
+            fontSize: 13,
+            fontWeight: '600',
+            letterSpacing: 0.5,
+            marginBottom: 8,
+          }}>
             AVAILABLE BALANCE
           </Text>
           <View style={{flexDirection: 'row', alignItems: 'flex-end', gap: 8}}>
-            <Text style={{color: '#fff', fontSize: 52, fontWeight: '900', lineHeight: 56}}>
+            <Text style={{color: palette.primaryForeground, fontSize: 52, fontWeight: '900', lineHeight: 56}}>
               {fmtCoins(balance)}
             </Text>
-            <Text style={{color: 'rgba(255,255,255,0.7)', fontSize: 16, fontWeight: '700', marginBottom: 8}}>
+            <Text style={{
+              color: palette.primaryForeground,
+              opacity: 0.72,
+              fontSize: 16,
+              fontWeight: '700',
+              marginBottom: 8,
+            }}>
               coins
             </Text>
           </View>
           <View style={{flexDirection: 'row', gap: 8, marginTop: 12}}>
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 4,
-              backgroundColor: 'rgba(255,255,255,0.15)',
+              backgroundColor: `${palette.primaryForeground}26`,
               paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
             }}>
-              <Zap size={11} color="#fff" />
-              <Text style={{color: '#fff', fontSize: 11, fontWeight: '700'}}>Use for promotions</Text>
+              <Zap size={11} color={palette.primaryForeground} />
+              <Text style={{color: palette.primaryForeground, fontSize: 11, fontWeight: '700'}}>Use for promotions</Text>
             </View>
           </View>
         </View>
 
         {/* Buy coins section */}
         <Text style={{
-          color: palette.mutedForeground, fontSize: 11, fontWeight: '800',
+          color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800',
           letterSpacing: 0.8, paddingHorizontal: 16, paddingBottom: 10,
         }}>
           BUY COINS
@@ -194,7 +207,7 @@ export function WalletScreen() {
                   paddingHorizontal: 8, paddingVertical: 2,
                   borderRadius: 999,
                 }}>
-                  <Text style={{color: '#fff', fontSize: 9, fontWeight: '900'}}>POPULAR</Text>
+                  <Text style={{color: palette.primaryForeground, fontSize: 9, fontWeight: '900'}}>POPULAR</Text>
                 </View>
               )}
               {buying === pkg.id ? (
@@ -204,14 +217,14 @@ export function WalletScreen() {
                   <Text style={{color: palette.foreground, fontSize: 22, fontWeight: '900'}}>
                     {fmtCoins(pkg.coins)}
                   </Text>
-                  <Text style={{color: palette.mutedForeground, fontSize: 12, marginTop: 2}}>coins</Text>
+                  <Text style={{color: palette.foregroundMuted, fontSize: 12, marginTop: 2}}>coins</Text>
                   <Text style={{
                     color: pkg.highlight ? palette.primary : palette.foreground,
                     fontSize: 16, fontWeight: '800', marginTop: 8,
                   }}>
                     {pkg.priceLabel}
                   </Text>
-                  <Text style={{color: palette.mutedForeground, fontSize: 10, marginTop: 2}}>{pkg.label} pack</Text>
+                  <Text style={{color: palette.foregroundMuted, fontSize: 10, marginTop: 2}}>{pkg.label} pack</Text>
                 </>
               )}
             </Pressable>
@@ -220,7 +233,7 @@ export function WalletScreen() {
 
         {/* Transaction history */}
         <Text style={{
-          color: palette.mutedForeground, fontSize: 11, fontWeight: '800',
+          color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800',
           letterSpacing: 0.8, paddingHorizontal: 16, paddingBottom: 10,
         }}>
           TRANSACTION HISTORY
@@ -229,7 +242,7 @@ export function WalletScreen() {
         {ledger.length === 0 ? (
           <View style={{alignItems: 'center', paddingVertical: 40}}>
             <Coins size={48} color={palette.border} />
-            <Text style={{color: palette.mutedForeground, marginTop: 12, fontSize: 14}}>
+            <Text style={{color: palette.foregroundMuted, marginTop: 12, fontSize: 14}}>
               No transactions yet
             </Text>
           </View>
@@ -256,7 +269,7 @@ export function WalletScreen() {
                 <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 14}}>
                   {reasonLabel(entry.reason)}
                 </Text>
-                <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 2}}>
+                <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 2}}>
                   {timeAgo(entry.createdAt)}
                 </Text>
               </View>
@@ -267,7 +280,7 @@ export function WalletScreen() {
                 }}>
                   {entry.delta > 0 ? '+' : ''}{entry.delta}
                 </Text>
-                <Text style={{color: palette.mutedForeground, fontSize: 10, marginTop: 2}}>
+                <Text style={{color: palette.foregroundMuted, fontSize: 10, marginTop: 2}}>
                   bal: {fmtCoins(entry.balanceAfter)}
                 </Text>
               </View>

@@ -96,8 +96,18 @@ export type RuntimeThemeContract = {
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-function contrastForeground(hex: string): '#000000' | '#ffffff' {
+/** Normalize #RGB → #RRGGBB for luminance math (callers may pass shorthand admin hex). */
+function expandHex6(hex: string): string {
   const h = hex.replace('#', '');
+  if (h.length === 3) {
+    return `${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`;
+  }
+  return h.length === 6 ? h : '';
+}
+
+function contrastForeground(hex: string): '#000000' | '#ffffff' {
+  const h = expandHex6(hex);
+  if (h.length !== 6) return '#000000';
   const r = parseInt(h.slice(0, 2), 16) / 255;
   const g = parseInt(h.slice(2, 4), 16) / 255;
   const b = parseInt(h.slice(4, 6), 16) / 255;
@@ -125,7 +135,12 @@ export function buildPalette(
 ): ThemePalette {
   const accent = safeHex(accentHex, mode === 'dark' ? '#ff4d6d' : '#c0304f');
   const ring   = safeHex(ringHex,   accent);
-  const muted  = safeHex(mutedHex,  mode === 'dark' ? '#2a2a2a' : '#e0e0e0');
+  let muted    = safeHex(mutedHex,  mode === 'dark' ? '#2a2a2a' : '#e0e0e0');
+  // Admin muted is often a dark chip color (#2a2a2a) shared across modes; in light mode that
+  // makes mutedForeground white while screens use it for captions on white — swap to light gray.
+  if (mode === 'light' && contrastForeground(muted) === '#ffffff') {
+    muted = '#e0e0e0';
+  }
 
   const accentFg = contrastForeground(accent);
   const mutedFg  = contrastForeground(muted);

@@ -7,8 +7,17 @@ import { requireAdminToken } from "../middleware/authBearer.js";
 
 // ── Palette builder (mirrors platform-theme.ts) ───────────────────
 
-function contrastFg(hex: string): "#000000" | "#ffffff" {
+function expandHex6(hex: string): string {
   const h = hex.replace("#", "");
+  if (h.length === 3) {
+    return `${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`;
+  }
+  return h.length === 6 ? h : "";
+}
+
+function contrastFg(hex: string): "#000000" | "#ffffff" {
+  const h = expandHex6(hex);
+  if (h.length !== 6) return "#000000";
   const r = parseInt(h.slice(0, 2), 16) / 255;
   const g = parseInt(h.slice(2, 4), 16) / 255;
   const b = parseInt(h.slice(4, 6), 16) / 255;
@@ -28,7 +37,10 @@ function safeHex(hex: string, fallback: string): string {
 function buildPalette(mode: "dark" | "light", accentHex: string, ringHex: string, mutedHex: string) {
   const accent = safeHex(accentHex, mode === "dark" ? "#ff4d6d" : "#c0304f");
   const ring   = safeHex(ringHex, accent);
-  const muted  = safeHex(mutedHex, mode === "dark" ? "#2a2a2a" : "#f0f0f0");
+  let muted    = safeHex(mutedHex, mode === "dark" ? "#2a2a2a" : "#f0f0f0");
+  if (mode === "light" && contrastFg(muted) === "#ffffff") {
+    muted = "#e0e0e0";
+  }
   const accentFg = contrastFg(accent);
   const mutedFg  = contrastFg(muted);
 

@@ -130,3 +130,26 @@ export async function getCampaignAnalytics(id: string): Promise<{
   if (!res.ok) throw new Error('Failed to fetch analytics');
   return res.json();
 }
+
+export type PromotionDeliverySurface = 'feed' | 'explore' | 'reels' | 'story_tray' | 'search';
+
+/** Fire-and-forget: records promoted impression or CTA tap for billing (worker debits wallet). */
+export async function logPromotionDelivery(
+  promotionId: string,
+  body: {
+    surface: PromotionDeliverySurface;
+    contentAuthorId: string;
+    isFollowerOfAuthor: boolean;
+    kind?: 'impression' | 'cta_click';
+  },
+): Promise<void> {
+  try {
+    const res = await authedFetch(`/promotions/${promotionId}/log-delivery`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return;
+  } catch {
+    /* non-blocking */
+  }
+}

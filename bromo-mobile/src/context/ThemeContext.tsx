@@ -10,8 +10,7 @@ import React, {
 import {useColorScheme} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  FALLBACK_PALETTE_DARK,
-  FALLBACK_PALETTE_LIGHT,
+  buildPalette,
   defaultThemeContract,
   fetchThemeContractFromUrls,
   type RuntimeThemeContract,
@@ -50,7 +49,12 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue>({
   contract: defaultThemeContract,
-  palette: FALLBACK_PALETTE_DARK,
+  palette: buildPalette(
+    'dark',
+    defaultThemeContract.theme.accentHex,
+    defaultThemeContract.theme.ringHex,
+    defaultThemeContract.theme.mutedHex,
+  ),
   isDark: true,
   toggleTheme: () => {},
   refresh: async () => {},
@@ -106,15 +110,17 @@ export function ThemeProvider({children}: {children: React.ReactNode}) {
     return systemScheme === 'dark';
   }, [manualDark, contract.theme.defaultTheme, systemScheme]);
 
-  // Use server-resolved palette if available, fall back to in-app constants
-  const palette = useMemo(() => {
-    const serverPalette = isDark ? contract.theme.dark : contract.theme.light;
-    // Validate that the palette has the required tokens
-    if (serverPalette?.background && serverPalette?.accent && serverPalette?.glass) {
-      return serverPalette;
-    }
-    return isDark ? FALLBACK_PALETTE_DARK : FALLBACK_PALETTE_LIGHT;
-  }, [isDark, contract.theme.dark, contract.theme.light]);
+  // Always derive palette from mode + contract hex so light/dark pairs stay consistent (nested
+  // palettes from cache/API can be stale or use a dark muted swatch in light mode).
+  const palette = useMemo((): ThemePalette => {
+    const t = contract.theme;
+    const mode = isDark ? 'dark' : 'light';
+    const layer = mode === 'dark' ? t.dark : t.light;
+    const accentHex = t.accentHex ?? layer?.accent ?? (mode === 'dark' ? '#ff4d6d' : '#c0304f');
+    const ringHex = t.ringHex ?? layer?.ring ?? accentHex;
+    const mutedHex = t.mutedHex ?? layer?.muted ?? (mode === 'dark' ? '#2a2a2a' : '#e0e0e0');
+    return buildPalette(mode, accentHex, ringHex, mutedHex);
+  }, [isDark, contract.theme]);
 
   const toggleTheme = useCallback(() => {
     setManualDark(prev => (prev === null ? !isDark : !prev));

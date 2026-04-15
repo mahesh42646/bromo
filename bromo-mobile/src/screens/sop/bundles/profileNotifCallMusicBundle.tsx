@@ -78,7 +78,7 @@ function StatCard({icon, label, value, palette}: {icon: React.ReactNode; label: 
     <View style={{flex: 1, backgroundColor: palette.input, borderRadius: 12, padding: 12, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: palette.border}}>
       {icon}
       <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900'}}>{value}</Text>
-      <Text style={{color: palette.mutedForeground, fontSize: 11, textAlign: 'center'}}>{label}</Text>
+      <Text style={{color: palette.foregroundMuted, fontSize: 11, textAlign: 'center'}}>{label}</Text>
     </View>
   );
 }
@@ -186,7 +186,7 @@ export function ContentInsightsScreen() {
                   <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 13}} numberOfLines={2}>
                     {selectedPost.caption || 'No caption'}
                   </Text>
-                  <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 4}}>
+                  <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>
                     {selectedPost.type.toUpperCase()}
                   </Text>
                 </View>
@@ -205,7 +205,7 @@ export function ContentInsightsScreen() {
                   <View style={{flexDirection: 'row', gap: 8}}>
                     <StatCard icon={<BarChart2 size={16} color={palette.primary} />} label="Reach %" value={`${selectedAnalytics.reachRate}%`} palette={palette} />
                     <StatCard icon={<TrendingUp size={16} color={palette.primary} />} label="Engagement" value={`${selectedAnalytics.engagementRate}%`} palette={palette} />
-                    <StatCard icon={<Eye size={16} color={palette.mutedForeground} />} label="Avg Watch" value={fmtMs(selectedAnalytics.avgWatchTimeMs)} palette={palette} />
+                    <StatCard icon={<Eye size={16} color={palette.foregroundSubtle} />} label="Avg Watch" value={fmtMs(selectedAnalytics.avgWatchTimeMs)} palette={palette} />
                     <StatCard icon={<TrendingUp size={16} color={palette.accent} />} label="Trending" value={selectedAnalytics.trendingScore.toFixed(2)} palette={palette} />
                   </View>
                 </>
@@ -214,11 +214,11 @@ export function ContentInsightsScreen() {
           )}
 
           {/* Post list */}
-          <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, paddingHorizontal: 16, paddingBottom: 8}}>
+          <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, paddingHorizontal: 16, paddingBottom: 8}}>
             YOUR POSTS — TAP FOR INSIGHTS
           </Text>
           {posts.length === 0 ? (
-            <Text style={{textAlign: 'center', color: palette.mutedForeground, paddingTop: 40}}>No posts yet</Text>
+            <Text style={{textAlign: 'center', color: palette.foregroundMuted, paddingTop: 40}}>No posts yet</Text>
           ) : (
             <View style={{flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 14, gap: 3}}>
               {posts.map(post => (
@@ -236,9 +236,14 @@ export function ContentInsightsScreen() {
                     style={{width: '100%', height: '100%'}}
                     resizeMode="cover"
                   />
-                  <View style={{position: 'absolute', bottom: 4, left: 4, flexDirection: 'row', alignItems: 'center', gap: 4}}>
-                    <Eye size={11} color="#fff" />
-                    <Text style={{color: '#fff', fontSize: 10, fontWeight: '700'}}>{fmtCount(post.viewsCount)}</Text>
+                  <View style={{
+                    position: 'absolute', bottom: 4, left: 4,
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
+                    backgroundColor: palette.overlay,
+                  }}>
+                    <Eye size={11} color={palette.foreground} />
+                    <Text style={{color: palette.foreground, fontSize: 10, fontWeight: '700'}}>{fmtCount(post.viewsCount)}</Text>
                   </View>
                 </Pressable>
               ))}
@@ -390,7 +395,7 @@ export function NotificationsScreen() {
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.4}
           ListEmptyComponent={
-            <Text style={{textAlign: 'center', color: palette.mutedForeground, paddingTop: 60, fontSize: 15}}>
+            <Text style={{textAlign: 'center', color: palette.foregroundMuted, paddingTop: 60, fontSize: 15}}>
               {tab === 'unread' ? 'No unread notifications' : 'No notifications yet'}
             </Text>
           }
@@ -430,7 +435,7 @@ export function NotificationsScreen() {
                     )}
                     <Text style={{fontWeight: item.read ? '400' : '600'}}>{item.message}</Text>
                   </Text>
-                  <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 3}}>
+                  <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 3}}>
                     {timeAgo(item.createdAt)}
                   </Text>
                 </View>
@@ -467,7 +472,7 @@ export function VoiceCallScreen() {
       <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20}}>
         <Phone size={64} color={palette.primary} />
         <Text style={{fontWeight: '800', color: palette.foreground, fontSize: 18}}>{route.params.peerName}</Text>
-        <Text style={{color: palette.mutedForeground}}>Ringing...</Text>
+        <Text style={{color: palette.foregroundMuted}}>Ringing...</Text>
         <PrimaryButton label="End call" onPress={() => Alert.alert('Call ended')} variant="outline" />
       </View>
     </SopChrome>
@@ -482,7 +487,7 @@ export function VideoCallScreen() {
       <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20}}>
         <VideoIcon size={64} color={palette.primary} />
         <Text style={{fontWeight: '800', color: palette.foreground, fontSize: 18}}>{route.params.peerName}</Text>
-        <Text style={{color: palette.mutedForeground}}>Connecting video...</Text>
+        <Text style={{color: palette.foregroundMuted}}>Connecting video...</Text>
         <PrimaryButton label="End call" onPress={() => Alert.alert('Call ended')} variant="outline" />
       </View>
     </SopChrome>
@@ -498,17 +503,17 @@ export function AutoDmScreen() {
         <View style={{padding: 14, borderWidth: 1, borderColor: palette.border, borderRadius: 12, backgroundColor: `${palette.primary}08`}}>
           <Text style={{color: palette.primary, fontWeight: '800', marginBottom: 4}}>Welcome message</Text>
           <Text style={{color: palette.foreground}}>Welcome to BROMO! Start exploring stores and earn points by watching reels.</Text>
-          <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 6}}>Trigger: On signup</Text>
+          <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 6}}>Trigger: On signup</Text>
         </View>
         <View style={{padding: 14, borderWidth: 1, borderColor: palette.border, borderRadius: 12, backgroundColor: `${palette.primary}08`}}>
           <Text style={{color: palette.primary, fontWeight: '800', marginBottom: 4}}>Store promotion</Text>
           <Text style={{color: palette.foreground}}>Flash sale at Coffee Republic — 50% off today only!</Text>
-          <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 6}}>Trigger: 3KM proximity</Text>
+          <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 6}}>Trigger: 3KM proximity</Text>
         </View>
         <View style={{padding: 14, borderWidth: 1, borderColor: palette.border, borderRadius: 12, backgroundColor: `${palette.primary}08`}}>
           <Text style={{color: palette.primary, fontWeight: '800', marginBottom: 4}}>Event alert</Text>
           <Text style={{color: palette.foreground}}>New music release — trending audio in your city. Use it in your next reel!</Text>
-          <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 6}}>Trigger: Admin broadcast</Text>
+          <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 6}}>Trigger: Admin broadcast</Text>
         </View>
       </View>
     </SopChrome>

@@ -25,7 +25,7 @@ function StatCard({icon, label, value, color}: {
     }}>
       {icon}
       <Text style={{color, fontWeight: '900', fontSize: 22}}>{value}</Text>
-      <Text style={{color: palette.mutedForeground, fontSize: 11, textAlign: 'center'}}>{label}</Text>
+      <Text style={{color: palette.foregroundMuted, fontSize: 11, textAlign: 'center'}}>{label}</Text>
     </View>
   );
 }
@@ -83,7 +83,7 @@ export function CampaignAnalyticsScreen() {
             backgroundColor: palette.input, borderWidth: 1, borderColor: palette.border,
           }}>
             <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
-              <Text style={{color: palette.mutedForeground, fontSize: 12}}>Budget spent</Text>
+              <Text style={{color: palette.foregroundMuted, fontSize: 12}}>Budget spent</Text>
               <Text style={{color: palette.foreground, fontWeight: '900'}}>
                 {analytics.spentCoins.toLocaleString()} / {campaign.budgetCoins.toLocaleString()} coins
               </Text>
@@ -95,7 +95,7 @@ export function CampaignAnalyticsScreen() {
                 width: `${pctSpent}%`,
               }} />
             </View>
-            <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 6, textAlign: 'right'}}>
+            <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 6, textAlign: 'right'}}>
               {analytics.remainingBudget.toLocaleString()} coins remaining
             </Text>
           </View>
@@ -104,7 +104,7 @@ export function CampaignAnalyticsScreen() {
         {/* Stats grid */}
         {analytics && (
           <>
-            <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6}}>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6}}>
               PERFORMANCE
             </Text>
             <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 10}}>
@@ -138,7 +138,7 @@ export function CampaignAnalyticsScreen() {
             {/* Daily breakdown */}
             {analytics.dailyBreakdown.length > 0 && (
               <>
-                <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '800', letterSpacing: 0.6}}>
+                <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800', letterSpacing: 0.6}}>
                   DAILY BREAKDOWN (14 DAYS)
                 </Text>
                 {analytics.dailyBreakdown.map((row, i) => (
@@ -153,13 +153,13 @@ export function CampaignAnalyticsScreen() {
                     <Text style={{flex: 1, color: palette.foreground, fontSize: 13}}>
                       {row._id.date}
                     </Text>
-                    <Text style={{color: palette.mutedForeground, fontSize: 12, marginRight: 12}}>
+                    <Text style={{color: palette.foregroundMuted, fontSize: 12, marginRight: 12}}>
                       {row._id.category}
                     </Text>
                     <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 13, minWidth: 40, textAlign: 'right'}}>
                       {row.count.toLocaleString()}
                     </Text>
-                    <Text style={{color: palette.mutedForeground, fontSize: 11, minWidth: 60, textAlign: 'right'}}>
+                    <Text style={{color: palette.foregroundMuted, fontSize: 11, minWidth: 60, textAlign: 'right'}}>
                       {row.coinsCharged} coins
                     </Text>
                   </View>
