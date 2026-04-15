@@ -557,7 +557,9 @@ postsRouter.get(
 
       const saves = await mongoose.connection
         .collection("saved_posts")
-        .find({userId: user._id})
+        .find({
+          $or: [{ userId: user._id }, { userId: String(user._id) }],
+        })
         .sort({createdAt: -1})
         .skip(skip)
         .limit(PAGE_SIZE)
@@ -978,12 +980,17 @@ postsRouter.get(
         );
 
       if (type === "saved") {
-        if (!dbUser || String(userId) !== String(dbUser._id)) {
+        if (!isOwnProfile) {
           return res.status(403).json({ message: "Saved posts are private" });
         }
+        /** Same as profile owner even when req.dbUser did not attach (use Mongo user id from URL). */
+        const saverId = dbUser != null ? dbUser._id : targetUser._id;
+
         const saves = await mongoose.connection
           .collection("saved_posts")
-          .find({ userId: dbUser._id })
+          .find({
+            $or: [{ userId: saverId }, { userId: String(saverId) }],
+          })
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(PAGE_SIZE)
@@ -998,22 +1005,29 @@ postsRouter.get(
         })
           .populate("authorId", AUTHOR_SELECT)
           .lean();
-        const follows = await Follow.find({ followerId: dbUser._id, status: "accepted" })
-          .select("followingId")
-          .lean();
+        const follows =
+          dbUser != null
+            ? await Follow.find({ followerId: dbUser._id, status: "accepted" })
+                .select("followingId")
+                .lean()
+            : [];
         const followingSet = new Set(follows.map((f) => String(f.followingId)));
-        const likes = await Like.find({
-          userId: dbUser._id,
-          targetType: "post",
-          targetId: { $in: ids },
-        })
-          .select("targetId")
-          .lean();
-        const likedSet = new Set(likes.map((l) => String(l.targetId)));
+        const likedSet = new Set<string>();
+        if (dbUser) {
+          const likes = await Like.find({
+            userId: dbUser._id,
+            targetType: "post",
+            targetId: { $in: ids },
+          })
+            .select("targetId")
+            .lean();
+          likes.forEach((l) => likedSet.add(String(l.targetId)));
+        }
         const order = new Map(ids.map((id, i) => [String(id), i]));
         postsRaw.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+        const viewerId = dbUser != null ? String(dbUser._id) : String(targetUser._id);
         const result = postsRaw.map((p) =>
-          normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
+          normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, viewerId),
         );
         return res.json({ posts: result, page, hasMore: saves.length === PAGE_SIZE });
       }
@@ -1024,12 +1038,8 @@ postsRouter.get(
         ? new mongoose.Types.ObjectId(userId)
         : userId;
 
-      /**
-       * Profile "Posts" grid must match what home/friends feeds show (FEED_TYPES: post + reel).
-       * Clients send type=post for that tab; only the Reels tab sends type=reel.
-       */
-      const typeFilter =
-        type === "reel" ? { type: "reel" as const } : { type: { $in: ["post", "reel"] as const } };
+      /** Posts grid = feed posts only; Reels tab sends type=reel (separate tab in the app). */
+      const typeFilter = type === "reel" ? { type: "reel" as const } : { type: "post" as const };
 
       const posts = await Post.find({
         authorId: authorIdFilter,
@@ -1691,12 +1701,16 @@ postsRouter.post(
 
       const col = mongoose.connection.collection("saved_posts");
       const oid = new mongoose.Types.ObjectId(postId);
-      const row = await col.findOne({userId: user._id, postId: oid});
+      const uid = user._id as mongoose.Types.ObjectId;
+      const row = await col.findOne({
+        postId: oid,
+        $or: [{ userId: uid }, { userId: String(uid) }],
+      });
       if (row) {
         await col.deleteOne({_id: row._id});
         return res.json({saved: false});
       }
-      await col.insertOne({userId: user._id, postId: oid, createdAt: new Date()});
+      await col.insertOne({userId: uid, postId: oid, createdAt: new Date()});
       return res.json({saved: true});
     } catch (err) {
       console.error("[posts] save toggle error:", err);
