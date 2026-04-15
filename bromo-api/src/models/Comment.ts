@@ -6,6 +6,8 @@ export interface CommentDoc extends Document {
   text: string;
   likesCount: number;
   parentId?: Types.ObjectId;
+  /** Root comment id for this thread (set on all comments including the root). */
+  threadRootId?: Types.ObjectId;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -18,11 +20,13 @@ const commentSchema = new Schema<CommentDoc>(
     text: { type: String, required: true, maxlength: 1000 },
     likesCount: { type: Number, default: 0 },
     parentId: { type: Schema.Types.ObjectId, ref: "Comment" },
+    threadRootId: { type: Schema.Types.ObjectId, ref: "Comment", index: true },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },
 );
 
 commentSchema.index({ postId: 1, createdAt: -1 });
+commentSchema.index({ postId: 1, threadRootId: 1, createdAt: 1, _id: 1 });
 
 export const Comment = mongoose.model<CommentDoc>("Comment", commentSchema);

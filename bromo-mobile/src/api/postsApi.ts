@@ -102,9 +102,14 @@ export type Comment = {
   text: string;
   likesCount: number;
   parentId?: string;
+  /** Root comment id for this thread (from API). */
+  threadRootId?: string;
+  replyingTo?: {userId: string; username: string};
   replies?: Comment[];
   repliesCount?: number;
   hasMoreReplies?: boolean;
+  threadReplyCount?: number;
+  hasMoreThreadReplies?: boolean;
   createdAt: string;
 };
 
@@ -126,6 +131,13 @@ export type CommentsResponse = {
   page: number;
   hasMore: boolean;
   totalCount?: number;
+};
+
+export type CommentThreadResponse = {
+  replies: Comment[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  totalInThread: number;
 };
 
 function feedQuery(opts: {
@@ -309,6 +321,20 @@ export async function getComments(postId: string, page = 1): Promise<CommentsRes
   const res = await authedFetch(`/posts/${postId}/comments?page=${page}`);
   if (!res.ok) throw new Error('Failed to fetch comments');
   return res.json() as Promise<CommentsResponse>;
+}
+
+export async function getCommentThread(
+  postId: string,
+  rootId: string,
+  opts?: {after?: string; limit?: number},
+): Promise<CommentThreadResponse> {
+  const q = new URLSearchParams();
+  if (opts?.after) q.set('after', opts.after);
+  if (opts?.limit != null) q.set('limit', String(opts.limit));
+  const qs = q.toString();
+  const res = await authedFetch(`/posts/${postId}/comments/thread/${rootId}${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw new Error('Failed to fetch comment thread');
+  return res.json() as Promise<CommentThreadResponse>;
 }
 
 export async function addComment(postId: string, text: string, parentId?: string): Promise<{comment: Comment}> {

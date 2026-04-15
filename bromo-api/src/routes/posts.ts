@@ -75,6 +75,112 @@ const VISIBLE_POST = {
   processingStatus: { $nin: ["pending", "processing", "failed"] },
 } as const;
 
+/** Paginate root comments; preview only a few replies per thread (see thread endpoint for more). */
+const COMMENT_ROOT_PAGE = 15;
+const COMMENT_THREAD_PREVIEW = 5;
+const COMMENT_THREAD_PAGE = 15;
+const COMMENT_LEGACY_THREAD_CAP = 500;
+
+async function resolveThreadRootId(parentId: string): Promise<mongoose.Types.ObjectId> {
+  let id = parentId;
+  for (let i = 0; i < 50; i++) {
+    const cur = await Comment.findById(id).select("parentId threadRootId").lean();
+    if (!cur) return new mongoose.Types.ObjectId(parentId);
+    if (cur.threadRootId) return cur.threadRootId as mongoose.Types.ObjectId;
+    if (!cur.parentId) return cur._id as mongoose.Types.ObjectId;
+    id = String(cur.parentId);
+  }
+  return new mongoose.Types.ObjectId(parentId);
+}
+
+async function legacyThreadDescendants(
+  postId: mongoose.Types.ObjectId,
+  rootId: mongoose.Types.ObjectId,
+  cap: number,
+): Promise<Array<Record<string, unknown>>> {
+  const rows = await Comment.aggregate([
+    { $match: { _id: rootId, postId, isActive: true } },
+    {
+      $graphLookup: {
+        from: "comments",
+        startWith: "$_id",
+        connectFromField: "_id",
+        connectToField: "parentId",
+        as: "desc",
+        maxDepth: 100,
+        restrictSearchWithMatch: { postId, isActive: true },
+      },
+    },
+    { $project: { desc: 1 } },
+  ]);
+  const desc = (rows[0]?.desc ?? []) as Array<Record<string, unknown>>;
+  desc.sort((a, b) => {
+    const ta = new Date(a.createdAt as Date).getTime();
+    const tb = new Date(b.createdAt as Date).getTime();
+    if (ta !== tb) return ta - tb;
+    return String(a._id).localeCompare(String(b._id));
+  });
+  return desc.slice(0, cap);
+}
+
+async function attachReplyingTo(
+  rows: Array<Record<string, unknown>>,
+): Promise<Array<Record<string, unknown>>> {
+  const parentIds = [
+    ...new Set(rows.map((r) => (r.parentId ? String(r.parentId) : "")).filter(Boolean)),
+  ].map((id) => new mongoose.Types.ObjectId(id));
+  if (!parentIds.length) {
+    return rows.map((r) => ({
+      ...r,
+      author: r.authorId,
+      authorId: undefined,
+    }));
+  }
+  const parents = await Comment.find({ _id: { $in: parentIds } })
+    .populate("authorId", AUTHOR_SELECT)
+    .lean();
+  const pmap = new Map(
+    parents.map((p) => {
+      const a = p.authorId as {_id: mongoose.Types.ObjectId; username?: string} | null;
+      return [
+        String(p._id),
+        {
+          userId: a?._id ? String(a._id) : "",
+          username: typeof a?.username === "string" ? a.username : "user",
+        },
+      ];
+    }),
+  );
+  return rows.map((r) => {
+    const pid = r.parentId ? String(r.parentId) : "";
+    return {
+      ...r,
+      author: r.authorId,
+      authorId: undefined,
+      replyingTo: pid ? pmap.get(pid) : undefined,
+    };
+  });
+}
+
+async function populateLeanCommentAuthors(
+  docs: Array<Record<string, unknown>>,
+): Promise<Array<Record<string, unknown>>> {
+  const ids = [
+    ...new Set(
+      docs
+        .map((d) => (d.authorId ? String(d.authorId) : ""))
+        .filter(Boolean),
+    ),
+  ].map((id) => new mongoose.Types.ObjectId(id));
+  if (!ids.length) return docs;
+  const users = await User.find({_id: {$in: ids}}).select(AUTHOR_SELECT).lean();
+  const umap = new Map(users.map((u) => [String(u._id), u]));
+  return docs.map((d) => ({
+    ...d,
+    authorId: umap.get(String(d.authorId)) ?? d.authorId,
+  }));
+}
+
 /** ETag for story tray includes viewer’s seen set so 304 invalidates after mark-seen. */
 function storiesTrayEtag(
   slim: Array<{ _id: mongoose.Types.ObjectId; updatedAt: Date }>,
@@ -1165,6 +1271,107 @@ postsRouter.post(
   },
 );
 
+// ── GET /posts/:id/comments/thread/:rootId (paginated flat thread) ─
+postsRouter.get(
+  "/:id/comments/thread/:rootId",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const postId = String(req.params.id);
+      const rootId = String(req.params.rootId);
+      if (!mongoose.Types.ObjectId.isValid(postId) || !mongoose.Types.ObjectId.isValid(rootId)) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      const postIdObj = new mongoose.Types.ObjectId(postId);
+      const rootObj = new mongoose.Types.ObjectId(rootId);
+      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || COMMENT_THREAD_PAGE));
+      const after = typeof req.query.after === "string" && mongoose.Types.ObjectId.isValid(req.query.after)
+        ? String(req.query.after)
+        : undefined;
+
+      const post = await Post.findById(postId).select("isDeleted isActive").lean();
+      if (!post?.isActive || post.isDeleted) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+
+      const rootDoc = await Comment.findOne({
+        _id: rootObj,
+        postId,
+        isActive: true,
+        parentId: {$exists: false},
+      })
+        .select("_id threadRootId")
+        .lean();
+      if (!rootDoc) return res.status(404).json({ message: "Thread not found" });
+
+      const tr = (rootDoc.threadRootId as mongoose.Types.ObjectId | undefined) ?? rootObj;
+      const indexedFilter: Record<string, unknown> = {
+        postId,
+        isActive: true,
+        threadRootId: tr,
+        _id: {$ne: rootObj},
+      };
+      let totalIndexed = await Comment.countDocuments(indexedFilter);
+
+      if (totalIndexed > 0) {
+        const q: Record<string, unknown> = {...indexedFilter};
+        if (after) {
+          const afterDoc = await Comment.findById(after).select("createdAt _id").lean();
+          if (afterDoc) {
+            q.$or = [
+              {createdAt: {$gt: afterDoc.createdAt}},
+              {$and: [{createdAt: afterDoc.createdAt}, {_id: {$gt: afterDoc._id}}]},
+            ];
+          }
+        }
+        const batch = await Comment.find(q)
+          .sort({createdAt: 1, _id: 1})
+          .limit(limit)
+          .populate("authorId", AUTHOR_SELECT)
+          .lean();
+        const formatted = await attachReplyingTo(batch as unknown as Array<Record<string, unknown>>);
+        const nextCursor =
+          batch.length === limit && batch[batch.length - 1]?._id
+            ? String(batch[batch.length - 1]._id)
+            : null;
+        return res.json({
+          replies: formatted,
+          hasMore: batch.length === limit,
+          nextCursor,
+          totalInThread: totalIndexed,
+        });
+      }
+
+      const hasLegacy = await Comment.exists({postId, parentId: rootObj, isActive: true});
+      if (!hasLegacy) {
+        return res.json({replies: [], hasMore: false, nextCursor: null, totalInThread: 0});
+      }
+
+      const all = await legacyThreadDescendants(postIdObj, rootObj, COMMENT_LEGACY_THREAD_CAP);
+      const populated = await populateLeanCommentAuthors(all);
+      let start = COMMENT_THREAD_PREVIEW;
+      if (after) {
+        const idx = populated.findIndex((x) => String(x._id) === after);
+        start = idx >= 0 ? idx + 1 : COMMENT_THREAD_PREVIEW;
+      }
+      const slice = populated.slice(start, start + limit);
+      const formatted = await attachReplyingTo(slice);
+      const nextCursor =
+        slice.length === limit && slice[slice.length - 1]?._id ? String(slice[slice.length - 1]._id) : null;
+      const hasMore = start + slice.length < populated.length;
+      return res.json({
+        replies: formatted,
+        hasMore,
+        nextCursor,
+        totalInThread: populated.length,
+      });
+    } catch (err) {
+      console.error("[posts] comments thread error:", err);
+      return res.status(500).json({ message: "Failed to fetch thread" });
+    }
+  },
+);
+
 // ── GET /posts/:id/comments ─────────────────────────────────────────
 postsRouter.get(
   "/:id/comments",
@@ -1172,12 +1379,14 @@ postsRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const skip = (page - 1) * 30;
+      const skip = (page - 1) * COMMENT_ROOT_PAGE;
 
       const post = await Post.findById(req.params.id).select("isDeleted isActive commentsCount");
       if (!post?.isActive || post.isDeleted) {
         return res.status(404).json({ message: "Post not found" });
       }
+
+      const postIdObj = new mongoose.Types.ObjectId(String(req.params.id));
 
       const rootComments = await Comment.find({
         postId: req.params.id,
@@ -1186,7 +1395,7 @@ postsRouter.get(
       })
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(30)
+        .limit(COMMENT_ROOT_PAGE)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
@@ -1199,45 +1408,62 @@ postsRouter.get(
         });
       }
 
-      // Fetch all descendants for this post, then assemble nested trees for paged roots.
-      const nonRootComments = await Comment.find({
-        postId: req.params.id,
-        isActive: true,
-        parentId: { $exists: true },
-      })
-        .sort({ createdAt: 1 })
-        .populate("authorId", AUTHOR_SELECT)
-        .lean();
+      const result: Record<string, unknown>[] = [];
+      for (const raw of rootComments) {
+        const root = raw as unknown as Record<string, unknown>;
+        const rootOid = root._id as mongoose.Types.ObjectId;
+        const tr =
+          (root.threadRootId as mongoose.Types.ObjectId | undefined) ?? (root._id as mongoose.Types.ObjectId);
 
-      const childrenMap = new Map<string, typeof nonRootComments>();
-      for (const c of nonRootComments) {
-        const pid = String(c.parentId);
-        const arr = childrenMap.get(pid) ?? [];
-        arr.push(c);
-        childrenMap.set(pid, arr);
-      }
-
-      const buildTree = (node: Record<string, unknown>): Record<string, unknown> => {
-        const id = String(node._id);
-        const kids = (childrenMap.get(id) ?? []).map((k) =>
-          buildTree(k as unknown as Record<string, unknown>),
-        );
-        return {
-          ...node,
-          author: node.authorId,
-          authorId: undefined,
-          replies: kids,
-          repliesCount: kids.length,
-          hasMoreReplies: false,
+        const replyFilter: Record<string, unknown> = {
+          postId: req.params.id,
+          isActive: true,
+          threadRootId: tr,
+          _id: { $ne: rootOid },
         };
-      };
 
-      const result = rootComments.map((c) => buildTree(c as unknown as Record<string, unknown>));
+        let total = await Comment.countDocuments(replyFilter);
+        let previewDocs: Array<Record<string, unknown>> = [];
+
+        if (total > 0) {
+          const batch = await Comment.find(replyFilter)
+            .sort({ createdAt: 1, _id: 1 })
+            .limit(COMMENT_THREAD_PREVIEW)
+            .populate("authorId", AUTHOR_SELECT)
+            .lean();
+          previewDocs = batch as unknown as Array<Record<string, unknown>>;
+        } else {
+          const hasLegacy = await Comment.exists({
+            postId: req.params.id,
+            parentId: rootOid,
+            isActive: true,
+          });
+          if (hasLegacy) {
+            const legacy = await legacyThreadDescendants(postIdObj, rootOid, COMMENT_LEGACY_THREAD_CAP);
+            total = legacy.length;
+            const slice = legacy.slice(0, COMMENT_THREAD_PREVIEW);
+            previewDocs = await populateLeanCommentAuthors(slice);
+          }
+        }
+
+        const previewFormatted = await attachReplyingTo(previewDocs);
+        result.push({
+          ...root,
+          author: root.authorId,
+          authorId: undefined,
+          threadRootId: String(tr),
+          replies: previewFormatted,
+          threadReplyCount: total,
+          hasMoreThreadReplies: total > previewFormatted.length,
+          repliesCount: total,
+          hasMoreReplies: total > previewFormatted.length,
+        });
+      }
 
       return res.json({
         comments: result,
         page,
-        hasMore: rootComments.length === 30,
+        hasMore: rootComments.length === COMMENT_ROOT_PAGE,
         totalCount: Number(post.commentsCount) || 0,
       });
     } catch (err) {
@@ -1271,6 +1497,15 @@ postsRouter.post(
         parentId: parentId || undefined,
       });
 
+      let threadRootId: mongoose.Types.ObjectId;
+      if (!parentId) {
+        threadRootId = comment._id as mongoose.Types.ObjectId;
+        await Comment.updateOne({_id: comment._id}, {$set: {threadRootId}});
+      } else {
+        threadRootId = await resolveThreadRootId(String(parentId));
+        await Comment.updateOne({_id: comment._id}, {$set: {threadRootId}});
+      }
+
       const updated = await Post.findByIdAndUpdate(postId, { $inc: { commentsCount: 1 } }, {new: true});
       const commentsCount = updated?.commentsCount ?? 0;
 
@@ -1278,7 +1513,22 @@ postsRouter.post(
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
-      const result = { ...populated, author: populated?.authorId, authorId: undefined };
+      let replyingTo: {userId: string; username: string} | undefined;
+      if (parentId) {
+        const p = await Comment.findById(parentId).populate("authorId", AUTHOR_SELECT).lean();
+        const pa = p?.authorId as {_id: mongoose.Types.ObjectId; username?: string} | null;
+        if (p && pa?._id) {
+          replyingTo = {userId: String(pa._id), username: pa.username ?? "user"};
+        }
+      }
+
+      const result = {
+        ...populated,
+        author: populated?.authorId,
+        authorId: undefined,
+        threadRootId: String(threadRootId),
+        replyingTo,
+      };
       emitPostComment(postId, commentsCount, result as object);
 
       // Persist + broadcast notification to post author

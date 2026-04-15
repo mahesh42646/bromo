@@ -625,7 +625,7 @@ function ReelItem({
       />
 
       {/* Right side actions */}
-      <View style={{position: 'absolute', right: 14, bottom: tabBarTopFromBottom + 54, alignItems: 'center', gap: 18, zIndex: 10}}>
+      <View style={{position: 'absolute', right: 14, bottom: tabBarTopFromBottom - 10, alignItems: 'center', gap: 18, zIndex: 10}}>
         <Pressable onPress={() => onLike(item._id)} style={{alignItems: 'center', gap: 4}}>
           <Heart
             size={28}
@@ -680,7 +680,7 @@ function ReelItem({
 
       {/* Bottom info — compact: @user, optional verified, follow; then 1-line hashtags / caption only when present */}
       <View
-        style={{position: 'absolute', bottom: tabBarTopFromBottom - 5, left: 14, right: 76, gap: 2, zIndex: 10}}
+        style={{position: 'absolute', bottom: 28 , left: 14, right: 76, gap: 2, zIndex: 10}}
         pointerEvents="box-none">
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
         <Image source={{uri: resolveMediaUrl(avatarUri) || avatarUri}} style={{width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)'}} />
@@ -697,7 +697,7 @@ function ReelItem({
               borderWidth: 1,
               borderColor: '#fff',
               borderRadius: borderRadiusScale === 'bold' ? 8 : 5,
-              paddingHorizontal: 12,
+              paddingHorizontal: 8,
               paddingVertical: 4,
             }}>
             <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>{following ? 'Following' : 'Follow'}</Text>
@@ -950,12 +950,30 @@ export function ReelsScreen() {
     const unsubDelete = socketService.on('post:delete', ({postId}) => {
       setReels(prev => prev.filter(r => r._id !== postId));
     });
+    const unsubComment = socketService.on('post:comment', ({postId, commentsCount}) => {
+      setReels(prev =>
+        prev.map(r => (r._id === postId ? {...r, commentsCount} : r)),
+      );
+    });
     return () => {
       unsubNew();
       unsubLike();
       unsubDelete();
+      unsubComment();
     };
   }, [dbUser?._id]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      'bromo:postCommentsCount',
+      ({postId: pid, commentsCount}: {postId: string; commentsCount: number}) => {
+        setReels(prev =>
+          prev.map(r => (r._id === pid ? {...r, commentsCount} : r)),
+        );
+      },
+    );
+    return () => sub.remove();
+  }, []);
 
   const onLoadMore = useCallback(async () => {
     if (!hasMoreRef.current || loadingMoreRef.current) return;
