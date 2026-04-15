@@ -1,3 +1,4 @@
+import {Image} from 'react-native';
 import {authedFetch} from './authApi';
 
 export type AdActionType = 'external_url' | 'in_app';
@@ -18,6 +19,10 @@ export interface Ad {
   mediaUrls: string[];
   thumbnailUrl?: string;
   caption: string;
+  /** e.g. "Shopping", "App install" — optional, from admin. */
+  category?: string;
+  /** Optional sponsor line; defaults to "Sponsored" in UI. */
+  brandName?: string;
   cta?: AdCta;
 }
 
@@ -30,6 +35,19 @@ export async function fetchAds(placement: AdPlacement, limit = 3): Promise<Ad[]>
   if (!res?.ok) return [];
   const body = await res.json().catch(() => ({})) as {ads?: unknown[]};
   return (body.ads ?? []) as Ad[];
+}
+
+/** Warm image cache for ad creatives (thumbnails + first frame). */
+export function prefetchAdMedia(ads: Ad[]): void {
+  const urls = new Set<string>();
+  for (const ad of ads) {
+    if (ad.thumbnailUrl) urls.add(ad.thumbnailUrl);
+    const first = ad.mediaUrls[0];
+    if (first) urls.add(first);
+  }
+  urls.forEach(u => {
+    void Image.prefetch(u).catch(() => null);
+  });
 }
 
 export async function trackAdEvent(

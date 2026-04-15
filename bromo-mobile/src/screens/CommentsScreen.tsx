@@ -111,7 +111,7 @@ function CommentCell({
       <View style={{flex: 1}}>
         <Text style={{color: palette.foreground, fontSize: 13, lineHeight: 20}}>
           <Text style={{fontWeight: '800'}}>{comment.author.username}</Text>
-          <Text style={{color: palette.mutedForeground}}> {timeAgo(comment.createdAt)}</Text>
+          <Text style={{color: palette.foreground, opacity: 0.55}}> {timeAgo(comment.createdAt)}</Text>
         </Text>
         <Text style={{color: palette.foreground, fontSize: 16, lineHeight: 22}}>
           {comment.replyingTo ? (
@@ -126,7 +126,7 @@ function CommentCell({
           {comment.text}
         </Text>
         <Pressable onPress={() => onReply(comment)} hitSlop={8} style={{marginTop: 6, alignSelf: 'flex-start'}}>
-          <Text style={{color: palette.mutedForeground, fontWeight: '700', fontSize: 13}}>Reply</Text>
+          <Text style={{color: palette.foreground, opacity: 0.78, fontWeight: '700', fontSize: 13}}>Reply</Text>
         </Pressable>
       </View>
       <Pressable
@@ -139,7 +139,14 @@ function CommentCell({
           fill={comment.likesCount > 0 ? palette.destructive : 'transparent'}
           strokeWidth={2}
         />
-        <Text style={{color: palette.mutedForeground, fontSize: 13, fontWeight: '700', minHeight: 16}}>
+        <Text
+          style={{
+            color: palette.foreground,
+            opacity: comment.likesCount > 0 ? 0.78 : 0.45,
+            fontSize: 13,
+            fontWeight: '700',
+            minHeight: 16,
+          }}>
           {comment.likesCount > 0 ? String(comment.likesCount) : ' '}
         </Text>
       </Pressable>
@@ -180,7 +187,7 @@ function ThreadBlock({
 
       {repliesHidden && bundle.threadReplyCount > 0 ? (
         <Pressable onPress={onToggleRepliesHidden} style={{paddingLeft: 16 + 36 + 10, paddingVertical: 6}}>
-          <Text style={{color: palette.mutedForeground, fontWeight: '700', fontSize: 13}}>
+          <Text style={{color: palette.foreground, opacity: 0.78, fontWeight: '700', fontSize: 13}}>
             — View {bundle.threadReplyCount}{' '}
             {bundle.threadReplyCount === 1 ? 'reply' : 'replies'}
           </Text>
@@ -211,7 +218,7 @@ function ThreadBlock({
           ) : null}
           {bundle.hasMoreThread ? (
             <Pressable onPress={() => onLoadMore(bundle)} style={{paddingVertical: 8}}>
-              <Text style={{color: palette.mutedForeground, fontWeight: '700', fontSize: 13}}>
+              <Text style={{color: palette.foreground, opacity: 0.78, fontWeight: '700', fontSize: 13}}>
                 View more replies
               </Text>
             </Pressable>
@@ -221,7 +228,7 @@ function ThreadBlock({
 
       {showThread && bundle.threadReplyCount > 0 ? (
         <Pressable onPress={onToggleRepliesHidden} style={{paddingLeft: 16 + 36 + 10, paddingVertical: 6}}>
-          <Text style={{color: palette.mutedForeground, fontWeight: '700', fontSize: 13}}>Hide replies</Text>
+          <Text style={{color: palette.foreground, opacity: 0.78, fontWeight: '700', fontSize: 13}}>Hide replies</Text>
         </Pressable>
       ) : null}
     </View>
@@ -533,7 +540,7 @@ export function CommentsScreen() {
                     borderTopWidth: 1,
                     borderTopColor: palette.border,
                   }}>
-                  <Text style={{flex: 1, color: palette.mutedForeground, fontSize: 12}}>
+                  <Text style={{flex: 1, color: palette.foreground, opacity: 0.78, fontSize: 14}}>
                     Replying to <Text style={{fontWeight: '800', color: palette.primary}}>@{replyTo.author.username}</Text>
                   </Text>
                   <Pressable onPress={() => setReplyTo(null)} hitSlop={12}>
@@ -611,11 +618,11 @@ export function CommentsScreen() {
                     value={text}
                     onChangeText={setText}
                     placeholder={replyTo ? `Reply to @${replyTo.author.username}...` : 'Add a comment...'}
-                    placeholderTextColor={palette.mutedForeground}
+                    placeholderTextColor={palette.foreground}
                     style={{
                       flex: 1,
                       color: palette.foreground,
-                      fontSize: 14,
+                      fontSize: 18,
                       maxHeight: 80,
                       paddingTop: 8,
                       paddingBottom: 8,

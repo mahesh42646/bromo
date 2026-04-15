@@ -1,8 +1,5 @@
 /**
- * AdStoryViewer — full-screen modal that plays a sponsored story.
- * Progress bar at top (15s image / video duration).
- * CTA button fades in after 5 seconds.
- * Tap right = close, tap left = close (single-story ad).
+ * AdStoryViewer — full-screen sponsored story: progress bar, pause, mute, share, gradient CTA.
  */
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
@@ -12,15 +9,17 @@ import {
   Linking,
   Modal,
   Pressable,
+  Share,
   StatusBar,
   Text,
   View,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {ExternalLink, Megaphone, X} from 'lucide-react-native';
+import {Megaphone, Pause, Play, Share2, Volume2, VolumeX, X} from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NavigationProp} from '@react-navigation/native';
 import {NetworkVideo} from './media/NetworkVideo';
+import {AdCtaGradientButton} from './AdCtaGradientButton';
 import {useTheme} from '../context/ThemeContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {type Ad, trackAdEvent} from '../api/adsApi';
@@ -31,7 +30,6 @@ type Nav = NavigationProp<Record<string, object | undefined>> & {
 
 const {width: W, height: H} = Dimensions.get('window');
 const AD_DURATION_MS = 15000;
-const CTA_DELAY_MS = 5000;
 const TICK_MS = 50;
 
 interface Props {
@@ -42,66 +40,69 @@ interface Props {
 
 export function AdStoryViewer({ad, visible, onClose}: Props) {
   const insets = useSafeAreaInsets();
-  const {palette} = useTheme();
+  const {palette, contract} = useTheme();
   const navigation = useNavigation() as Nav;
+  const {borderRadiusScale} = contract.brandGuidelines;
+  const radius = borderRadiusScale === 'bold' ? 14 : 10;
 
   const [progress, setProgress] = useState(0);
-  const ctaOpacity = useRef(new Animated.Value(0)).current;
-  const [ctaVisible, setCtaVisible] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const ctaOpacity = useRef(new Animated.Value(1)).current;
   const impressionSent = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ctaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startedAt = useRef(0);
+  const pausedRef = useRef(false);
+  const accumulatedMsRef = useRef(0);
+
+  pausedRef.current = paused;
+
+  useEffect(() => {
+    if (!visible) impressionSent.current = false;
+  }, [visible]);
 
   const clearTimers = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    if (ctaTimerRef.current) clearTimeout(ctaTimerRef.current);
   };
 
   const close = useCallback(() => {
     clearTimers();
     setProgress(0);
-    setCtaVisible(false);
-    ctaOpacity.setValue(0);
+    setPaused(false);
+    setMuted(false);
+    ctaOpacity.setValue(1);
     onClose();
   }, [ctaOpacity, onClose]);
 
   useEffect(() => {
-    if (!visible) { clearTimers(); return; }
+    if (!visible) {
+      clearTimers();
+      return;
+    }
 
-    // Track impression
     if (!impressionSent.current) {
       impressionSent.current = true;
       trackAdEvent(ad._id, 'impression', {placement: 'stories'});
       if (ad.adType === 'video') trackAdEvent(ad._id, 'video_view', {placement: 'stories'});
     }
 
-    startedAt.current = Date.now();
+    accumulatedMsRef.current = 0;
     setProgress(0);
-    setCtaVisible(false);
-    ctaOpacity.setValue(0);
+    setPaused(false);
+    ctaOpacity.setValue(1);
 
-    // Progress bar ticks
     intervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - startedAt.current;
-      const pct = Math.min(1, elapsed / AD_DURATION_MS);
+      if (pausedRef.current) return;
+      accumulatedMsRef.current += TICK_MS;
+      const pct = Math.min(1, accumulatedMsRef.current / AD_DURATION_MS);
       setProgress(pct);
-      if (pct >= 1) { clearTimers(); close(); }
+      if (pct >= 1) {
+        clearTimers();
+        close();
+      }
     }, TICK_MS);
 
-    // CTA after 5 seconds
-    ctaTimerRef.current = setTimeout(() => {
-      setCtaVisible(true);
-      Animated.timing(ctaOpacity, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }).start();
-    }, CTA_DELAY_MS);
-
     return clearTimers;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, ad._id]);
+  }, [visible, ad._id, close, ctaOpacity]);
 
   const handleCta = useCallback(async () => {
     trackAdEvent(ad._id, 'click', {placement: 'stories'});
@@ -114,19 +115,31 @@ export function AdStoryViewer({ad, visible, onClose}: Props) {
     }
   }, [ad, close, navigation]);
 
+  const shareAd = useCallback(async () => {
+    trackAdEvent(ad._id, 'click', {placement: 'stories'});
+    const url = ad.cta?.externalUrl ?? '';
+    try {
+      await Share.share({
+        message: url ? `${ad.caption || 'Sponsored'}\n${url}` : ad.caption || 'Sponsored',
+        url: url || undefined,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [ad]);
+
   const mediaUrl = ad.mediaUrls[0] ?? '';
+  const title = ad.brandName?.trim() || 'Sponsored';
 
   return (
     <Modal visible={visible} animationType="fade" statusBarTranslucent transparent>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
       <View style={{flex: 1, backgroundColor: '#000', width: W, height: H}}>
-
-        {/* ── Full-screen media ──────────────────────────────────────────── */}
         {ad.adType === 'video' ? (
           <NetworkVideo
             uri={mediaUrl}
-            paused={!visible}
-            muted={false}
+            paused={!visible || paused}
+            muted={muted}
             repeat={false}
             style={{width: W, height: H}}
             resizeMode="cover"
@@ -134,14 +147,18 @@ export function AdStoryViewer({ad, visible, onClose}: Props) {
             posterOverlayUntilReady
           />
         ) : (
-          <Image
-            source={{uri: mediaUrl}}
-            style={{position: 'absolute', width: W, height: H}}
-            resizeMode="cover"
-          />
+          <Image source={{uri: mediaUrl}} style={{position: 'absolute', width: W, height: H}} resizeMode="cover" />
         )}
 
-        {/* ── Top bar: progress + close ─────────────────────────────────── */}
+        <Pressable
+          style={{position: 'absolute', left: 0, top: 0, width: W * 0.35, height: H, zIndex: 5}}
+          onPress={close}
+        />
+        <Pressable
+          style={{position: 'absolute', right: 0, top: 0, width: W * 0.65, height: H, zIndex: 5}}
+          onPress={close}
+        />
+
         <View
           style={{
             position: 'absolute',
@@ -151,7 +168,6 @@ export function AdStoryViewer({ad, visible, onClose}: Props) {
             zIndex: 20,
             gap: 10,
           }}>
-          {/* Single progress bar */}
           <View style={{height: 2.5, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden'}}>
             <View
               style={{
@@ -163,9 +179,8 @@ export function AdStoryViewer({ad, visible, onClose}: Props) {
             />
           </View>
 
-          {/* Header row */}
           <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1}}>
               <View
                 style={{
                   width: 34,
@@ -173,34 +188,38 @@ export function AdStoryViewer({ad, visible, onClose}: Props) {
                   borderRadius: 17,
                   backgroundColor: palette.surface,
                   borderWidth: 2,
-                  borderColor: palette.accent,
+                  borderColor: palette.ring,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}>
                 <Megaphone size={14} color={palette.accent} />
               </View>
-              <View>
-                <Text style={{color: '#fff', fontWeight: '700', fontSize: 13}}>Sponsored</Text>
-                <Text style={{color: 'rgba(255,255,255,0.65)', fontSize: 11}}>Promoted story</Text>
+              <View style={{flex: 1}}>
+                <Text style={{color: '#fff', fontWeight: '700', fontSize: 13}} numberOfLines={1}>
+                  {title}
+                </Text>
+                <Text style={{color: 'rgba(255,255,255,0.65)', fontSize: 11}} numberOfLines={1}>
+                  {ad.category ? `${ad.category} · Promoted` : 'Promoted story'}
+                </Text>
               </View>
             </View>
-            <Pressable onPress={close} hitSlop={12}>
-              <X size={22} color="#fff" />
-            </Pressable>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+              <Pressable onPress={() => setPaused(p => !p)} hitSlop={12} style={{padding: 6}}>
+                {paused ? <Play size={20} color="#fff" fill="#fff" /> : <Pause size={20} color="#fff" />}
+              </Pressable>
+              <Pressable onPress={() => setMuted(m => !m)} hitSlop={12} style={{padding: 6}}>
+                {muted ? <VolumeX size={20} color="#fff" /> : <Volume2 size={20} color="#fff" />}
+              </Pressable>
+              <Pressable onPress={() => void shareAd()} hitSlop={12} style={{padding: 6}}>
+                <Share2 size={20} color="#fff" />
+              </Pressable>
+              <Pressable onPress={close} hitSlop={12} style={{padding: 6}}>
+                <X size={22} color="#fff" />
+              </Pressable>
+            </View>
           </View>
         </View>
 
-        {/* ── Tap areas to close (left / right — mirrors StoryViewScreen) ── */}
-        <Pressable
-          style={{position: 'absolute', left: 0, top: 0, width: W * 0.35, height: H, zIndex: 5}}
-          onPress={close}
-        />
-        <Pressable
-          style={{position: 'absolute', right: 0, top: 0, width: W * 0.65, height: H, zIndex: 5}}
-          onPress={close}
-        />
-
-        {/* ── Bottom: caption + CTA ─────────────────────────────────────── */}
         <View
           style={{
             position: 'absolute',
@@ -221,33 +240,20 @@ export function AdStoryViewer({ad, visible, onClose}: Props) {
                 textShadowOffset: {width: 0, height: 1},
                 textShadowRadius: 4,
               }}
-              numberOfLines={4}>
+              numberOfLines={1}>
               {ad.caption}
             </Text>
           ) : null}
 
-          {/* CTA fades in after 5 seconds */}
           {ad.cta ? (
-            <Animated.View style={{opacity: ctaOpacity, pointerEvents: ctaVisible ? 'auto' : 'none'}}>
-              <Pressable
-                onPress={handleCta}
-                style={({pressed}) => ({
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  backgroundColor: pressed ? 'rgba(255,255,255,0.88)' : '#fff',
-                  borderRadius: 14,
-                  paddingVertical: 14,
-                  paddingHorizontal: 24,
-                })}>
-                <Text style={{color: '#000', fontSize: 15, fontWeight: '800'}}>
-                  {ad.cta.label}
-                </Text>
-                {ad.cta.actionType === 'external_url' ? (
-                  <ExternalLink size={15} color="#000" />
-                ) : null}
-              </Pressable>
+            <Animated.View style={{opacity: ctaOpacity}}>
+              <AdCtaGradientButton
+                palette={palette}
+                label={ad.cta.label}
+                onPress={() => void handleCta()}
+                borderRadius={radius}
+                showExternalIcon={ad.cta.actionType === 'external_url'}
+              />
             </Animated.View>
           ) : null}
         </View>

@@ -23,7 +23,7 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {searchUsers, getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getExplore, type Post} from '../api/postsApi';
 import {authedFetch} from '../api/authApi';
-import {fetchAds, type Ad} from '../api/adsApi';
+import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
 import {AdCard} from '../components/AdCard';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
@@ -207,6 +207,10 @@ export function SearchScreen() {
         .finally(() => setLoadingExplore(false));
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (exploreAds.length > 0) prefetchAdMedia(exploreAds);
+  }, [exploreAds]);
 
   const handleSearch = useCallback(async (q: string) => {
     if (!q.trim()) {

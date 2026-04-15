@@ -61,7 +61,8 @@ import {
   reportPostStrict,
   type Post,
 } from '../api/postsApi';
-import {fetchAds, type Ad} from '../api/adsApi';
+import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
+import {hashString, pickAdSlots} from '../lib/adSlots';
 import {AdReelItem} from '../components/AdReelItem';
 import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
@@ -89,21 +90,6 @@ function hashtagTokensFromCaption(caption: string): string[] {
 /** Caption text with hashtag tokens stripped (one-line display uses this). */
 function captionWithoutHashtags(caption: string): string {
   return caption.replace(/#[\w\u0080-\uFFFF]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function pickAdSlots(contentCount: number, adCount: number, minGap = 2): number[] {
-  if (contentCount === 0 || adCount === 0) return [];
-  const maxAds = Math.min(adCount, Math.max(1, Math.ceil(contentCount / minGap)));
-  const slots: number[] = [];
-  let attempts = 0;
-  while (slots.length < maxAds && attempts < 200) {
-    attempts++;
-    const pos = Math.floor(Math.random() * contentCount);
-    if (slots.every(s => Math.abs(s - pos) >= minGap)) {
-      slots.push(pos);
-    }
-  }
-  return slots.sort((a, b) => a - b);
 }
 
 type ReelFeedTab = 'forYou' | 'friends';
@@ -816,14 +802,20 @@ export function ReelsScreen() {
     const basePosts = feedTab === 'friends' ? reels.filter(r => r.isFollowing) : reels;
     const items: ReelFeedItem[] = basePosts.map(p => ({_itemType: 'reel', data: p, _id: p._id}));
     if (reelAds.length === 0 || items.length === 0) return items;
-    // Random insertion — never consecutive, works even with 1 reel
-    const slots = pickAdSlots(items.length, reelAds.length, 2);
+    const seed = hashString(
+      `${feedTab}\0${basePosts.map(p => p._id).join(',')}\0${reelAds.map(a => a._id).join(',')}`,
+    );
+    const slots = pickAdSlots(items.length, reelAds.length, seed, 2);
     for (let k = slots.length - 1; k >= 0; k--) {
-      const ad = reelAds[k];
-      items.splice(slots[k] + 1, 0, {_itemType: 'ad', data: ad, _id: `ad_${ad._id}`});
+      const ad = reelAds[k]!;
+      items.splice(slots[k]! + 1, 0, {_itemType: 'ad', data: ad, _id: `ad_${ad._id}`});
     }
     return items;
   }, [feedTab, reels, reelAds]);
+
+  useEffect(() => {
+    if (reelAds.length > 0) prefetchAdMedia(reelAds);
+  }, [reelAds]);
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;

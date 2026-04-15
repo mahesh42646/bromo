@@ -61,7 +61,8 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {getFeed, getTrendingReels, toggleLike, hidePost, reportPost, recordView, resolveVideoUrl, type Post, type StoryGroup} from '../api/postsApi';
-import {fetchAds, type Ad} from '../api/adsApi';
+import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
+import {hashString, pickAdSlots} from '../lib/adSlots';
 import {AdCard} from '../components/AdCard';
 import {AdStoryViewer} from '../components/AdStoryViewer';
 import {clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped} from '../lib/storiesFeedCache';
@@ -572,27 +573,6 @@ function SuggestionCard({user, onFollowToggle, navigation, palette, borderRadius
   );
 }
 
-/**
- * Pick random insertion slots for ads among N content items.
- * Returns sorted indices into the content array (insert ad AFTER content[idx]).
- * Guarantees at least 1 ad if there's at least 1 content item.
- * Never places two ads within `minGap` positions of each other.
- */
-function pickAdSlots(contentCount: number, adCount: number, minGap = 2): number[] {
-  if (contentCount === 0 || adCount === 0) return [];
-  const maxAds = Math.min(adCount, Math.max(1, Math.ceil(contentCount / minGap)));
-  const slots: number[] = [];
-  let attempts = 0;
-  while (slots.length < maxAds && attempts < 200) {
-    attempts++;
-    const pos = Math.floor(Math.random() * contentCount);
-    if (slots.every(s => Math.abs(s - pos) >= minGap)) {
-      slots.push(pos);
-    }
-  }
-  return slots.sort((a, b) => a - b);
-}
-
 export function HomeScreen() {
   const {palette, contract, isDark} = useTheme();
   const {dbUser, ready: authReady} = useAuth();
@@ -660,6 +640,7 @@ export function HomeScreen() {
   const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
   /** First mostly-visible feed post (for view counts on images + video). */
   const [visibleFeedPostId, setVisibleFeedPostId] = useState<string | null>(null);
+  const [visibleAdId, setVisibleAdId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -677,23 +658,30 @@ export function HomeScreen() {
   }, [activeCategory]);
 
   const onFeedViewableItemsChanged = useRef(({viewableItems}: {viewableItems: ViewToken[]}) => {
-    const postsVisible = viewableItems.filter(
-      vt =>
-        vt.isViewable &&
-        vt.item &&
-        typeof vt.item === 'object' &&
-        'kind' in vt.item &&
-        (vt.item as {kind: string}).kind === 'post',
+    const visible = viewableItems.filter(
+      vt => vt.isViewable && vt.item && typeof vt.item === 'object' && 'kind' in vt.item,
     );
-    if (postsVisible.length === 0) {
+    if (visible.length === 0) {
       setVisibleFeedPostId(null);
       setVisiblePostId(null);
+      setVisibleAdId(null);
       return;
     }
-    postsVisible.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-    const feedPost = (postsVisible[0].item as {post: Post}).post;
-    setVisibleFeedPostId(feedPost._id);
-    setVisiblePostId(feedPost.mediaType === 'video' ? feedPost._id : null);
+    visible.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const row = visible[0]!.item as {kind: string; post?: Post; ad?: Ad};
+    if (row.kind === 'post' && row.post) {
+      setVisibleFeedPostId(row.post._id);
+      setVisiblePostId(row.post.mediaType === 'video' ? row.post._id : null);
+      setVisibleAdId(null);
+    } else if (row.kind === 'ad' && row.ad) {
+      setVisibleFeedPostId(null);
+      setVisiblePostId(null);
+      setVisibleAdId(row.ad._id);
+    } else {
+      setVisibleFeedPostId(null);
+      setVisiblePostId(null);
+      setVisibleAdId(null);
+    }
   }).current;
 
   const loadData = useCallback(async (reset = false, retry = 0) => {
@@ -987,41 +975,50 @@ export function HomeScreen() {
     return source.slice(0, 2).toUpperCase();
   }, [dbUser?.displayName, dbUser?.username, dbUser?.email]);
 
-  // Interleave posts, suggestions, and ads
-  type FeedItem =
+  type HomeFeedItem =
     | {kind: 'post'; post: Post; key: string}
     | {kind: 'suggestions'; key: string}
     | {kind: 'stories'; key: string}
     | {kind: 'trendingReels'; key: string}
     | {kind: 'ad'; ad: Ad; key: string};
 
-  const feedItems: FeedItem[] = [];
-  feedItems.push({kind: 'stories', key: 'stories'});
-  if (activeCategory === 'home' && trendingReels.length > 0) {
-    feedItems.push({kind: 'trendingReels', key: 'trending-reels'});
-  }
-  posts.forEach((p, i) => {
-    feedItems.push({kind: 'post', post: p, key: p._id});
-    if (i === 0 && suggestions.length > 0) {
-      feedItems.push({kind: 'suggestions', key: 'suggestions'});
+  const feedItems = useMemo((): HomeFeedItem[] => {
+    const items: HomeFeedItem[] = [];
+    items.push({kind: 'stories', key: 'stories'});
+    if (activeCategory === 'home' && trendingReels.length > 0) {
+      items.push({kind: 'trendingReels', key: 'trending-reels'});
     }
-  });
-  // Inject ads at random positions — never consecutive, works even with 1–2 posts
-  if (feedAds.length > 0) {
-    const postIndices = feedItems
-      .map((item, idx) => (item.kind === 'post' ? idx : -1))
-      .filter(idx => idx !== -1);
-    const slots = pickAdSlots(postIndices.length, feedAds.length);
-    // Insert in reverse so earlier indices stay valid
-    for (let k = slots.length - 1; k >= 0; k--) {
-      const afterFeedIdx = postIndices[slots[k]];
-      feedItems.splice(afterFeedIdx + 1, 0, {
-        kind: 'ad',
-        ad: feedAds[k],
-        key: `ad_${feedAds[k]._id}`,
-      });
+    posts.forEach((p, i) => {
+      items.push({kind: 'post', post: p, key: p._id});
+      if (i === 0 && suggestions.length > 0) {
+        items.push({kind: 'suggestions', key: 'suggestions'});
+      }
+    });
+    if (feedAds.length > 0) {
+      const postIndices = items.map((item, idx) => (item.kind === 'post' ? idx : -1)).filter(idx => idx !== -1);
+      const seed = hashString(
+        `${activeCategory}\0${posts.map(p => p._id).join(',')}\0${feedAds.map(a => a._id).join(',')}`,
+      );
+      const slots = pickAdSlots(postIndices.length, feedAds.length, seed);
+      for (let k = slots.length - 1; k >= 0; k--) {
+        const afterFeedIdx = postIndices[slots[k]!]!;
+        items.splice(afterFeedIdx + 1, 0, {
+          kind: 'ad',
+          ad: feedAds[k]!,
+          key: `ad_${feedAds[k]!._id}`,
+        });
+      }
     }
-  }
+    return items;
+  }, [activeCategory, trendingReels, posts, suggestions, feedAds]);
+
+  useEffect(() => {
+    if (feedAds.length > 0) prefetchAdMedia(feedAds);
+  }, [feedAds]);
+
+  useEffect(() => {
+    if (storyAds.length > 0) prefetchAdMedia(storyAds);
+  }, [storyAds]);
 
   return (
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
@@ -1458,7 +1455,13 @@ export function HomeScreen() {
             }
 
             if (item.kind === 'ad') {
-              return <AdCard ad={item.ad} placement="feed" />;
+              return (
+                <AdCard
+                  ad={item.ad}
+                  placement="feed"
+                  isVideoVisible={item.ad.adType === 'video' && item.ad._id === visibleAdId}
+                />
+              );
             }
 
             return null;
