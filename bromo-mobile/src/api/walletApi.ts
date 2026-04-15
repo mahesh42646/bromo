@@ -1,4 +1,4 @@
-import {authedFetch, apiBase} from './authApi';
+import {authedFetch} from './authApi';
 
 export type LedgerReason =
   | 'topup'
@@ -35,13 +35,13 @@ export const COIN_PACKAGES: CoinPackage[] = [
 ];
 
 export async function getWallet(): Promise<{balance: number; ledger: LedgerEntry[]}> {
-  const res = await authedFetch(`${apiBase()}/wallet`);
+  const res = await authedFetch('/wallet');
   if (!res.ok) throw new Error('Failed to fetch wallet');
   return res.json();
 }
 
 export async function buyCoins(packageId: CoinPackage['id']): Promise<{balance: number; credited: number}> {
-  const res = await authedFetch(`${apiBase()}/wallet/self-topup`, {
+  const res = await authedFetch('/wallet/self-topup', {
     method: 'POST',
     body: JSON.stringify({packageId}),
   });

@@ -79,7 +79,8 @@ export type AppStackParamList = {
   SavedPosts: undefined;
   WatchHistory: undefined;
   ManageContent: undefined;
-  ContentInsights: undefined;
+  ContentInsights: {focusPostId?: string} | undefined;
+  ProfessionalHub: undefined;
   CreatorDashboard: undefined;
   ReferralDashboard: undefined;
 

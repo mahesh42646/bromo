@@ -21,6 +21,7 @@ import {WalletScreen} from '../screens/WalletScreen';
 import {PromoteCampaignScreen} from '../screens/promotions/PromoteCampaignScreen';
 import {MyCampaignsScreen} from '../screens/promotions/MyCampaignsScreen';
 import {CampaignAnalyticsScreen} from '../screens/promotions/CampaignAnalyticsScreen';
+import {ProfessionalHubScreen} from '../screens/ProfessionalHubScreen';
 import {
   CategoryFeedScreen,
   CloseFriendsPickerScreen,
@@ -169,6 +170,7 @@ export function MainAppNavigator() {
       <Stack.Screen name="WatchHistory" component={WatchHistoryScreen} />
       <Stack.Screen name="ManageContent" component={ManageContentScreen} />
       <Stack.Screen name="ContentInsights" component={ContentInsightsScreen} />
+      <Stack.Screen name="ProfessionalHub" component={ProfessionalHubScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="CreatorDashboard" component={CreatorDashboardScreen} />
       <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} />
       <Stack.Screen name="VoiceCall" component={VoiceCallScreen} />

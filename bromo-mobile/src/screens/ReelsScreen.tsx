@@ -38,6 +38,8 @@ import {
   Flag,
   SlidersHorizontal,
   Sparkles,
+  BarChart2,
+  Megaphone,
 } from 'lucide-react-native';
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NavigationProp, RouteProp} from '@react-navigation/native';
@@ -108,6 +110,7 @@ function ReelMoreSheet({
   reel,
   navigation,
   onRemoveFromFeed,
+  isOwnReel,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -118,6 +121,7 @@ function ReelMoreSheet({
   reel: Post | null;
   navigation: Nav;
   onRemoveFromFeed: (postId: string) => void;
+  isOwnReel: boolean;
 }) {
   const groupStyle = {
     borderRadius: 12,
@@ -190,6 +194,53 @@ function ReelMoreSheet({
             </Pressable>
           </View>
           <ScrollView style={{maxHeight: 420}} showsVerticalScrollIndicator={false}>
+            {isOwnReel && reel ? (
+              <View
+                style={[
+                  groupStyle,
+                  {
+                    backgroundColor: palette.background,
+                    borderColor: palette.border,
+                    marginHorizontal: 12,
+                    marginBottom: 10,
+                    paddingVertical: 6,
+                  },
+                ]}>
+                <Pressable
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 14,
+                    paddingVertical: 12,
+                    paddingHorizontal: 18,
+                  }}
+                  onPress={() => {
+                    onClose();
+                    parentNavigate(navigation, 'ContentInsights', {focusPostId: reel._id});
+                  }}>
+                  <BarChart2 size={20} color={palette.primary} />
+                  <Text style={{color: palette.primary, fontSize: 15, fontWeight: '600', marginLeft: 8}}>View insights</Text>
+                </Pressable>
+                <Pressable
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 14,
+                    paddingVertical: 12,
+                    paddingHorizontal: 18,
+                  }}
+                  onPress={() => {
+                    onClose();
+                    parentNavigate(navigation, 'PromoteCampaign', {
+                      contentId: reel._id,
+                      contentType: 'reel',
+                    });
+                  }}>
+                  <Megaphone size={20} color={palette.accent} />
+                  <Text style={{color: palette.accent, fontSize: 15, fontWeight: '600', marginLeft: 8}}>Promote reel</Text>
+                </Pressable>
+              </View>
+            ) : null}
             <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, paddingVertical: 6, paddingHorizontal: 2}]}>
               <View
                 style={{
@@ -741,6 +792,7 @@ function ReelItem({
         reel={item}
         navigation={navigation}
         onRemoveFromFeed={onRemoveFromFeed}
+        isOwnReel={isOwnReel}
       />
     </View>
   );

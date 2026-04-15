@@ -9,7 +9,7 @@ import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {getNotifications, markAllRead, markRead, type AppNotification} from '../../../api/notificationsApi';
-import {getPostAnalytics, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
+import {getPost, getPostAnalytics, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
 import {useAuth} from '../../../context/AuthContext';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
@@ -83,8 +83,12 @@ function StatCard({icon, label, value, palette}: {icon: React.ReactNode; label: 
   );
 }
 
+type ContentInsightsRoute = RouteProp<AppStackParamList, 'ContentInsights'>;
+
 export function ContentInsightsScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<ContentInsightsRoute>();
+  const focusPostId = route.params?.focusPostId;
   const {palette} = useTheme();
   const {dbUser} = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -95,11 +99,49 @@ export function ContentInsightsScreen() {
 
   useEffect(() => {
     if (!dbUser?._id) return;
-    getUserPosts(dbUser._id, 'post', 1)
-      .then(res => setPosts(res.posts))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [dbUser?._id]);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const [postRes, reelRes] = await Promise.all([
+          getUserPosts(dbUser._id, 'post', 1).catch(() => ({posts: [] as Post[]})),
+          getUserPosts(dbUser._id, 'reel', 1).catch(() => ({posts: [] as Post[]})),
+        ]);
+        if (cancelled) return;
+        const merged = [...postRes.posts, ...reelRes.posts].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        let list = merged;
+        if (focusPostId && !list.some(p => p._id === focusPostId)) {
+          try {
+            const one = await getPost(focusPostId);
+            if (String(one.post.author._id) === String(dbUser._id)) {
+              list = [one.post, ...list];
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        setPosts(list);
+        if (focusPostId && list.some(p => p._id === focusPostId)) {
+          setSelected(focusPostId);
+          setLoadingAnalytics(true);
+          try {
+            const data = await getPostAnalytics(focusPostId);
+            if (!cancelled) setAnalytics(prev => ({...prev, [focusPostId]: data}));
+          } catch {
+            /* ignore */
+          }
+          if (!cancelled) setLoadingAnalytics(false);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dbUser?._id, focusPostId]);
 
   const loadAnalytics = useCallback(async (postId: string) => {
     if (analytics[postId]) { setSelected(postId); return; }

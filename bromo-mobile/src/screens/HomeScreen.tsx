@@ -48,6 +48,8 @@ import {
   Volume2,
   VolumeX,
   X,
+  BarChart2,
+  Megaphone,
 } from 'lucide-react-native';
 import type {NavigationProp} from '@react-navigation/native';
 import {useTheme} from '../context/ThemeContext';
@@ -148,6 +150,7 @@ function PostCard({
   isFeedItemVisible = false,
 }: PostCardProps) {
   const {palette, contract} = useTheme();
+  const {dbUser} = useAuth();
   const {homeFeedMuted, toggleHomeFeedMuted} = usePlaybackMute();
   const {isCellular, maxBitRate} = usePlaybackNetworkCap();
   const [bookmarked, setBookmarked] = useState(false);
@@ -214,6 +217,88 @@ function PostCard({
     parentNavigate(navigation, 'Reels', {initialPostId: post._id});
   };
 
+  const isOwnPost = Boolean(dbUser?._id && String(post.author._id) === String(dbUser._id));
+  const promoteContentType = post.type === 'reel' ? 'reel' as const : 'post' as const;
+
+  const menuRows: Array<{
+    icon: React.ReactNode;
+    label: string;
+    danger?: boolean;
+    onPress: () => void;
+  }> = [
+    ...(isOwnPost
+      ? [
+          {
+            icon: <BarChart2 size={20} color={palette.primary} />,
+            label: 'View insights',
+            onPress: () => {
+              setMenuOpen(false);
+              parentNavigate(navigation, 'ContentInsights', {focusPostId: post._id});
+            },
+          },
+          {
+            icon: <Megaphone size={20} color={palette.accent} />,
+            label: 'Boost post',
+            onPress: () => {
+              setMenuOpen(false);
+              parentNavigate(navigation, 'PromoteCampaign', {
+                contentId: post._id,
+                contentType: promoteContentType,
+              });
+            },
+          },
+        ]
+      : []),
+    ...(!isOwnPost
+      ? [
+          {
+            icon: following ? <UserCheck size={20} color={palette.foreground} /> : <UserPlus size={20} color={palette.foreground} />,
+            label: following ? 'Unfollow' : 'Follow',
+            onPress: handleFollow,
+          },
+        ]
+      : []),
+    {
+      icon: <User size={20} color={palette.foreground} />,
+      label: 'View Profile',
+      onPress: () => {
+        setMenuOpen(false);
+        parentNavigate(navigation, 'OtherUserProfile', {userId: post.author._id});
+      },
+    },
+    {
+      icon: <Send size={20} color={palette.foreground} />,
+      label: 'Share Post',
+      onPress: () => {
+        setMenuOpen(false);
+        parentNavigate(navigation, 'ShareSend', {postId: post._id});
+      },
+    },
+    {
+      icon: <Bookmark size={20} color={palette.foreground} />,
+      label: 'Save',
+      onPress: () => {
+        setMenuOpen(false);
+        setBookmarked(true);
+      },
+    },
+    {
+      icon: <EyeOff size={20} color={palette.foreground} />,
+      label: 'Hide Post',
+      onPress: handleHide,
+    },
+    ...(!isOwnPost
+      ? [
+          {
+            icon: <Flag size={20} color={palette.destructive} />,
+            label: 'Report',
+            danger: true,
+            onPress: handleReport,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <View style={{borderBottomWidth: 8, borderBottomColor: palette.background, backgroundColor: palette.background}}>
       {/* 3-dot action sheet */}
@@ -228,18 +313,7 @@ function PostCard({
             <View style={{alignItems: 'center', paddingBottom: 8}}>
               <View style={{width: 40, height: 4, borderRadius: 2, backgroundColor: palette.border}} />
             </View>
-            {[
-              {icon: following ? <UserCheck size={20} color={palette.foreground}/> : <UserPlus size={20} color={palette.foreground}/>,
-               label: following ? 'Unfollow' : 'Follow', onPress: handleFollow},
-              {icon: <User size={20} color={palette.foreground}/>, label: 'View Profile',
-               onPress: () => { setMenuOpen(false); parentNavigate(navigation, 'OtherUserProfile', {userId: post.author._id}); }},
-              {icon: <Send size={20} color={palette.foreground}/>, label: 'Share Post',
-               onPress: () => { setMenuOpen(false); parentNavigate(navigation, 'ShareSend', {postId: post._id}); }},
-              {icon: <Bookmark size={20} color={palette.foreground}/>, label: 'Save',
-               onPress: () => { setMenuOpen(false); setBookmarked(true); }},
-              {icon: <EyeOff size={20} color={palette.foreground}/>, label: 'Hide Post', onPress: handleHide},
-              {icon: <Flag size={20} color={palette.destructive}/>, label: 'Report', danger: true, onPress: handleReport},
-            ].map(item => (
+            {menuRows.map(item => (
               <Pressable
                 key={item.label}
                 onPress={item.onPress}
@@ -283,7 +357,7 @@ function PostCard({
           </View>
         </Pressable>
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
-          {!following && (
+          {!isOwnPost && !following && (
             <Pressable
               onPress={handleFollow}
               style={{

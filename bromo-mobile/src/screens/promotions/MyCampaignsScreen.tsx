@@ -10,9 +10,10 @@ import {
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {ChevronLeft, ChevronRight, Pause, Play, BarChart2, Zap} from 'lucide-react-native';
+import {ChevronLeft, Pause, Play, BarChart2, Zap, Coins} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
+import {parentNavigate} from '../../navigation/parentNavigate';
 import {
   getMyCampaigns,
   pauseCampaign,
@@ -244,12 +245,32 @@ export function MyCampaignsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} />}
         contentContainerStyle={{paddingVertical: 10, paddingBottom: 32}}
         ListEmptyComponent={
-          <View style={{alignItems: 'center', paddingTop: 80, gap: 12}}>
+          <View style={{alignItems: 'center', paddingTop: 56, gap: 14, paddingHorizontal: 24}}>
             <Zap size={56} color={palette.border} />
             <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900'}}>No campaigns yet</Text>
-            <Text style={{color: palette.mutedForeground, fontSize: 14, textAlign: 'center', paddingHorizontal: 40}}>
-              Promote your posts, reels, or stories to reach new audiences
+            <Text style={{color: palette.mutedForeground, fontSize: 14, textAlign: 'center'}}>
+              Buy Bromo coins, then boost a post or reel from your profile grid, post detail, or the reel menu.
             </Text>
+            <Pressable
+              onPress={() => parentNavigate(navigation, 'PointsWallet')}
+              style={{
+                marginTop: 4,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingVertical: 12,
+                paddingHorizontal: 20,
+                borderRadius: 12,
+                backgroundColor: palette.primary,
+              }}>
+              <Coins size={18} color={palette.primaryForeground} />
+              <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 15}}>Buy Bromo coins</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => parentNavigate(navigation, 'Profile')}
+              style={{paddingVertical: 8}}>
+              <Text style={{color: palette.primary, fontWeight: '700', fontSize: 14}}>Open my profile</Text>
+            </Pressable>
           </View>
         }
       />

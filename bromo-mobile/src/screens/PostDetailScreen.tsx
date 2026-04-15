@@ -1,10 +1,13 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -13,6 +16,8 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {BadgeCheck, Bookmark, ChevronLeft, Heart, MessageCircle, MoreHorizontal, Send} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
+import {useAuth} from '../context/AuthContext';
+import {parentNavigate} from '../navigation/parentNavigate';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {getPost, toggleLike, type Post} from '../api/postsApi';
@@ -42,11 +47,13 @@ export function PostDetailScreen() {
   const route = useRoute<Route>();
   const {postId} = route.params;
   const {palette, contract} = useTheme();
+  const {dbUser} = useAuth();
   const {borderRadiusScale} = contract.brandGuidelines;
 
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [bookmarked, setBookmarked] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     getPost(postId)
@@ -68,6 +75,24 @@ export function PostDetailScreen() {
   const handleShare = useCallback(() => {
     navigation.navigate('ShareSend', {postId});
   }, [navigation, postId]);
+
+  const isOwnPost = Boolean(post && dbUser?._id && String(post.author._id) === String(dbUser._id));
+
+  const openBoost = useCallback(() => {
+    if (!post) return;
+    setMenuOpen(false);
+    const contentType = post.type === 'reel' ? 'reel' : post.type === 'story' ? 'story' : 'post';
+    parentNavigate(navigation, 'PromoteCampaign', {
+      contentId: post._id,
+      contentType,
+    });
+  }, [navigation, post]);
+
+  const openInsights = useCallback(() => {
+    if (!post) return;
+    setMenuOpen(false);
+    parentNavigate(navigation, 'ContentInsights', {focusPostId: post._id});
+  }, [navigation, post]);
 
   if (loading) {
     return (
@@ -97,10 +122,37 @@ export function PostDetailScreen() {
   }
 
   const avatarUri = post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`;
+  const radius = borderRadiusScale === 'bold' ? 12 : 8;
 
   return (
     <ThemedSafeScreen>
       <StatusBar barStyle="light-content" />
+
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end'}} onPress={() => setMenuOpen(false)}>
+          <Pressable
+            onPress={e => e.stopPropagation()}
+            style={{
+              backgroundColor: palette.background,
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              paddingBottom: 28,
+              paddingTop: 8,
+            }}>
+            <View style={{alignItems: 'center', paddingBottom: 8}}>
+              <View style={{width: 40, height: 4, borderRadius: 2, backgroundColor: palette.border}} />
+            </View>
+            <Pressable
+              onPress={openInsights}
+              style={{paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border}}>
+              <Text style={{color: palette.primary, fontSize: 16, fontWeight: '700'}}>View insights</Text>
+            </Pressable>
+            <Pressable onPress={openBoost} style={{paddingVertical: 16, paddingHorizontal: 20}}>
+              <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '700'}}>Boost post</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Header */}
       <View style={{
@@ -114,7 +166,13 @@ export function PostDetailScreen() {
         <Text style={{flex: 1, color: palette.foreground, fontSize: 17, fontWeight: '800', textAlign: 'center'}}>
           Post
         </Text>
-        <Pressable hitSlop={12} style={{padding: 8}}>
+        <Pressable
+          hitSlop={12}
+          style={{padding: 8}}
+          onPress={() => {
+            if (isOwnPost) setMenuOpen(true);
+            else Alert.alert('Post', 'Report and share options coming soon.');
+          }}>
           <MoreHorizontal size={22} color={palette.foreground} />
         </Pressable>
       </View>
@@ -158,6 +216,33 @@ export function PostDetailScreen() {
             resizeMode="cover"
           />
         )}
+
+        {isOwnPost ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: palette.border,
+            }}>
+            <Pressable onPress={openInsights}>
+              <Text style={{color: palette.primary, fontSize: 14, fontWeight: '800'}}>View insights</Text>
+            </Pressable>
+            <Pressable
+              onPress={openBoost}
+              style={{
+                backgroundColor: palette.primary,
+                paddingHorizontal: 18,
+                paddingVertical: 8,
+                borderRadius: radius,
+              }}>
+              <Text style={{color: palette.primaryForeground, fontSize: 14, fontWeight: '800'}}>Boost post</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {/* Actions */}
         <View style={{

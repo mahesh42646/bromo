@@ -1,9 +1,9 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Image,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -46,6 +46,7 @@ import {
   LogOut,
   Share2,
   PenSquare,
+  TrendingUp,
 } from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
@@ -54,6 +55,8 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resetToAuth} from '../navigation/rootNavigation';
 import {getUserPosts, type Post} from '../api/postsApi';
+import {getWallet} from '../api/walletApi';
+import {followUser, getUserSuggestions, type SuggestedUser} from '../api/followApi';
 import {socketService} from '../services/socketService';
 import {clearStoriesFeedCache} from '../lib/storiesFeedCache';
 
@@ -72,6 +75,12 @@ type SettingsGroup = {
   title?: string;
   items: SettingsItem[];
 };
+
+function fmtWalletCoins(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
 // ─── Styles ───────────────────────────────────────────────────────
 
@@ -201,6 +210,35 @@ export function ProfileScreen() {
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [discoverPeople, setDiscoverPeople] = useState<SuggestedUser[]>([]);
+  const [dismissedSuggest, setDismissedSuggest] = useState<string[]>([]);
+
+  const recentGridViews = useMemo(
+    () => userPosts.reduce((acc, p) => acc + (p.viewsCount ?? 0), 0),
+    [userPosts],
+  );
+
+  const loadWalletAndSuggestions = useCallback(async () => {
+    try {
+      const w = await getWallet();
+      setWalletBalance(w.balance);
+    } catch {
+      setWalletBalance(null);
+    }
+    try {
+      const res = await getUserSuggestions(12);
+      setDiscoverPeople(res.users ?? []);
+    } catch {
+      setDiscoverPeople([]);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadWalletAndSuggestions();
+    }, [loadWalletAndSuggestions]),
+  );
 
   const displayName = dbUser?.displayName || 'User';
   const username = dbUser?.username || '';
@@ -335,9 +373,9 @@ export function ProfileScreen() {
         {
           icon: BarChart2,
           label: 'Professional Dashboard',
-          sublabel: 'Insights and analytics',
+          sublabel: 'Wallet, promotions, insights',
           accent: palette.accent,
-          action: () => nav('ContentInsights'),
+          action: () => nav('ProfessionalHub'),
         },
         {
           icon: BadgeCheck,
@@ -461,10 +499,14 @@ export function ProfileScreen() {
         </Text>
 
         <View style={styles.headerRight}>
-          <View style={[styles.coinBadge, {borderColor: `${palette.primary}40`, backgroundColor: `${palette.primary}12`}]}>
+          <Pressable
+            onPress={() => parentNavigate(navigation, 'PointsWallet')}
+            style={[styles.coinBadge, {borderColor: `${palette.primary}40`, backgroundColor: `${palette.primary}12`}]}>
             <Coins size={11} color={palette.warning} />
-            <Text style={[styles.coinText, {color: palette.primary}]}>0</Text>
-          </View>
+            <Text style={[styles.coinText, {color: palette.primary}]}>
+              {walletBalance != null ? fmtWalletCoins(walletBalance) : '—'}
+            </Text>
+          </Pressable>
           <Pressable onPress={() => setMenuOpen(true)} hitSlop={12}>
             <AlignJustify size={22} color={palette.foreground} />
           </Pressable>
@@ -534,15 +576,26 @@ export function ProfileScreen() {
               <Text style={[styles.bioText, {color: palette.foreground}]}>{bio}</Text>
             ) : null}
 
-            {/* Link placeholder */}
-            <Pressable
-              style={styles.linkRow}
-              onPress={() => parentNavigate(navigation, 'EditProfile')}>
-              <Link2 size={13} color={palette.primary} />
-              <Text style={[styles.linkText, {color: palette.primary}]}>
-                Add a link
-              </Text>
-            </Pressable>
+            {dbUser?.website?.trim() ? (
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => {
+                  const u = dbUser.website.trim();
+                  void Linking.openURL(u.startsWith('http') ? u : `https://${u}`);
+                }}>
+                <Link2 size={13} color={palette.primary} />
+                <Text style={[styles.linkText, {color: palette.primary}]} numberOfLines={1}>
+                  {dbUser.website.replace(/^https?:\/\//i, '')}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => parentNavigate(navigation, 'EditProfile')}>
+                <Link2 size={13} color={palette.primary} />
+                <Text style={[styles.linkText, {color: palette.primary}]}>Add a link</Text>
+              </Pressable>
+            )}
 
             {/* Category + privacy row */}
             <View style={styles.metaRow}>
@@ -571,7 +624,107 @@ export function ProfileScreen() {
               <Text style={[styles.actionBtnText, {color: palette.foreground}]}>Share profile</Text>
             </Pressable>
           </View>
+
+          <Pressable
+            onPress={() => parentNavigate(navigation, 'ProfessionalHub')}
+            style={{
+              marginTop: 14,
+              padding: 14,
+              borderRadius: 12,
+              backgroundColor: palette.glassFaint,
+              borderWidth: 1,
+              borderColor: palette.glassMid,
+            }}>
+            <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '800'}}>Professional dashboard</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8}}>
+              <TrendingUp size={15} color={palette.success} />
+              <Text style={{flex: 1, color: palette.foregroundSubtle, fontSize: 13, lineHeight: 18}}>
+                {recentGridViews > 0
+                  ? `${recentGridViews} views across items in your current grid · Wallet, boost posts, campaigns`
+                  : 'Buy Bromo coins, run promotions, and view content insights'}
+              </Text>
+              <ChevronRight size={18} color={palette.foregroundSubtle} />
+            </View>
+          </Pressable>
         </View>
+
+        {discoverPeople.filter(u => !dismissedSuggest.includes(u._id)).length > 0 ? (
+          <View style={{marginBottom: 8}}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                marginBottom: 10,
+              }}>
+              <Text style={{color: palette.foreground, fontSize: 14, fontWeight: '800'}}>Discover people</Text>
+              <Pressable
+                onPress={() => setDiscoverPeople([])}
+                hitSlop={10}
+                accessibilityLabel="Dismiss suggestions">
+                <X size={18} color={palette.foregroundSubtle} />
+              </Pressable>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{paddingHorizontal: 14, gap: 12, paddingBottom: 4}}>
+              {discoverPeople
+                .filter(u => !dismissedSuggest.includes(u._id))
+                .map(u => (
+                  <View
+                    key={u._id}
+                    style={{
+                      width: 148,
+                      padding: 12,
+                      paddingTop: 28,
+                      borderRadius: 14,
+                      backgroundColor: palette.glassFaint,
+                      borderWidth: 1,
+                      borderColor: palette.border,
+                    }}>
+                    <Pressable
+                      style={{position: 'absolute', top: 8, right: 8, zIndex: 2}}
+                      onPress={() => setDismissedSuggest(prev => [...prev, u._id])}
+                      hitSlop={8}>
+                      <X size={14} color={palette.foregroundSubtle} />
+                    </Pressable>
+                    <Pressable onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: u._id})}>
+                      <Image
+                        source={{uri: u.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.displayName)}`}}
+                        style={{width: 56, height: 56, borderRadius: 28, alignSelf: 'center', marginBottom: 8}}
+                      />
+                      <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 13, textAlign: 'center'}} numberOfLines={1}>
+                        {u.displayName}
+                      </Text>
+                      <Text style={{color: palette.foregroundSubtle, fontSize: 11, textAlign: 'center', marginTop: 2}} numberOfLines={1}>
+                        @{u.username}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={async () => {
+                        try {
+                          await followUser(u._id);
+                          setDiscoverPeople(prev => prev.filter(x => x._id !== u._id));
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                      style={{
+                        marginTop: 10,
+                        backgroundColor: palette.primary,
+                        borderRadius: 10,
+                        paddingVertical: 8,
+                        alignItems: 'center',
+                      }}>
+                      <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 12}}>Follow</Text>
+                    </Pressable>
+                  </View>
+                ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {/* ── Tab bar ── */}
         <View style={[styles.tabBar, {borderTopColor: palette.glassFaint}]}>
@@ -605,17 +758,36 @@ export function ProfileScreen() {
             </Pressable>
 
             {userPosts.map(post => (
-              <Pressable
-                key={post._id}
-                onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
-                style={styles.gridTile}>
-                <Image source={{uri: postThumbnailUri(post)}} style={styles.gridImg} />
-                {(post.type === 'reel' || post.mediaType === 'video') && (
-                  <View style={styles.reelIcon}>
-                    <Play size={12} color={palette.foreground} fill={palette.foreground} />
-                  </View>
-                )}
-              </Pressable>
+              <View key={post._id} style={styles.gridTile}>
+                <Pressable
+                  onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
+                  style={styles.gridTileMain}>
+                  <Image source={{uri: postThumbnailUri(post)}} style={styles.gridImg} />
+                  {(post.type === 'reel' || post.mediaType === 'video') && (
+                    <View style={styles.reelIcon}>
+                      <Play size={12} color={palette.foreground} fill={palette.foreground} />
+                    </View>
+                  )}
+                </Pressable>
+                <View style={[styles.gridProRow, {backgroundColor: 'rgba(0,0,0,0.78)', borderTopColor: palette.glass}]}>
+                  <Pressable
+                    style={styles.gridProBtn}
+                    onPress={() =>
+                      parentNavigate(navigation, 'PromoteCampaign', {
+                        contentId: post._id,
+                        contentType: post.type === 'reel' ? 'reel' : 'post',
+                      })
+                    }>
+                    <Text style={[styles.gridProBtnText, {color: palette.primary}]}>Boost</Text>
+                  </Pressable>
+                  <View style={[styles.gridProDivider, {backgroundColor: palette.glassMid}]} />
+                  <Pressable
+                    style={styles.gridProBtn}
+                    onPress={() => parentNavigate(navigation, 'ContentInsights', {focusPostId: post._id})}>
+                    <Text style={[styles.gridProBtnText, {color: palette.primary}]}>Insights</Text>
+                  </Pressable>
+                </View>
+              </View>
             ))}
           </View>
         )}
@@ -842,13 +1014,38 @@ const styles = StyleSheet.create({
   },
   gridTile: {
     width: '33.33%',
-    aspectRatio: 1,
     padding: 1,
+  },
+  gridTileMain: {
+    width: '100%',
+    aspectRatio: 1,
+    position: 'relative',
   },
   gridImg: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+  },
+  gridProRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 26,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  gridProBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+  },
+  gridProBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  gridProDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 14,
   },
   reelIcon: {
     position: 'absolute',

@@ -1,4 +1,4 @@
-import {authedFetch, apiBase} from './authApi';
+import {authedFetch} from './authApi';
 
 export type PromotionStatus =
   | 'draft'
@@ -79,7 +79,7 @@ export async function createCampaign(data: {
   audience?: AudienceTarget;
   cta?: CtaConfig;
 }): Promise<PromotionCampaign> {
-  const res = await authedFetch(`${apiBase()}/promotions`, {
+  const res = await authedFetch('/promotions', {
     method: 'POST',
     body: JSON.stringify(data),
   });
@@ -92,7 +92,7 @@ export async function createCampaign(data: {
 }
 
 export async function activateCampaign(id: string): Promise<PromotionCampaign> {
-  const res = await authedFetch(`${apiBase()}/promotions/${id}/activate`, {method: 'POST'});
+  const res = await authedFetch(`/promotions/${id}/activate`, {method: 'POST'});
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as {message?: string}).message ?? 'Failed to activate campaign');
@@ -101,13 +101,13 @@ export async function activateCampaign(id: string): Promise<PromotionCampaign> {
 }
 
 export async function pauseCampaign(id: string): Promise<PromotionCampaign> {
-  const res = await authedFetch(`${apiBase()}/promotions/${id}/pause`, {method: 'POST'});
+  const res = await authedFetch(`/promotions/${id}/pause`, {method: 'POST'});
   if (!res.ok) throw new Error('Failed to pause campaign');
   return (await res.json()).campaign;
 }
 
 export async function resumeCampaign(id: string): Promise<PromotionCampaign> {
-  const res = await authedFetch(`${apiBase()}/promotions/${id}/resume`, {method: 'POST'});
+  const res = await authedFetch(`/promotions/${id}/resume`, {method: 'POST'});
   if (!res.ok) throw new Error('Failed to resume campaign');
   return (await res.json()).campaign;
 }
@@ -117,7 +117,7 @@ export async function getMyCampaigns(page = 1): Promise<{
   total: number;
   hasMore: boolean;
 }> {
-  const res = await authedFetch(`${apiBase()}/promotions/mine?page=${page}`);
+  const res = await authedFetch(`/promotions/mine?page=${page}`);
   if (!res.ok) throw new Error('Failed to fetch campaigns');
   return res.json();
 }
@@ -126,7 +126,7 @@ export async function getCampaignAnalytics(id: string): Promise<{
   campaign: PromotionCampaign;
   analytics: CampaignAnalytics;
 }> {
-  const res = await authedFetch(`${apiBase()}/promotions/${id}/analytics`);
+  const res = await authedFetch(`/promotions/${id}/analytics`);
   if (!res.ok) throw new Error('Failed to fetch analytics');
   return res.json();
 }
