@@ -14,6 +14,7 @@ import {
   Text,
   TextInput,
   View,
+  ScrollView,
 } from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
@@ -33,7 +34,7 @@ const SNAP_HALF = SCREEN_H * 0.5;
 const SNAP_FULL = 60;
 const DISMISS_THRESHOLD = SCREEN_H * 0.72;
 
-const QUICK_EMOJIS = ['❤️', '🙌', '🔥', '💯', '😍', '😂', '😮', '👏'];
+const QUICK_EMOJIS = ['❤️', '🙌', '🔥', '💯', '😍', '😂', '😮', '👏', '👀', '👍', '👎', '🤔', '🤷', '🤷‍♂️', '🤷‍♀️', '🤷‍♂️', '🤷‍♀️'];
 const MENTION_BLUE = '#3b82f6';
 
 type ThreadBundle = {
@@ -543,32 +544,39 @@ export function CommentsScreen() {
 
               <View
                 style={{
-                  flexDirection: 'row',
-                  gap: 4,
-                  paddingHorizontal: 14,
-                  paddingVertical: 6,
                   borderTopWidth: 1,
                   borderTopColor: palette.border,
                   backgroundColor: palette.background,
                 }}>
-                {QUICK_EMOJIS.map(e => (
-                  <Pressable
-                    key={e}
-                    onPress={() => setText(t => t + e)}
-                    style={{
-                      width: 36,
-                      height: 32,
-                      borderRadius: 16,
-                      backgroundColor: palette.input,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: StyleSheet.hairlineWidth,
-                      borderColor: palette.border,
-                    }}>
-                    <Text style={{fontSize: 17}}>{e}</Text>
-                  </Pressable>
-                ))}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{
+                    flexDirection: 'row',
+                    gap: 8,
+                    paddingHorizontal: 14,
+                    paddingVertical: 6,
+                  }}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {QUICK_EMOJIS.map(e => (
+                    <Pressable
+                      key={e}
+                      onPress={() => setText(t => t + e)}
+                      style={{
+                        width: 34,
+                        height: 26,
+                        borderRadius: 16,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderColor: palette.border,
+                      }}>
+                      <Text style={{fontSize: 17}}>{e}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
+         
 
               <View
                 style={{
