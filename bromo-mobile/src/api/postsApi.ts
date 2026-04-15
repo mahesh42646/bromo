@@ -125,6 +125,7 @@ export type CommentsResponse = {
   comments: Comment[];
   page: number;
   hasMore: boolean;
+  totalCount?: number;
 };
 
 function feedQuery(opts: {

@@ -16,7 +16,7 @@ import {
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {Gift, Heart, Search, Send, Smile, X} from 'lucide-react-native';
+import {Gift, Heart, Send, Smile, X} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import type {AppStackParamList} from '../navigation/appStackParamList';
@@ -36,9 +36,52 @@ const QUICK_EMOJIS = ['❤️', '🙌', '🔥', '💯', '😍', '😂', '😮', 
 function timeAgo(iso: string): string {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
   if (diff < 60) return 'now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}w`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
   return `${Math.floor(diff / 86400)}d`;
+}
+
+function patchCommentTree(
+  nodes: Comment[],
+  targetId: string,
+  updater: (node: Comment) => Comment,
+): [Comment[], boolean] {
+  let changed = false;
+  const next = nodes.map(node => {
+    if (node._id === targetId) {
+      changed = true;
+      return updater(node);
+    }
+    const reps = node.replies ?? [];
+    if (!reps.length) return node;
+    const [patchedReplies, childChanged] = patchCommentTree(reps, targetId, updater);
+    if (!childChanged) return node;
+    changed = true;
+    return {...node, replies: patchedReplies};
+  });
+  return [next, changed];
+}
+
+function insertReplyIntoTree(nodes: Comment[], parentId: string, reply: Comment): [Comment[], boolean] {
+  let inserted = false;
+  const next = nodes.map(node => {
+    if (node._id === parentId) {
+      inserted = true;
+      const oldReplies = node.replies ?? [];
+      return {
+        ...node,
+        replies: [...oldReplies, reply],
+        repliesCount: (node.repliesCount ?? oldReplies.length) + 1,
+      };
+    }
+    const reps = node.replies ?? [];
+    if (!reps.length) return node;
+    const [patchedReplies, childInserted] = insertReplyIntoTree(reps, parentId, reply);
+    if (!childInserted) return node;
+    inserted = true;
+    return {...node, replies: patchedReplies};
+  });
+  return [next, inserted];
 }
 
 function CommentRow({
@@ -56,56 +99,63 @@ function CommentRow({
   palette: ReturnType<typeof useTheme>['palette'];
   navigation: Nav;
 }) {
-  const [showAllReplies, setShowAllReplies] = useState(false);
   const avatarUri = comment.author.profilePicture ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author.displayName)}&size=64`;
   const replies = comment.replies ?? [];
-  const visibleReplies = showAllReplies ? replies : replies.slice(0, 3);
 
   return (
-    <View style={{marginLeft: depth * 44}}>
-      <View style={{flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 7}}>
+    <View style={{marginLeft: depth * 22}}>
+      <View style={{flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 8}}>
         <Pressable onPress={() => navigation.navigate('OtherUserProfile', {userId: comment.author._id})}>
-          <Image source={{uri: avatarUri}} style={{width: 34, height: 34, borderRadius: 17}} />
+          <Image source={{uri: avatarUri}} style={{width: 36, height: 36, borderRadius: 18}} />
         </Pressable>
         <View style={{flex: 1}}>
-          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8}}>
             <View style={{flex: 1, paddingRight: 12}}>
-              <Text style={{color: palette.foreground, fontSize: 13, lineHeight: 19}}>
-                <Text style={{fontWeight: '700'}}>{comment.author.username} </Text>
+              <Text style={{color: palette.foreground, fontSize: 13, lineHeight: 20}}>
+                <Text style={{fontWeight: '800'}}>{comment.author.username}</Text>
+                <Text style={{color: palette.mutedForeground}}> {timeAgo(comment.createdAt)}</Text>
+              </Text>
+              <Text style={{color: palette.foreground, fontSize: 16, lineHeight: 22}}>
                 {comment.text}
               </Text>
-              <View style={{flexDirection: 'row', gap: 14, marginTop: 5, alignItems: 'center'}}>
-                <Text style={{color: palette.mutedForeground, fontSize: 11}}>{timeAgo(comment.createdAt)}</Text>
-                {comment.likesCount > 0 && (
-                  <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '700'}}>{comment.likesCount} likes</Text>
-                )}
-                {depth === 0 && (
-                  <Pressable onPress={() => onReply(comment)} hitSlop={8}>
-                    <Text style={{color: palette.mutedForeground, fontSize: 11, fontWeight: '700'}}>Reply</Text>
-                  </Pressable>
-                )}
+              <View style={{flexDirection: 'row', gap: 16, marginTop: 6, alignItems: 'center'}}>
+                <Pressable onPress={() => onReply(comment)} hitSlop={8}>
+                  <Text style={{color: palette.foreground, fontSize: 13, fontWeight: '700'}}>Reply</Text>
+                </Pressable>
               </View>
             </View>
-            {/* Heart button */}
-            <Pressable onPress={() => onLike(comment)} hitSlop={10} style={{alignItems: 'center', gap: 2, paddingTop: 2}}>
+            <Pressable
+              onPress={() => onLike(comment)}
+              hitSlop={10}
+              style={{
+                alignItems: 'center',
+                gap: 6,
+                paddingTop: 6,
+                minWidth: 34,
+                // backgroundColor: palette.input,
+                // borderWidth: 1,
+                // borderColor: palette.border,
+                borderRadius: 18,
+                paddingHorizontal: 8,
+                paddingBottom: 6,
+              }}>
               <Heart
-                size={14}
-                color={comment.likesCount > 0 ? palette.destructive : palette.mutedForeground}
+                size={22}
+                color={comment.likesCount > 0 ? palette.destructive : palette.foreground}
                 fill={comment.likesCount > 0 ? palette.destructive : 'transparent'}
               />
               {comment.likesCount > 0 && (
-                <Text style={{color: palette.mutedForeground, fontSize: 9}}>{comment.likesCount}</Text>
+                <Text style={{color: palette.mutedForeground, fontSize: 14, fontWeight: '700'}}>{comment.likesCount}</Text>
               )}
             </Pressable>
           </View>
         </View>
       </View>
 
-      {/* Replies */}
       {replies.length > 0 && (
         <View>
-          {visibleReplies.map(r => (
+          {replies.map(r => (
             <CommentRow
               key={r._id}
               comment={r}
@@ -116,15 +166,6 @@ function CommentRow({
               navigation={navigation}
             />
           ))}
-          {!showAllReplies && (comment.hasMoreReplies || replies.length > 3) && (
-            <Pressable
-              onPress={() => setShowAllReplies(true)}
-              style={{marginLeft: (depth + 1) * 44 + 16 + 34 + 10, paddingVertical: 4}}>
-              <Text style={{color: palette.mutedForeground, fontSize: 12, fontWeight: '700'}}>
-                — View {(comment.repliesCount ?? replies.length) - visibleReplies.length} more {(comment.repliesCount ?? replies.length) - visibleReplies.length === 1 ? 'reply' : 'replies'}
-              </Text>
-            </Pressable>
-          )}
         </View>
       )}
     </View>
@@ -147,7 +188,7 @@ export function CommentsScreen() {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
-  const [search, setSearch] = useState('');
+  const [totalCount, setTotalCount] = useState(0);
   const inputRef = useRef<TextInput>(null);
 
   // Sheet animation — use layout-based top (not transform) so bottom stays pinned
@@ -185,9 +226,11 @@ export function CommentsScreen() {
       const res = await getComments(postId, p);
       if (reset) {
         setComments(res.comments);
+        setTotalCount(res.totalCount ?? res.comments.length);
         setPage(2);
       } else {
         setComments(prev => [...prev, ...res.comments]);
+        if (typeof res.totalCount === 'number') setTotalCount(res.totalCount);
         setPage(p + 1);
       }
       setHasMore(res.hasMore);
@@ -213,11 +256,12 @@ export function CommentsScreen() {
     setSending(true);
     try {
       const res = await addComment(postId, text.trim(), replyTo?._id);
-      setComments(prev => replyTo
-        ? prev.map(c => c._id === replyTo._id
-          ? {...c, replies: [...(c.replies ?? []), res.comment], repliesCount: (c.repliesCount ?? 0) + 1}
-          : c)
-        : [res.comment, ...prev]);
+      setComments(prev => {
+        if (!replyTo) return [res.comment, ...prev];
+        const [patched, inserted] = insertReplyIntoTree(prev, replyTo._id, res.comment);
+        return inserted ? patched : prev;
+      });
+      setTotalCount(n => n + 1);
       setText('');
       setReplyTo(null);
     } catch {}
@@ -225,33 +269,17 @@ export function CommentsScreen() {
   };
 
   const handleLike = useCallback((comment: Comment) => {
-    setComments(prev => prev.map(c => {
-      if (c._id === comment._id) {
-        const liked = (c.likesCount ?? 0) > 0;
-        return {...c, likesCount: liked ? c.likesCount - 1 : c.likesCount + 1};
-      }
-      // Check replies
-      if (c.replies?.some(r => r._id === comment._id)) {
-        return {
-          ...c,
-          replies: c.replies?.map(r =>
-            r._id === comment._id
-              ? {...r, likesCount: r.likesCount > 0 ? r.likesCount - 1 : r.likesCount + 1}
-              : r,
-          ),
-        };
-      }
-      return c;
-    }));
-    likeComment(postId, comment._id).catch(() => {});
+    const wasLiked = (comment.likesCount ?? 0) > 0;
+    const optimisticCount = Math.max(0, (comment.likesCount ?? 0) + (wasLiked ? -1 : 1));
+    setComments(prev => patchCommentTree(prev, comment._id, c => ({...c, likesCount: optimisticCount}))[0]);
+    likeComment(postId, comment._id)
+      .then(({likesCount}) => {
+        setComments(prev => patchCommentTree(prev, comment._id, c => ({...c, likesCount}))[0]);
+      })
+      .catch(() => {
+        setComments(prev => patchCommentTree(prev, comment._id, c => ({...c, likesCount: comment.likesCount ?? 0}))[0]);
+      });
   }, [postId]);
-
-  const filteredComments = search.trim()
-    ? comments.filter(c =>
-        c.text.toLowerCase().includes(search.toLowerCase()) ||
-        c.author.username.toLowerCase().includes(search.toLowerCase()),
-      )
-    : comments;
 
   const myAvatarUri = dbUser?.profilePicture ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(dbUser?.displayName ?? 'U')}&size=64`;
@@ -281,29 +309,12 @@ export function CommentsScreen() {
               paddingHorizontal: 16, paddingBottom: 10,
             }}>
               <Text style={{flex: 1, color: palette.foreground, fontSize: 15, fontWeight: '800', textAlign: 'center'}}>
-                Comments
+                Comments {totalCount > 0 ? totalCount : ''}
               </Text>
               <Pressable onPress={() => navigation.goBack()} hitSlop={12}
                 style={{position: 'absolute', right: 16}}>
                 <X size={20} color={palette.mutedForeground} />
               </Pressable>
-            </View>
-
-            {/* Search bar */}
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 8,
-              marginHorizontal: 14, marginBottom: 8,
-              backgroundColor: palette.input, borderRadius: 10,
-              paddingHorizontal: 12, paddingVertical: 8,
-            }}>
-              <Search size={14} color={palette.mutedForeground} />
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search comments…"
-                placeholderTextColor={palette.mutedForeground}
-                style={{flex: 1, color: palette.foreground, fontSize: 13, padding: 0}}
-              />
             </View>
 
             <View style={{height: 1, backgroundColor: palette.border}} />
@@ -319,16 +330,16 @@ export function CommentsScreen() {
                 </View>
               ) : (
                 <FlatList
-                  data={filteredComments}
+                  data={comments}
                   keyExtractor={c => c._id}
-                  contentContainerStyle={{paddingTop: 4, paddingBottom: 8}}
+                  contentContainerStyle={{paddingTop: 8, paddingBottom: 8}}
                   onEndReached={onLoadMore}
                   onEndReachedThreshold={0.4}
                   onScrollBeginDrag={() => snapTo(SNAP_FULL)}
                   keyboardShouldPersistTaps="handled"
                   ListEmptyComponent={
                     <Text style={{textAlign: 'center', color: palette.mutedForeground, paddingTop: 40, fontSize: 14}}>
-                      {search ? 'No matching comments' : 'No comments yet. Be the first!'}
+                      No comments yet. Be the first!
                     </Text>
                   }
                   ListFooterComponent={
@@ -394,36 +405,47 @@ export function CommentsScreen() {
                 borderTopWidth: 1, borderTopColor: palette.border,
               }}>
                 <Image source={{uri: myAvatarUri}} style={{width: 32, height: 32, borderRadius: 16, marginBottom: 2}} />
-                <TextInput
-                  ref={inputRef}
-                  value={text}
-                  onChangeText={setText}
-                  placeholder="Add a comment..."
-                  placeholderTextColor={palette.mutedForeground}
+                <View
                   style={{
-                    flex: 1, color: palette.foreground, fontSize: 14,
-                    maxHeight: 80, paddingTop: 8, paddingBottom: 8,
-                  }}
-                  multiline
-                  maxLength={500}
-                  onFocus={() => snapTo(SNAP_FULL)}
-                />
+                    flex: 1,
+                    minHeight: 42,
+                    maxHeight: 88,
+                    borderRadius: 22,
+                    borderWidth: 1,
+                    borderColor: palette.border,
+                    backgroundColor: palette.input,
+                    paddingHorizontal: 14,
+                    justifyContent: 'center',
+                  }}>
+                  <TextInput
+                    ref={inputRef}
+                    value={text}
+                    onChangeText={setText}
+                    placeholder={replyTo ? `Reply to @${replyTo.author.username}...` : 'Add a comment...'}
+                    placeholderTextColor={palette.mutedForeground}
+                    style={{
+                      flex: 1, color: palette.foreground, fontSize: 14,
+                      maxHeight: 80, paddingTop: 8, paddingBottom: 8,
+                    }}
+                    multiline
+                    maxLength={500}
+                    onFocus={() => snapTo(SNAP_FULL)}
+                  />
+                </View>
                 <Pressable hitSlop={8} onPress={() => setText(t => t + '😊')}>
-                  <Smile size={22} color={palette.mutedForeground} />
+                  <Smile size={22} color={palette.foreground} />
                 </Pressable>
                 <Pressable hitSlop={8}>
-                  <Gift size={22} color={palette.mutedForeground} />
+                  <Gift size={22} color={palette.foreground} />
                 </Pressable>
-                {text.trim() ? (
-                  <Pressable
-                    onPress={send}
-                    disabled={sending}
-                    style={{padding: 4}}>
-                    {sending
-                      ? <ActivityIndicator size="small" color={palette.primary} />
-                      : <Text style={{color: palette.primary, fontWeight: '800', fontSize: 14}}>Post</Text>}
-                  </Pressable>
-                ) : null}
+                <Pressable
+                  onPress={send}
+                  disabled={sending || !text.trim()}
+                  style={{padding: 4, opacity: text.trim() ? 1 : 0.45}}>
+                  {sending
+                    ? <ActivityIndicator size="small" color={palette.primary} />
+                    : <Send size={20} color={palette.primary} />}
+                </Pressable>
               </View>
             </KeyboardAvoidingView>
           </View>

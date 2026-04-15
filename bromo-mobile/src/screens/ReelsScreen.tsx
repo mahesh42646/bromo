@@ -232,16 +232,12 @@ function ReelMoreSheet({
                 onPress={() => {
                   if (!reel) return;
                   createStoryFromReel(reel._id)
-                    .then(({post}) => {
+                    .then(() => {
                       DeviceEventEmitter.emit('bromo:storiesChanged');
                       onClose();
-                      const pending =
-                        post.processingStatus === 'pending' || post.processingStatus === 'processing';
                       Alert.alert(
-                        'Story',
-                        pending
-                          ? 'Your story is processing. You will get a notification when it is ready.'
-                          : 'This reel was added to your story.',
+                        'Added successfully to your story.',
+                        ' It may take a bit to process before it is visible to all your friends.',
                       );
                     })
                     .catch(e =>

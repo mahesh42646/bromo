@@ -1174,7 +1174,7 @@ postsRouter.get(
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = (page - 1) * 30;
 
-      const post = await Post.findById(req.params.id).select("isDeleted isActive");
+      const post = await Post.findById(req.params.id).select("isDeleted isActive commentsCount");
       if (!post?.isActive || post.isDeleted) {
         return res.status(404).json({ message: "Post not found" });
       }
@@ -1191,47 +1191,55 @@ postsRouter.get(
         .lean();
 
       if (rootComments.length === 0) {
-        return res.json({ comments: [], page, hasMore: false });
+        return res.json({
+          comments: [],
+          page,
+          hasMore: false,
+          totalCount: Number(post.commentsCount) || 0,
+        });
       }
 
-      // Fetch top 3 replies per root comment (one query)
-      const rootIds = rootComments.map((c) => c._id);
-      const replies = await Comment.find({
+      // Fetch all descendants for this post, then assemble nested trees for paged roots.
+      const nonRootComments = await Comment.find({
         postId: req.params.id,
         isActive: true,
-        parentId: { $in: rootIds },
+        parentId: { $exists: true },
       })
         .sort({ createdAt: 1 })
-        .limit(rootComments.length * 10)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
 
-      const replyMap = new Map<string, typeof replies>();
-      for (const r of replies) {
-        const pid = String(r.parentId);
-        if (!replyMap.has(pid)) replyMap.set(pid, []);
-        replyMap.get(pid)!.push(r);
+      const childrenMap = new Map<string, typeof nonRootComments>();
+      for (const c of nonRootComments) {
+        const pid = String(c.parentId);
+        const arr = childrenMap.get(pid) ?? [];
+        arr.push(c);
+        childrenMap.set(pid, arr);
       }
 
-      const result = rootComments.map((c) => {
-        const id = String(c._id);
-        const reps = (replyMap.get(id) ?? []).slice(0, 3).map((r) => ({
-          ...r,
-          author: r.authorId,
-          authorId: undefined,
-        }));
-        const totalReplies = replyMap.get(id)?.length ?? 0;
+      const buildTree = (node: Record<string, unknown>): Record<string, unknown> => {
+        const id = String(node._id);
+        const kids = (childrenMap.get(id) ?? []).map((k) =>
+          buildTree(k as unknown as Record<string, unknown>),
+        );
         return {
-          ...c,
-          author: c.authorId,
+          ...node,
+          author: node.authorId,
           authorId: undefined,
-          replies: reps,
-          repliesCount: totalReplies,
-          hasMoreReplies: totalReplies > 3,
+          replies: kids,
+          repliesCount: kids.length,
+          hasMoreReplies: false,
         };
-      });
+      };
 
-      return res.json({ comments: result, page, hasMore: rootComments.length === 30 });
+      const result = rootComments.map((c) => buildTree(c as unknown as Record<string, unknown>));
+
+      return res.json({
+        comments: result,
+        page,
+        hasMore: rootComments.length === 30,
+        totalCount: Number(post.commentsCount) || 0,
+      });
     } catch (err) {
       console.error("[posts] comments error:", err);
       return res.status(500).json({ message: "Failed to fetch comments" });
