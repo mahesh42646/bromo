@@ -59,6 +59,13 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     bufferForPlaybackAfterRebufferMs: 2000,
     backBufferDurationMs: 1000,
   },
+  'feed-hls': {
+    minBufferMs: 4000,
+    maxBufferMs: 20000,
+    bufferForPlaybackMs: 1200,
+    bufferForPlaybackAfterRebufferMs: 2500,
+    backBufferDurationMs: 4000,
+  },
   story: {
     minBufferMs: 1200,
     maxBufferMs: 12000,
@@ -80,6 +87,7 @@ const SAFETY_MS: Record<string, number> = {
   story: 3500,
   reel:  2000,
   feed:  1500,
+  'feed-hls': 2000,
 };
 
 export type NetworkVideoProps = {

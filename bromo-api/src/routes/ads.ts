@@ -28,13 +28,14 @@ adsAdminRouter.get("/", requireAdminToken, async (req: AuthedRequest, res: Respo
 // ─── Create ad ───────────────────────────────────────────────────────────────
 adsAdminRouter.post("/", requireAdminToken, async (req: AuthedRequest, res: Response) => {
   const admin = req.admin!;
-  const { title, adType, mediaUrls, thumbnailUrl, caption, cta, placements, startDate, endDate, priority } = req.body as Record<string, unknown>;
+  const { title, adType, mediaUrls, thumbnailUrl, caption, cta, placements, startDate, endDate, priority, status } = req.body as Record<string, unknown>;
 
   if (!title || !adType || !Array.isArray(mediaUrls) || !mediaUrls.length || !cta || !Array.isArray(placements) || !placements.length || !startDate) {
     res.status(400).json({ message: "Missing required fields: title, adType, mediaUrls, cta, placements, startDate" });
     return;
   }
 
+  const validStatuses = ["draft", "active"];
   const ad = await Ad.create({
     title,
     adType,
@@ -46,6 +47,7 @@ adsAdminRouter.post("/", requireAdminToken, async (req: AuthedRequest, res: Resp
     startDate: new Date(startDate as string),
     endDate: endDate ? new Date(endDate as string) : undefined,
     priority: priority ?? 1,
+    status: validStatuses.includes(status as string) ? status : "draft",
     createdBy: new mongoose.Types.ObjectId(admin.id),
   });
 

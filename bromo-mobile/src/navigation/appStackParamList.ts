@@ -7,7 +7,7 @@ export type MainTabParamList = {
   Home: undefined;
   Search: undefined;
   Create: undefined;
-  Reels: undefined;
+  Reels: {initialPostId?: string} | undefined;
   Store: undefined;
 };
 

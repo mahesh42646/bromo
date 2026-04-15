@@ -48,7 +48,7 @@ export function parentNavigate(navigation: any, name: string, params?: Record<st
     for (let depth = 0; depth < 12 && nav; depth++) {
       const state = nav.getState?.();
       if (state?.routeNames?.includes('Main')) {
-        nav.navigate?.('Main', {screen: name});
+        nav.navigate?.('Main', {screen: name, params: params ?? {}} as object);
         return;
       }
       nav = nav.getParent?.();

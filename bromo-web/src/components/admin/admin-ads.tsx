@@ -111,6 +111,7 @@ interface AdFormData {
   startDate: string;
   endDate: string;
   priority: number;
+  publishNow: boolean;
 }
 
 const emptyForm = (): AdFormData => ({
@@ -124,6 +125,7 @@ const emptyForm = (): AdFormData => ({
   startDate: new Date().toISOString().slice(0, 10),
   endDate: "",
   priority: 1,
+  publishNow: true,
 });
 
 function AdFormModal({
@@ -149,6 +151,7 @@ function AdFormModal({
           startDate: ad.startDate.slice(0, 10),
           endDate: ad.endDate?.slice(0, 10) ?? "",
           priority: ad.priority,
+          publishNow: false,
         }
       : emptyForm(),
   );
@@ -190,11 +193,14 @@ function AdFormModal({
     setSaving(true);
     setError("");
     try {
-      const body = {
-        ...form,
+      const { publishNow, ...rest } = form;
+      const body: Record<string, unknown> = {
+        ...rest,
         mediaUrls: form.mediaUrls.filter((u) => u.trim()),
         endDate: form.endDate || undefined,
       };
+      // Only set status on create (edit keeps existing status)
+      if (!ad) body.status = publishNow ? "active" : "draft";
       const url = ad ? `/api/admin/ads/${ad._id}` : "/api/admin/ads";
       const res = await fetch(url, {
         method: ad ? "PATCH" : "POST",
@@ -439,6 +445,36 @@ function AdFormModal({
                   <span>10 — highest</span>
                 </div>
               </Field>
+
+              {/* Publish toggle — only shown on create */}
+              {!ad && (
+                <button
+                  type="button"
+                  onClick={() => set("publishNow", !form.publishNow)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm transition-colors",
+                    form.publishNow
+                      ? "border-[hsl(var(--accent))] bg-[hsl(var(--accent)/0.08)] text-[hsl(var(--accent))]"
+                      : "border-border text-muted-foreground",
+                  )}
+                >
+                  <span className="font-medium">
+                    {form.publishNow ? "Activate immediately" : "Save as draft"}
+                  </span>
+                  <span
+                    className={cn(
+                      "flex size-5 items-center justify-center rounded-full border-2 transition-colors",
+                      form.publishNow ? "border-[hsl(var(--accent))] bg-[hsl(var(--accent))]" : "border-border",
+                    )}
+                  >
+                    {form.publishNow && (
+                      <svg viewBox="0 0 12 12" className="size-3 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M2 6l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
+              )}
             </>
           )}
         </div>
@@ -469,7 +505,7 @@ function AdFormModal({
                 disabled={saving}
                 className="bg-accent text-accent-foreground rounded-xl px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
               >
-                {saving ? "Saving…" : ad ? "Save changes" : "Create ad"}
+                {saving ? "Saving…" : ad ? "Save changes" : form.publishNow ? "Publish ad" : "Save draft"}
               </button>
             )}
           </div>

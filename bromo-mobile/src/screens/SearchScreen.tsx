@@ -23,6 +23,8 @@ import {parentNavigate} from '../navigation/parentNavigate';
 import {searchUsers, getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getExplore, type Post} from '../api/postsApi';
 import {authedFetch} from '../api/authApi';
+import {fetchAds, type Ad} from '../api/adsApi';
+import {AdCard} from '../components/AdCard';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
@@ -38,6 +40,14 @@ const TRENDING_FALLBACK: TrendingTopic[] = [
   {id: '5', tag: '#Bollywood', posts: '3.2M posts', category: 'Entertainment'},
   {id: '6', tag: '#LocalFood', posts: '450K posts', category: 'Lifestyle'},
 ];
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
 
 const FILTER_TABS = [
   {id: 'explore', label: 'Explore', icon: TrendingUp},
@@ -141,6 +151,7 @@ export function SearchScreen() {
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [searchResults, setSearchResults] = useState<(SuggestedUser & {followStatus?: string})[]>([]);
   const [explorePosts, setExplorePosts] = useState<Post[]>([]);
+  const [exploreAds, setExploreAds] = useState<Ad[]>([]);
   const [trendingTopics, setTrendingTopics] = useState<TrendingTopic[]>(TRENDING_FALLBACK);
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -184,8 +195,14 @@ export function SearchScreen() {
     }
     if (activeTab === 'explore' && explorePosts.length === 0) {
       setLoadingExplore(true);
-      getExplore(1)
-        .then(res => setExplorePosts(res.posts))
+      Promise.all([
+        getExplore(1),
+        fetchAds('explore', 3),
+      ])
+        .then(([postsRes, adsRes]) => {
+          setExplorePosts(postsRes.posts);
+          setExploreAds(adsRes);
+        })
         .catch(() => {})
         .finally(() => setLoadingExplore(false));
     }
@@ -336,38 +353,49 @@ export function SearchScreen() {
             </View>
 
             {/* Explore Grid */}
-            <View style={{padding: 14}}>
-              <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 12}}>Explore Posts</ThemedText>
+            <View>
+              <View style={{paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8}}>
+                <ThemedText variant="heading" style={{fontSize: 14}}>Explore Posts</ThemedText>
+              </View>
               {loadingExplore ? (
-                <ActivityIndicator color={palette.primary} />
+                <ActivityIndicator color={palette.primary} style={{paddingVertical: 20}} />
               ) : (
-                <View style={{flexDirection: 'row', gap: 3}}>
-                  {[0, 1, 2].map(col => (
-                    <View key={col} style={{flex: 1, gap: 3}}>
-                      {explorePosts.filter((_, i) => i % 3 === col).map((post, i) => (
-                        <Pressable
-                          key={post._id}
-                          onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
-                          style={{position: 'relative'}}>
-                          <Image
-                            source={{uri: post.mediaType === 'video' ? (post.thumbnailUrl ?? post.mediaUrl) : post.mediaUrl}}
-                            style={{width: '100%', aspectRatio: i % 2 === 0 ? 0.8 : 1, borderRadius: 4}}
-                            resizeMode="cover"
-                          />
-                          {post.mediaType === 'video' && (
-                            <View style={{
-                              position: 'absolute', top: 6, right: 6,
-                              backgroundColor: 'rgba(0,0,0,0.55)',
-                              borderRadius: 10, padding: 4,
-                            }}>
-                              <Play size={10} color="#fff" fill="#fff" />
-                            </View>
-                          )}
-                        </Pressable>
-                      ))}
+                chunkArray(explorePosts, 6).map((chunk, chunkIdx) => (
+                  <React.Fragment key={chunkIdx}>
+                    <View style={{paddingHorizontal: 14, paddingBottom: 3}}>
+                      <View style={{flexDirection: 'row', gap: 3}}>
+                        {[0, 1, 2].map(col => (
+                          <View key={col} style={{flex: 1, gap: 3}}>
+                            {chunk.filter((_, i) => i % 3 === col).map((post, i) => (
+                              <Pressable
+                                key={post._id}
+                                onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
+                                style={{position: 'relative'}}>
+                                <Image
+                                  source={{uri: post.mediaType === 'video' ? (post.thumbnailUrl ?? post.mediaUrl) : post.mediaUrl}}
+                                  style={{width: '100%', aspectRatio: i % 2 === 0 ? 0.8 : 1, borderRadius: 4}}
+                                  resizeMode="cover"
+                                />
+                                {post.mediaType === 'video' && (
+                                  <View style={{
+                                    position: 'absolute', top: 6, right: 6,
+                                    backgroundColor: 'rgba(0,0,0,0.55)',
+                                    borderRadius: 10, padding: 4,
+                                  }}>
+                                    <Play size={10} color="#fff" fill="#fff" />
+                                  </View>
+                                )}
+                              </Pressable>
+                            ))}
+                          </View>
+                        ))}
+                      </View>
                     </View>
-                  ))}
-                </View>
+                    {exploreAds[chunkIdx] ? (
+                      <AdCard ad={exploreAds[chunkIdx]} placement="explore" />
+                    ) : null}
+                  </React.Fragment>
+                ))
               )}
             </View>
           </>

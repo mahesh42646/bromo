@@ -24,7 +24,7 @@ adServeRouter.get("/serve", requireFirebaseToken, async (req: FirebaseAuthedRequ
     status: "active",
     placements: placement,
     startDate: { $lte: now },
-    $or: [{ endDate: { $gt: now } }, { endDate: { $exists: false } }],
+    $or: [{ endDate: { $gt: now } }, { endDate: null }, { endDate: { $exists: false } }],
   })
     .sort({ priority: -1, createdAt: -1 })
     .limit(limitNum * 3) // fetch extra to allow shuffle within priority tiers
@@ -79,25 +79,23 @@ adServeRouter.post("/:id/event", requireFirebaseToken, async (req: FirebaseAuthe
     incPayload.totalWatchTimeMs = Math.round(watchTimeMs);
   }
 
-  // Fire both writes concurrently — don't block client on analytics
-  const [adExists] = await Promise.all([
-    Ad.exists({ _id: adObjectId, status: "active" }),
+  const adExists = await Ad.exists({ _id: adObjectId, status: "active" });
+  if (!adExists) {
+    res.status(404).json({ message: "Ad not found or not active" });
+    return;
+  }
+
+  // Fire analytics writes concurrently — non-blocking from client perspective
+  Promise.all([
     AdEvent.create({
       adId: adObjectId,
       userId: req.dbUser?._id,
       event,
       placement,
       watchTimeMs: typeof watchTimeMs === "number" ? Math.round(watchTimeMs) : undefined,
-    }).catch(() => null), // silently swallow — analytics must not block feed
-  ]);
-
-  if (!adExists) {
-    res.status(404).json({ message: "Ad not found or not active" });
-    return;
-  }
-
-  // Increment counter atomically (fire-and-forget — already responded)
-  Ad.updateOne({ _id: adObjectId }, { $inc: incPayload }).catch(() => null);
+    }),
+    Ad.updateOne({ _id: adObjectId }, { $inc: incPayload }),
+  ]).catch(() => null);
 
   res.json({ ok: true });
 });

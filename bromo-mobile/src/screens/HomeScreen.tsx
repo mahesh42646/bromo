@@ -10,6 +10,7 @@ import {
   RefreshControl,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   View,
   type ViewabilityConfig,
@@ -17,7 +18,7 @@ import {
 } from 'react-native';
 import {NetworkVideo} from '../components/media/NetworkVideo';
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {
   BadgeCheck,
   Bookmark,
@@ -59,14 +60,17 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
-import {getFeed, getTrendingReels, toggleLike, hidePost, reportPost, type Post, type StoryGroup} from '../api/postsApi';
+import {getFeed, getTrendingReels, toggleLike, hidePost, reportPost, recordView, resolveVideoUrl, type Post, type StoryGroup} from '../api/postsApi';
 import {fetchAds, type Ad} from '../api/adsApi';
 import {AdCard} from '../components/AdCard';
+import {AdStoryViewer} from '../components/AdStoryViewer';
 import {clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped} from '../lib/storiesFeedCache';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getUnreadCount} from '../api/notificationsApi';
 import {getConversations} from '../api/chatApi';
 import {socketService} from '../services/socketService';
+import {usePlaybackMute} from '../context/PlaybackMuteContext';
+import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
 
 type IconComp = ComponentType<{size?: number; color?: string}>;
 
@@ -131,14 +135,26 @@ type PostCardProps = {
   onHide: (postId: string) => void;
   navigation: Nav;
   isVideoVisible?: boolean;
+  isFeedItemVisible?: boolean;
 };
 
-function PostCard({post, onLikeToggle, onHide, navigation, isVideoVisible = false}: PostCardProps) {
+function PostCard({
+  post,
+  onLikeToggle,
+  onHide,
+  navigation,
+  isVideoVisible = false,
+  isFeedItemVisible = false,
+}: PostCardProps) {
   const {palette, contract} = useTheme();
+  const {homeFeedMuted, toggleHomeFeedMuted} = usePlaybackMute();
+  const {isCellular, maxBitRate} = usePlaybackNetworkCap();
   const [bookmarked, setBookmarked] = useState(false);
-  const [muted, setMuted] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [following, setFollowing] = useState(post.isFollowing);
+  const [videoEnded, setVideoEnded] = useState(false);
+  const [replayKey, setReplayKey] = useState(0);
+  const viewRecordedRef = useRef(false);
   const {borderRadiusScale} = contract.brandGuidelines;
   const radius = borderRadiusScale === 'bold' ? 14 : 10;
 
@@ -167,6 +183,35 @@ function PostCard({post, onLikeToggle, onHide, navigation, isVideoVisible = fals
   };
 
   const avatarUri = post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`;
+
+  useEffect(() => {
+    if (!isFeedItemVisible) {
+      viewRecordedRef.current = false;
+      return;
+    }
+    if (viewRecordedRef.current) return;
+    viewRecordedRef.current = true;
+    recordView(post._id, 0).catch(() => null);
+  }, [isFeedItemVisible, post._id]);
+
+  useEffect(() => {
+    setVideoEnded(false);
+  }, [post._id]);
+
+  useEffect(() => {
+    if (isVideoVisible && post.mediaType === 'video') {
+      setVideoEnded(false);
+    }
+  }, [isVideoVisible, post.mediaType, post._id]);
+
+  const rawVideoUrl = post.mediaType === 'video' ? resolveVideoUrl(post, isCellular) : '';
+  const playUri = rawVideoUrl ? resolveMediaUrl(rawVideoUrl) || rawVideoUrl : '';
+  const isHls = rawVideoUrl.endsWith('.m3u8');
+  const thumbForVideo = postThumbnailUri(post) || playUri;
+
+  const openReelsAtThisPost = () => {
+    parentNavigate(navigation, 'Reels', {initialPostId: post._id});
+  };
 
   return (
     <View style={{borderBottomWidth: 8, borderBottomColor: palette.background, backgroundColor: palette.background}}>
@@ -262,40 +307,166 @@ function PostCard({post, onLikeToggle, onHide, navigation, isVideoVisible = fals
         </View>
       ) : null}
 
-      <Pressable onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}>
-        {post.mediaType === 'video' ? (
-          <View style={{position: 'relative'}}>
-            <NetworkVideo
-              context="feed"
-              uri={resolveMediaUrl(post.mediaUrl)}
-              posterUri={postThumbnailUri(post) || undefined}
-              style={{width: '100%', aspectRatio: 1}}
-              repeat
-              muted={muted}
-              paused={!isVideoVisible}
-              posterOverlayUntilReady
+      {post.type === 'reel' ? (
+        <Pressable onPress={openReelsAtThisPost}>
+          {post.mediaType === 'video' ? (
+            <View style={{position: 'relative'}}>
+              <NetworkVideo
+                key={`${post._id}-${replayKey}`}
+                context={isHls ? 'feed-hls' : 'feed'}
+                uri={playUri}
+                fallbackUri={isHls ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
+                posterUri={thumbForVideo || undefined}
+                maxBitRate={isHls ? maxBitRate : undefined}
+                style={{width: '100%', aspectRatio: 1}}
+                repeat={false}
+                muted={homeFeedMuted}
+                paused={!isVideoVisible || videoEnded}
+                posterOverlayUntilReady
+                onEnd={() => setVideoEnded(true)}
+              />
+              <Pressable
+                onPress={e => {
+                  e.stopPropagation();
+                  toggleHomeFeedMuted();
+                }}
+                style={{
+                  position: 'absolute',
+                  bottom: 10,
+                  right: 10,
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                {homeFeedMuted ? <VolumeX size={14} color="#fff" /> : <Volume2 size={14} color="#fff" />}
+              </Pressable>
+              {videoEnded ? (
+                <View
+                  style={{
+                    ...StyleSheet.absoluteFillObject,
+                    backgroundColor: 'rgba(0,0,0,0.35)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 10,
+                  }}>
+                  <Pressable
+                    onPress={e => {
+                      e.stopPropagation();
+                      setVideoEnded(false);
+                      setReplayKey(k => k + 1);
+                    }}
+                    style={{
+                      paddingHorizontal: 20,
+                      paddingVertical: 10,
+                      borderRadius: 999,
+                      backgroundColor: palette.primary,
+                    }}>
+                    <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 13}}>Watch again</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={e => {
+                      e.stopPropagation();
+                      openReelsAtThisPost();
+                    }}
+                    style={{
+                      paddingHorizontal: 20,
+                      paddingVertical: 10,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#fff',
+                    }}>
+                    <Text style={{color: '#fff', fontWeight: '800', fontSize: 13}}>View more</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <Image
+              source={{uri: resolveMediaUrl(post.mediaUrl)}}
+              style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
             />
-            {/* Mute toggle */}
-            <Pressable
-              onPress={e => { e.stopPropagation(); setMuted(m => !m); }}
-              style={{
-                position: 'absolute', bottom: 10, right: 10,
-                width: 32, height: 32, borderRadius: 16,
-                backgroundColor: 'rgba(0,0,0,0.5)',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-              {muted
-                ? <VolumeX size={14} color="#fff" />
-                : <Volume2 size={14} color="#fff" />}
-            </Pressable>
-          </View>
-        ) : (
-          <Image
-            source={{uri: resolveMediaUrl(post.mediaUrl)}}
-            style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
-          />
-        )}
-      </Pressable>
+          )}
+        </Pressable>
+      ) : (
+        <View>
+          {post.mediaType === 'video' ? (
+            <View style={{position: 'relative'}}>
+              <NetworkVideo
+                key={`${post._id}-${replayKey}`}
+                context={isHls ? 'feed-hls' : 'feed'}
+                uri={playUri}
+                fallbackUri={isHls ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
+                posterUri={thumbForVideo || undefined}
+                maxBitRate={isHls ? maxBitRate : undefined}
+                style={{width: '100%', aspectRatio: 1}}
+                repeat={false}
+                muted={homeFeedMuted}
+                paused={!isVideoVisible || videoEnded}
+                posterOverlayUntilReady
+                onEnd={() => setVideoEnded(true)}
+              />
+              <Pressable
+                onPress={() => toggleHomeFeedMuted()}
+                style={{
+                  position: 'absolute',
+                  bottom: 10,
+                  right: 10,
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                {homeFeedMuted ? <VolumeX size={14} color="#fff" /> : <Volume2 size={14} color="#fff" />}
+              </Pressable>
+              {videoEnded ? (
+                <View
+                  style={{
+                    ...StyleSheet.absoluteFillObject,
+                    backgroundColor: 'rgba(0,0,0,0.35)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 10,
+                  }}>
+                  <Pressable
+                    onPress={() => {
+                      setVideoEnded(false);
+                      setReplayKey(k => k + 1);
+                    }}
+                    style={{
+                      paddingHorizontal: 20,
+                      paddingVertical: 10,
+                      borderRadius: 999,
+                      backgroundColor: palette.primary,
+                    }}>
+                    <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 13}}>Watch again</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => parentNavigate(navigation, 'Reels')}
+                    style={{
+                      paddingHorizontal: 20,
+                      paddingVertical: 10,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#fff',
+                    }}>
+                    <Text style={{color: '#fff', fontWeight: '800', fontSize: 13}}>View more</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <Image
+              source={{uri: resolveMediaUrl(post.mediaUrl)}}
+              style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
+            />
+          )}
+        </View>
+      )}
 
       <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12}}>
         <View style={{flexDirection: 'row', gap: 20, alignItems: 'center'}}>
@@ -401,9 +572,31 @@ function SuggestionCard({user, onFollowToggle, navigation, palette, borderRadius
   );
 }
 
+/**
+ * Pick random insertion slots for ads among N content items.
+ * Returns sorted indices into the content array (insert ad AFTER content[idx]).
+ * Guarantees at least 1 ad if there's at least 1 content item.
+ * Never places two ads within `minGap` positions of each other.
+ */
+function pickAdSlots(contentCount: number, adCount: number, minGap = 2): number[] {
+  if (contentCount === 0 || adCount === 0) return [];
+  const maxAds = Math.min(adCount, Math.max(1, Math.ceil(contentCount / minGap)));
+  const slots: number[] = [];
+  let attempts = 0;
+  while (slots.length < maxAds && attempts < 200) {
+    attempts++;
+    const pos = Math.floor(Math.random() * contentCount);
+    if (slots.every(s => Math.abs(s - pos) >= minGap)) {
+      slots.push(pos);
+    }
+  }
+  return slots.sort((a, b) => a - b);
+}
+
 export function HomeScreen() {
   const {palette, contract, isDark} = useTheme();
   const {dbUser, ready: authReady} = useAuth();
+  const {setHomeFeedMuted} = usePlaybackMute();
   const navigation = useNavigation() as Nav;
   const tabBarHeight = useBottomTabBarHeight();
   const [activeCategory, setActiveCategory] = useState('home');
@@ -421,6 +614,8 @@ export function HomeScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [feedAds, setFeedAds] = useState<Ad[]>([]);
+  const [storyAds, setStoryAds] = useState<Ad[]>([]);
+  const [activeStoryAd, setActiveStoryAd] = useState<Ad | null>(null);
 
   const myStoryGroup = useMemo(
     () => (dbUser?._id ? storyGroups.find(g => g.author._id === dbUser._id) : undefined),
@@ -463,6 +658,14 @@ export function HomeScreen() {
   const activeCategoryRef = useRef(activeCategory);
   /** ID of the currently-visible video post (only this one autoplays). */
   const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
+  /** First mostly-visible feed post (for view counts on images + video). */
+  const [visibleFeedPostId, setVisibleFeedPostId] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      setHomeFeedMuted(true);
+    }, [setHomeFeedMuted]),
+  );
 
   const feedViewabilityConfig = useRef<ViewabilityConfig>({
     itemVisiblePercentThreshold: 60,
@@ -474,17 +677,23 @@ export function HomeScreen() {
   }, [activeCategory]);
 
   const onFeedViewableItemsChanged = useRef(({viewableItems}: {viewableItems: ViewToken[]}) => {
-    // Find the first viewable item that is a video post
-    for (const vt of viewableItems) {
-      if (vt.item && typeof vt.item === 'object' && 'kind' in vt.item && vt.item.kind === 'post') {
-        const post = (vt.item as {post: Post}).post;
-        if (post.mediaType === 'video') {
-          setVisiblePostId(post._id);
-          return;
-        }
-      }
+    const postsVisible = viewableItems.filter(
+      vt =>
+        vt.isViewable &&
+        vt.item &&
+        typeof vt.item === 'object' &&
+        'kind' in vt.item &&
+        (vt.item as {kind: string}).kind === 'post',
+    );
+    if (postsVisible.length === 0) {
+      setVisibleFeedPostId(null);
+      setVisiblePostId(null);
+      return;
     }
-    setVisiblePostId(null);
+    postsVisible.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const feedPost = (postsVisible[0].item as {post: Post}).post;
+    setVisibleFeedPostId(feedPost._id);
+    setVisiblePostId(feedPost.mediaType === 'video' ? feedPost._id : null);
   }).current;
 
   const loadData = useCallback(async (reset = false) => {
@@ -498,10 +707,11 @@ export function HomeScreen() {
         cgRef.current = null;
       }
 
-      const [storiesRes, suggestionsRes, adsRes, trendingRes] = await Promise.all([
+      const [storiesRes, suggestionsRes, adsRes, storyAdsRes, trendingRes] = await Promise.all([
         reset ? loadStoriesFeedDeduped() : Promise.resolve(null),
         reset ? getUserSuggestions(6) : Promise.resolve(null),
         reset ? fetchAds('feed', 5) : Promise.resolve(null),
+        reset ? fetchAds('stories', 2) : Promise.resolve(null),
         reset && isHome ? getTrendingReels(6).catch(() => ({posts: [] as Post[]})) : Promise.resolve(null),
       ]);
 
@@ -509,6 +719,7 @@ export function HomeScreen() {
         if (storiesRes) setStoryGroups(storiesRes);
         if (suggestionsRes) setSuggestions(suggestionsRes.users);
         if (adsRes) setFeedAds(adsRes);
+        if (storyAdsRes) setStoryAds(storyAdsRes);
         if (isHome) {
           if (
             trendingRes != null &&
@@ -787,21 +998,20 @@ export function HomeScreen() {
       feedItems.push({kind: 'suggestions', key: 'suggestions'});
     }
   });
-  // Inject ads after every 7th post (positions 7, 15, 23 … accounting for already-inserted items)
+  // Inject ads at random positions — never consecutive, works even with 1–2 posts
   if (feedAds.length > 0) {
-    let adIdx = 0;
-    let postCount = 0;
-    let i = 0;
-    while (i < feedItems.length && adIdx < feedAds.length) {
-      if (feedItems[i].kind === 'post') {
-        postCount++;
-        if (postCount % 7 === 0) {
-          feedItems.splice(i + 1, 0, {kind: 'ad', ad: feedAds[adIdx], key: `ad_${feedAds[adIdx]._id}`});
-          adIdx++;
-          i++; // skip past the inserted ad
-        }
-      }
-      i++;
+    const postIndices = feedItems
+      .map((item, idx) => (item.kind === 'post' ? idx : -1))
+      .filter(idx => idx !== -1);
+    const slots = pickAdSlots(postIndices.length, feedAds.length);
+    // Insert in reverse so earlier indices stay valid
+    for (let k = slots.length - 1; k >= 0; k--) {
+      const afterFeedIdx = postIndices[slots[k]];
+      feedItems.splice(afterFeedIdx + 1, 0, {
+        kind: 'ad',
+        ad: feedAds[k],
+        key: `ad_${feedAds[k]._id}`,
+      });
     }
   }
 
@@ -1078,6 +1288,41 @@ export function HomeScreen() {
                     <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>Your Story</ThemedText>
                   </Pressable>
 
+                  {/* Sponsored story — appears right after user's own story */}
+                  {storyAds.length > 0 && (
+                    <Pressable
+                      style={{alignItems: 'center', gap: 5}}
+                      onPress={() => setActiveStoryAd(storyAds[0])}>
+                      <View style={{position: 'relative'}}>
+                        <StoryRing
+                          uri={storyAds[0].mediaUrls[0]}
+                          size={60}
+                          seen={false}
+                        />
+                        {/* Accent "Sponsored" badge */}
+                        <View
+                          style={{
+                            position: 'absolute',
+                            bottom: -2,
+                            left: 0,
+                            right: 0,
+                            alignItems: 'center',
+                          }}>
+                          <View
+                            style={{
+                              backgroundColor: palette.accent,
+                              paddingHorizontal: 4,
+                              paddingVertical: 1,
+                              borderRadius: 4,
+                            }}>
+                            <Text style={{color: '#fff', fontSize: 8, fontWeight: '900', letterSpacing: 0.5}}>AD</Text>
+                          </View>
+                        </View>
+                      </View>
+                      <ThemedText variant="caption" style={{maxWidth: 64}} numberOfLines={1}>Sponsored</ThemedText>
+                    </Pressable>
+                  )}
+
                   {/* Following stories */}
                   {storyTrayEntries.map(({group, ringUriResolved, allSeen}) => (
                     <Pressable
@@ -1122,7 +1367,10 @@ export function HomeScreen() {
                       return (
                         <Pressable
                           key={reel._id}
-                          onPress={() => parentNavigate(navigation, 'PostDetail', {postId: reel._id})}
+                          onPress={() => {
+                            recordView(reel._id, 0).catch(() => null);
+                            parentNavigate(navigation, 'Reels', {initialPostId: reel._id});
+                          }}
                           style={{width: 118}}>
                           <View style={{position: 'relative', borderRadius: 16, overflow: 'hidden', backgroundColor: palette.surface}}>
                             <Image
@@ -1196,6 +1444,7 @@ export function HomeScreen() {
                   onHide={handleHidePost}
                   navigation={navigation}
                   isVideoVisible={item.post.mediaType === 'video' && item.post._id === visiblePostId}
+                  isFeedItemVisible={item.post._id === visibleFeedPostId}
                 />
               );
             }
@@ -1206,6 +1455,15 @@ export function HomeScreen() {
 
             return null;
           }}
+        />
+      )}
+
+      {/* Story ad full-screen viewer */}
+      {activeStoryAd && (
+        <AdStoryViewer
+          ad={activeStoryAd}
+          visible={activeStoryAd !== null}
+          onClose={() => setActiveStoryAd(null)}
         />
       )}
     </ThemedSafeScreen>

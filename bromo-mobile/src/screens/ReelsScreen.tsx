@@ -17,6 +17,8 @@ import {
   Switch,
   Text,
   View,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
   type ViewabilityConfig,
   type ViewToken,
 } from 'react-native';
@@ -30,8 +32,6 @@ import {
   Music2,
   MoreHorizontal,
   Play,
-  Volume2,
-  VolumeX,
   Wifi,
   Maximize2,
   Repeat,
@@ -43,15 +43,16 @@ import {
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react-native';
-import {useFocusEffect, useNavigation} from '@react-navigation/native';
-import type {NavigationProp} from '@react-navigation/native';
+import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
+import type {NavigationProp, RouteProp} from '@react-navigation/native';
+import type {MainTabParamList} from '../navigation/appStackParamList';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {StoryRing} from '../components/ui/StoryRing';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {followUser} from '../api/followApi';
-import {createStoryFromReel, getReels, toggleLike, recordView, recordShare, resolveVideoUrl, type Post} from '../api/postsApi';
+import {followUser, unfollowUser} from '../api/followApi';
+import {createStoryFromReel, getPost, getReels, toggleLike, recordView, recordShare, resolveVideoUrl, type Post} from '../api/postsApi';
 import {fetchAds, type Ad} from '../api/adsApi';
 import {AdReelItem} from '../components/AdReelItem';
 import {socketService} from '../services/socketService';
@@ -59,6 +60,7 @@ import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
 import {prefetchHlsSegments} from '../lib/hlsPrefetch';
 import type {ThemePalette} from '../config/platform-theme';
+import {usePlaybackMute} from '../context/PlaybackMuteContext';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
@@ -70,6 +72,21 @@ function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+function pickAdSlots(contentCount: number, adCount: number, minGap = 2): number[] {
+  if (contentCount === 0 || adCount === 0) return [];
+  const maxAds = Math.min(adCount, Math.max(1, Math.ceil(contentCount / minGap)));
+  const slots: number[] = [];
+  let attempts = 0;
+  while (slots.length < maxAds && attempts < 200) {
+    attempts++;
+    const pos = Math.floor(Math.random() * contentCount);
+    if (slots.every(s => Math.abs(s - pos) >= minGap)) {
+      slots.push(pos);
+    }
+  }
+  return slots.sort((a, b) => a - b);
 }
 
 type ReelFeedTab = 'forYou' | 'friends';
@@ -227,8 +244,10 @@ function ReelItem({
   autoScroll,
   onAutoScrollChange,
   onAutoAdvanceClip,
+  onNaturalEnd,
   isCellular,
   maxBitRate,
+  viewerAvatarUri,
 }: {
   item: Post;
   isActive: boolean;
@@ -239,24 +258,30 @@ function ReelItem({
   autoScroll: boolean;
   onAutoScrollChange: (v: boolean) => void;
   onAutoAdvanceClip: () => void;
+  onNaturalEnd?: () => void;
   isCellular: boolean;
   maxBitRate: number | null;
+  viewerAvatarUri?: string;
 }) {
   const insets = useSafeAreaInsets();
   const {palette, contract} = useTheme();
-  const [bookmarked, setBookmarked] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const {dbUser} = useAuth();
+  const {reelsMuted, toggleReelsMuted} = usePlaybackMute();
+  const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [holdPaused, setHoldPaused] = useState(false);
+  const suppressMuteTap = useRef(false);
   const [following, setFollowing] = useState(item.isFollowing);
   const [coverSpinner, setCoverSpinner] = useState(true);
   const [moreOpen, setMoreOpen] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [paused, setPaused] = useState(!isActive);
   const viewRecorded = useRef(false);
   const watchStartMs = useRef(0);
   const accumulatedWatchMs = useRef(0);
   const durationRef = useRef(0);
   const lastProgTick = useRef(0);
   const clearedSpinnerOnProgress = useRef(false);
+  /** One completion signal per reel (avoids counting every loop when repeat is on). */
+  const naturalEndSentRef = useRef(false);
   // Rotating disc animation
   const discRotation = useRef(new Animated.Value(0)).current;
   const discAnim = useRef<Animated.CompositeAnimation | null>(null);
@@ -268,15 +293,18 @@ function ReelItem({
     setProgress(0);
     durationRef.current = 0;
     clearedSpinnerOnProgress.current = false;
+    naturalEndSentRef.current = false;
   }, [item._id, item.mediaUrl]);
 
   useEffect(() => {
-    setPaused(!isActive);
+    if (!isActive) setHoldPaused(false);
   }, [isActive]);
+
+  const paused = !isActive || holdPaused;
 
   // Disc spin: start/stop with active state
   useEffect(() => {
-    if (isActive && !paused) {
+    if (isActive && !holdPaused) {
       discAnim.current = Animated.loop(
         Animated.timing(discRotation, {
           toValue: 1, duration: 4000, easing: Easing.linear, useNativeDriver: true,
@@ -286,7 +314,7 @@ function ReelItem({
     } else {
       discAnim.current?.stop();
     }
-  }, [isActive, paused, discRotation]);
+  }, [isActive, holdPaused, discRotation]);
 
   // Record view + accumulate watch time
   useEffect(() => {
@@ -310,12 +338,21 @@ function ReelItem({
     }
   }, [isActive, item._id]);
 
-  const handleFollow = async () => {
+  const handleFollowToggle = async () => {
     try {
-      await followUser(item.author._id);
-      setFollowing(true);
+      if (following) {
+        await unfollowUser(item.author._id);
+        setFollowing(false);
+      } else {
+        await followUser(item.author._id);
+        setFollowing(true);
+      }
     } catch {}
   };
+
+  const isOwnReel = Boolean(dbUser?._id && String(item.author._id) === String(dbUser._id));
+  const discUri = isOwnReel && viewerAvatarUri ? viewerAvatarUri : avatarUri;
+  const captionLong = (item.caption ?? '').length > 140;
 
   // Prefer HLS master URL for ABR playback; fall back to progressive MP4 for legacy posts
   const rawVideoUrl = resolveVideoUrl(item, isCellular);
@@ -342,7 +379,7 @@ function ReelItem({
           resizeMode="cover"
           repeat={!autoScroll}
           paused={paused}
-          muted={muted}
+          muted={reelsMuted}
           ignoreSilentSwitch="ignore"
           preventsDisplaySleepDuringVideoPlayback
           posterOverlayUntilReady
@@ -373,6 +410,10 @@ function ReelItem({
             if (isActive && autoScroll) {
               onAutoAdvanceClip();
             }
+            if (isActive && !naturalEndSentRef.current) {
+              naturalEndSentRef.current = true;
+              onNaturalEnd?.();
+            }
           }}
         />
       ) : (
@@ -399,26 +440,38 @@ function ReelItem({
         </View>
       ) : null}
 
-      {/* Gradient overlay */}
-      <View style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: 320, backgroundColor: palette.overlay}} />
-
-      {/* Pause indicator */}
-      {!isActive && (
+      {/* Pause indicator (inactive reel or hold-to-pause) */}
+      {(!isActive || holdPaused) && (
         <View
           style={{
             position: 'absolute', top: '50%', left: '50%',
             transform: [{translateX: -24}, {translateY: -24}],
             width: 48, height: 48, borderRadius: 24,
-            backgroundColor: palette.overlay, alignItems: 'center', justifyContent: 'center',
-          }}>
-          <Play size={22} color={palette.foreground} fill={palette.foreground} />
+            backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center',
+          }}
+          pointerEvents="none">
+          <Play size={22} color="#fff" fill="#fff" />
         </View>
       )}
 
-      {/* Tap center: mute only (fullscreen tap used to pause and looked like a black/frozen reel). */}
+      {/* Single tap: mute all reels. Long press: pause; release: resume. */}
       <Pressable
         style={{...StyleSheet.absoluteFillObject, zIndex: 1}}
-        onPress={() => setMuted(m => !m)}
+        delayLongPress={280}
+        onLongPress={() => {
+          suppressMuteTap.current = true;
+          setHoldPaused(true);
+        }}
+        onPressOut={() => {
+          setHoldPaused(false);
+        }}
+        onPress={() => {
+          if (suppressMuteTap.current) {
+            suppressMuteTap.current = false;
+            return;
+          }
+          toggleReelsMuted();
+        }}
       />
 
       {/* Right side actions */}
@@ -429,7 +482,7 @@ function ReelItem({
           </Pressable>
           {!following && (
             <Pressable
-              onPress={handleFollow}
+              onPress={handleFollowToggle}
               style={{
                 position: 'absolute', bottom: -10, left: '50%',
                 transform: [{translateX: -10}],
@@ -457,83 +510,78 @@ function ReelItem({
         </Pressable>
 
         <Pressable
+          onPress={() => Alert.alert('Repost', 'Repost to your profile is coming soon.')}
+          style={{alignItems: 'center', gap: 4}}>
+          <Repeat size={26} color="#fff" strokeWidth={2} />
+          <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{formatCount(item.sharesCount ?? 0)}</Text>
+        </Pressable>
+
+        <Pressable
           onPress={() => {
             recordShare(item._id);
             parentNavigate(navigation, 'ShareSend', {postId: item._id});
           }}
           style={{alignItems: 'center', gap: 4}}>
-          <Send size={28} color="#fff" />
+          <Send size={28} color="#fff" strokeWidth={2} />
           <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{formatCount(item.sharesCount ?? 0)}</Text>
         </Pressable>
 
-        <Pressable onPress={() => setBookmarked(p => !p)} style={{alignItems: 'center', gap: 4}}>
-          <Bookmark
-            size={28}
-            color={bookmarked ? palette.primary : '#fff'}
-            fill={bookmarked ? palette.primary : 'transparent'}
-          />
+        <Pressable onPress={() => setMoreOpen(true)} hitSlop={8}>
+          <MoreHorizontal size={28} color="#fff" strokeWidth={2} />
         </Pressable>
 
-        <Pressable onPress={() => setMoreOpen(true)}>
-          <MoreHorizontal size={28} color="#fff" />
-        </Pressable>
-
-        {/* Rotating music disc */}
+        {/* Rotating audio disc — viewer avatar on own reels */}
         <Pressable onPress={() => parentNavigate(navigation, 'ReuseAudio', {audioId: item._id})}>
           <Animated.View style={{
-            width: 40, height: 40, borderRadius: 20,
+            width: 40, height: 40, borderRadius: 8,
             borderWidth: 2, borderColor: '#fff', overflow: 'hidden',
             transform: [{rotate: discRotation.interpolate({inputRange: [0, 1], outputRange: ['0deg', '360deg']})}],
           }}>
-            <Image source={{uri: avatarUri}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
+            <Image source={{uri: discUri}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
           </Animated.View>
         </Pressable>
       </View>
 
-      {/* Bottom info */}
-      <View style={{position: 'absolute', bottom: 90, left: 14, right: 80, gap: 8, zIndex: 10}}>
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+      {/* Bottom info — no dimmed panel; text reads on video */}
+      <View style={{position: 'absolute', bottom: 88, left: 14, right: 76, gap: 6, zIndex: 10}} pointerEvents="box-none">
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
+          <Image source={{uri: resolveMediaUrl(avatarUri) || avatarUri}} style={{width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)'}} />
           <Pressable onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: item.author._id})}>
-            <Text style={{color: '#fff', fontSize: 14, fontWeight: '900'}}>@{item.author.username}</Text>
+            <Text style={{color: '#fff', fontSize: 14, fontWeight: '800'}}>{item.author.username}</Text>
           </Pressable>
-          {item.author.emailVerified && (
-            <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
-          )}
-          {!following && (
-            <Pressable
-              onPress={handleFollow}
-              style={{
-                borderWidth: 1, borderColor: '#fff',
-                borderRadius: borderRadiusScale === 'bold' ? 8 : 5,
-                paddingHorizontal: 10, paddingVertical: 3, marginLeft: 4,
-              }}>
-              <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>Follow</Text>
-            </Pressable>
-          )}
+          {item.author.emailVerified ? (
+            <BadgeCheck size={16} color={palette.accent} fill={palette.accent} strokeWidth={2} />
+          ) : null}
+          <Pressable
+            onPress={handleFollowToggle}
+            style={{
+              borderWidth: 1, borderColor: '#fff',
+              borderRadius: borderRadiusScale === 'bold' ? 8 : 5,
+              paddingHorizontal: 12, paddingVertical: 4,
+            }}>
+            <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>{following ? 'Following' : 'Follow'}</Text>
+          </Pressable>
         </View>
         {item.caption ? (
-          <Text style={{color: 'rgba(255,255,255,0.85)', fontSize: 13, lineHeight: 18}} numberOfLines={2}>
-            {item.caption}
-          </Text>
+          <View>
+            <Text
+              style={{color: '#fff', fontSize: 13, lineHeight: 19, fontWeight: '500', textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 6, textShadowOffset: {width: 0, height: 1}}}
+              numberOfLines={captionExpanded ? undefined : 2}>
+              {item.caption}
+            </Text>
+            {captionLong ? (
+              <Pressable onPress={() => setCaptionExpanded(e => !e)} hitSlop={6} style={{marginTop: 2, alignSelf: 'flex-start'}}>
+                <Text style={{color: '#fff', fontSize: 12, fontWeight: '800'}}>{captionExpanded ? 'Show less' : 'Read more'}</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
         {item.music ? (
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-            <Music2 size={12} color="rgba(255,255,255,0.7)" />
-            <Text style={{color: 'rgba(255,255,255,0.7)', fontSize: 11}} numberOfLines={1}>{item.music}</Text>
+            <Music2 size={12} color="#fff" strokeWidth={2} />
+            <Text style={{color: '#fff', fontSize: 11, fontWeight: '600'}} numberOfLines={1}>{item.music}</Text>
           </View>
         ) : null}
-      </View>
-
-      {/* Top controls */}
-      <View style={{position: 'absolute', top: 16, right: 14, flexDirection: 'row', gap: 10, zIndex: 10}}>
-        <Pressable
-          onPress={() => setMuted(p => !p)}
-          style={{
-            width: 36, height: 36, borderRadius: 18,
-            backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center',
-          }}>
-          {muted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
-        </Pressable>
       </View>
 
       <ReelMoreSheet
@@ -556,15 +604,27 @@ const VIEWABILITY_CONFIG: ViewabilityConfig = {
 
 export function ReelsScreen() {
   const navigation = useNavigation() as Nav;
+  const route = useRoute<RouteProp<MainTabParamList, 'Reels'>>();
+  const initialPostId = route.params?.initialPostId;
   const {palette} = useTheme();
   const {ready: authReady, dbUser} = useAuth();
+  const {setReelsMuted} = usePlaybackMute();
   const [screenFocused, setScreenFocused] = useState(true);
+  const [sessionGateOpen, setSessionGateOpen] = useState(false);
+  const sessionCompletesRef = useRef(0);
+  const didScrollToInitialRef = useRef<string | null>(null);
+
+  const viewerAvatarUri = useMemo(
+    () => (dbUser?.profilePicture ? resolveMediaUrl(dbUser.profilePicture) || dbUser.profilePicture : undefined),
+    [dbUser?.profilePicture],
+  );
 
   useFocusEffect(
     useCallback(() => {
       setScreenFocused(true);
+      setReelsMuted(false);
       return () => setScreenFocused(false); // pause all on blur
-    }, []),
+    }, [setReelsMuted]),
   );
   const insets = useSafeAreaInsets();
   const [feedTab, setFeedTab] = useState<ReelFeedTab>('forYou');
@@ -594,21 +654,12 @@ export function ReelsScreen() {
   const displayReels = useMemo((): ReelFeedItem[] => {
     const basePosts = feedTab === 'friends' ? reels.filter(r => r.isFollowing) : reels;
     const items: ReelFeedItem[] = basePosts.map(p => ({_itemType: 'reel', data: p, _id: p._id}));
-    // Inject ads at every 5th reel position
-    let adIdx = 0;
-    let reelCount = 0;
-    let i = 0;
-    while (i < items.length && adIdx < reelAds.length) {
-      if (items[i]._itemType === 'reel') {
-        reelCount++;
-        if (reelCount % 5 === 0) {
-          const ad = reelAds[adIdx];
-          items.splice(i + 1, 0, {_itemType: 'ad', data: ad, _id: `ad_${ad._id}`});
-          adIdx++;
-          i++;
-        }
-      }
-      i++;
+    if (reelAds.length === 0 || items.length === 0) return items;
+    // Random insertion — never consecutive, works even with 1 reel
+    const slots = pickAdSlots(items.length, reelAds.length, 2);
+    for (let k = slots.length - 1; k >= 0; k--) {
+      const ad = reelAds[k];
+      items.splice(slots[k] + 1, 0, {_itemType: 'ad', data: ad, _id: `ad_${ad._id}`});
     }
     return items;
   }, [feedTab, reels, reelAds]);
@@ -629,6 +680,27 @@ export function ReelsScreen() {
     setActiveIndex(0);
     listRef.current?.scrollToOffset({offset: 0, animated: false});
   }, [feedTab]);
+
+  useEffect(() => {
+    didScrollToInitialRef.current = null;
+  }, [initialPostId]);
+
+  useEffect(() => {
+    if (!initialPostId || !authReady) return;
+    getPost(initialPostId)
+      .then(({post}) => {
+        if (post.type !== 'reel') return;
+        setReels(prev => (prev.some(r => r._id === post._id) ? prev : [post, ...prev]));
+      })
+      .catch(() => null);
+  }, [initialPostId, authReady]);
+
+  const onReelNaturalEnd = useCallback(() => {
+    sessionCompletesRef.current += 1;
+    if (sessionCompletesRef.current >= 5) {
+      setSessionGateOpen(true);
+    }
+  }, []);
 
   const onAutoAdvanceClip = useCallback(() => {
     const next = activeIndexRef.current + 1;
@@ -745,12 +817,22 @@ export function ReelsScreen() {
   }, []);
 
   const onViewableItemsChanged = useRef(({viewableItems}: {viewableItems: ViewToken[]}) => {
-    const first = viewableItems[0];
-    if (first?.index != null) {
-      activeIndexRef.current = first.index;
-      setActiveIndex(first.index);
+    const reelItems = viewableItems
+      .filter(v => v.isViewable && v.index != null && (v.item as {_itemType?: string})?._itemType === 'reel')
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const topMost = reelItems[0];
+    if (topMost?.index != null) {
+      activeIndexRef.current = topMost.index;
+      setActiveIndex(topMost.index);
     }
   }).current;
+
+  const onMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const h = reelHeightRef.current || e.nativeEvent.layoutMeasurement.height || 1;
+    const idx = Math.max(0, Math.round(e.nativeEvent.contentOffset.y / h));
+    activeIndexRef.current = idx;
+    setActiveIndex(idx);
+  }, []);
 
   // HLS prefetch: fully download next reel, partial for +2..+4
   useEffect(() => {
@@ -785,6 +867,21 @@ export function ReelsScreen() {
       }
     }
   }, [activeIndex, reels, isCellular]);
+
+  useEffect(() => {
+    if (!initialPostId || loading || reelHeight <= 0) return;
+    if (didScrollToInitialRef.current === initialPostId) return;
+    const idx = displayReels.findIndex(it => it._itemType === 'reel' && it.data._id === initialPostId);
+    if (idx < 0) return;
+    didScrollToInitialRef.current = initialPostId;
+    requestAnimationFrame(() => {
+      try {
+        listRef.current?.scrollToIndex({index: idx, animated: false});
+      } catch {
+        listRef.current?.scrollToOffset({offset: idx * reelHeight, animated: false});
+      }
+    });
+  }, [initialPostId, loading, reelHeight, displayReels]);
 
   if (loading) {
     return (
@@ -879,6 +976,7 @@ export function ReelsScreen() {
         removeClippedSubviews={false}
         viewabilityConfig={VIEWABILITY_CONFIG}
         onViewableItemsChanged={onViewableItemsChanged}
+        onMomentumScrollEnd={onMomentumScrollEnd}
         onScrollToIndexFailed={info => {
           setTimeout(() => {
             listRef.current?.scrollToIndex({index: info.index, animated: true, viewPosition: 0.5});
@@ -924,8 +1022,10 @@ export function ReelsScreen() {
               autoScroll={autoScroll}
               onAutoScrollChange={setAutoScroll}
               onAutoAdvanceClip={onAutoAdvanceClip}
+              onNaturalEnd={onReelNaturalEnd}
               isCellular={isCellular}
               maxBitRate={maxBitRate}
+              viewerAvatarUri={viewerAvatarUri}
             />
           );
         }}
@@ -964,6 +1064,48 @@ export function ReelsScreen() {
           </View>
         )}
       </View>
+
+      <Modal visible={sessionGateOpen} transparent animationType="fade" onRequestClose={() => setSessionGateOpen(false)}>
+        <View style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', paddingHorizontal: 28}}>
+          <View style={{backgroundColor: palette.surface, borderRadius: 16, padding: 22, gap: 14}}>
+            <Text style={{color: palette.foreground, fontSize: 17, fontWeight: '800', textAlign: 'center'}}>
+              Take a break?
+            </Text>
+            <Text style={{color: palette.foregroundMuted, fontSize: 14, textAlign: 'center', lineHeight: 20}}>
+              You have finished 5 reels. Refresh the feed or keep scrolling.
+            </Text>
+            <Pressable
+              onPress={() => {
+                sessionCompletesRef.current = 0;
+                setSessionGateOpen(false);
+                setLoading(true);
+                loadReels(true).finally(() => setLoading(false));
+              }}
+              style={{
+                backgroundColor: palette.primary,
+                borderRadius: 12,
+                paddingVertical: 14,
+                alignItems: 'center',
+              }}>
+              <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 15}}>Refresh</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                sessionCompletesRef.current = 0;
+                setSessionGateOpen(false);
+              }}
+              style={{
+                borderWidth: 1,
+                borderColor: palette.border,
+                borderRadius: 12,
+                paddingVertical: 14,
+                alignItems: 'center',
+              }}>
+              <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>Continue</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ThemedSafeScreen>
   );
 }

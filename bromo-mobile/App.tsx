@@ -14,6 +14,7 @@ import {
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {ThemeProvider, useTheme} from './src/context/ThemeContext';
 import {AuthProvider} from './src/context/AuthContext';
+import {PlaybackMuteProvider} from './src/context/PlaybackMuteContext';
 import {BootstrapNavigator} from './src/navigation/BootstrapNavigator';
 import {navigationRef} from './src/navigation/rootNavigation';
 
@@ -52,7 +53,9 @@ function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <AppContent />
+            <PlaybackMuteProvider>
+              <AppContent />
+            </PlaybackMuteProvider>
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>
