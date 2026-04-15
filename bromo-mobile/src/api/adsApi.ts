@@ -60,3 +60,49 @@ export async function trackAdEvent(
     body: JSON.stringify({event, placement: opts.placement, watchTimeMs: opts.watchTimeMs}),
   }).catch(() => null); // fire-and-forget — never block UI
 }
+
+export type AdSummary = {
+  likesCount: number;
+  sharesCount: number;
+  savesCount: number;
+  impressions: number;
+  clicks: number;
+  liked: boolean;
+  saved: boolean;
+};
+
+export async function fetchAdSummary(adId: string): Promise<AdSummary | null> {
+  const res = await authedFetch(`/ads/${encodeURIComponent(adId)}/summary`).catch(() => null);
+  if (!res?.ok) return null;
+  return res.json().catch(() => null);
+}
+
+export async function likeAd(adId: string): Promise<{liked: boolean; likesCount: number}> {
+  const res = await authedFetch(`/ads/${encodeURIComponent(adId)}/like`, {method: 'POST'});
+  if (!res.ok) throw new Error('Like failed');
+  return res.json();
+}
+
+export async function unlikeAd(adId: string): Promise<{liked: boolean; likesCount: number}> {
+  const res = await authedFetch(`/ads/${encodeURIComponent(adId)}/like`, {method: 'DELETE'});
+  if (!res.ok) throw new Error('Unlike failed');
+  return res.json();
+}
+
+export async function saveAd(adId: string): Promise<{saved: boolean; savesCount: number}> {
+  const res = await authedFetch(`/ads/${encodeURIComponent(adId)}/save`, {method: 'POST'});
+  if (!res.ok) throw new Error('Save failed');
+  return res.json();
+}
+
+export async function unsaveAd(adId: string): Promise<{saved: boolean; savesCount: number}> {
+  const res = await authedFetch(`/ads/${encodeURIComponent(adId)}/save`, {method: 'DELETE'});
+  if (!res.ok) throw new Error('Unsave failed');
+  return res.json();
+}
+
+export async function shareAd(adId: string): Promise<{ok: boolean; sharesCount: number}> {
+  const res = await authedFetch(`/ads/${encodeURIComponent(adId)}/share`, {method: 'POST'});
+  if (!res.ok) throw new Error('Share failed');
+  return res.json();
+}

@@ -21,7 +21,6 @@ import {
   MessageCircle,
   MoreHorizontal,
   Play,
-  Repeat,
   Send,
   Volume2,
   VolumeX,
@@ -33,8 +32,7 @@ import {AdCtaGradientButton} from './AdCtaGradientButton';
 import {useTheme} from '../context/ThemeContext';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {hashString} from '../lib/adSlots';
-import {type Ad, type AdPlacement, trackAdEvent} from '../api/adsApi';
+import {type Ad, type AdPlacement, trackAdEvent, fetchAdSummary, likeAd, unlikeAd, shareAd as shareAdApi} from '../api/adsApi';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
@@ -74,8 +72,16 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
   const clearedSpinnerOnProgress = useRef(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [adLiked, setAdLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(() => (hashString(ad._id) % 900) + 40);
-  const [commentCount] = useState(() => (hashString(`${ad._id}c`) % 80) + 3);
+  const [likeCount, setLikeCount] = useState(0);
+
+  // Fetch real engagement counts
+  useEffect(() => {
+    fetchAdSummary(ad._id).then(s => {
+      if (!s) return;
+      setLikeCount(s.likesCount);
+      setAdLiked(s.liked);
+    }).catch(() => null);
+  }, [ad._id]);
 
   const hideCoverSpinner = useCallback(() => setCoverSpinner(false), []);
 
@@ -118,7 +124,7 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
     }
   }, [ad, navigation, placement]);
 
-  const shareAd = useCallback(async () => {
+  const doShare = useCallback(async () => {
     trackAdEvent(ad._id, 'click', {placement});
     const url = ad.cta?.externalUrl ?? '';
     try {
@@ -126,18 +132,26 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
         message: url ? `${ad.caption || 'Sponsored'}\n${url}` : ad.caption || 'Sponsored',
         url: url || undefined,
       });
+      shareAdApi(ad._id).catch(() => null);
     } catch {
       /* ignore */
     }
   }, [ad, placement]);
 
-  const toggleLike = useCallback(() => {
-    setAdLiked(l => {
-      setLikeCount(c => c + (l ? -1 : 1));
-      return !l;
-    });
+  const toggleLike = useCallback(async () => {
+    const next = !adLiked;
+    setAdLiked(next);
+    setLikeCount(c => c + (next ? 1 : -1));
+    try {
+      const result = next ? await likeAd(ad._id) : await unlikeAd(ad._id);
+      setLikeCount(result.likesCount);
+      setAdLiked(result.liked);
+    } catch {
+      setAdLiked(!next);
+      setLikeCount(c => c + (next ? -1 : 1));
+    }
     trackAdEvent(ad._id, 'click', {placement});
-  }, [ad._id, placement]);
+  }, [ad._id, adLiked, placement]);
 
   const mediaUrl = ad.mediaUrls[0] ?? '';
 
@@ -157,7 +171,7 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
             <Pressable
               onPress={() => {
                 setMoreOpen(false);
-                void shareAd();
+                void doShare();
               }}
               style={{paddingVertical: 12}}>
               <Text style={{color: palette.foreground, fontWeight: '700'}}>Share</Text>
@@ -265,7 +279,7 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
           gap: 18,
           zIndex: 10,
         }}>
-        <Pressable onPress={toggleLike} style={{alignItems: 'center', gap: 4}}>
+        <Pressable onPress={() => void toggleLike()} style={{alignItems: 'center', gap: 4}}>
           <Heart
             size={28}
             color={adLiked ? palette.destructive : '#fff'}
@@ -276,17 +290,9 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
 
         <Pressable onPress={() => void handleCta()} style={{alignItems: 'center', gap: 4}}>
           <MessageCircle size={28} color="#fff" />
-          <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>{formatCount(commentCount)}</Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => Alert.alert('Repost', 'Reposting sponsored content is not available.')}
-          style={{alignItems: 'center', gap: 4}}>
-          <Repeat size={26} color="#fff" strokeWidth={2} />
-          <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>0</Text>
-        </Pressable>
-
-        <Pressable onPress={() => void shareAd()} style={{alignItems: 'center', gap: 4}}>
+        <Pressable onPress={() => void doShare()} style={{alignItems: 'center', gap: 4}}>
           <Send size={28} color="#fff" strokeWidth={2} />
           <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>Share</Text>
         </Pressable>

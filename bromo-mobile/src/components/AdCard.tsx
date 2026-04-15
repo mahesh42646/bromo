@@ -1,7 +1,7 @@
 /**
  * AdCard — sponsored post in home / explore: mirrors PostCard actions + gradient CTA.
  */
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   Dimensions,
   FlatList,
@@ -33,8 +33,7 @@ import {AdCtaGradientButton} from './AdCtaGradientButton';
 import {useTheme} from '../context/ThemeContext';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {hashString} from '../lib/adSlots';
-import {type Ad, type AdPlacement, trackAdEvent} from '../api/adsApi';
+import {type Ad, type AdPlacement, trackAdEvent, fetchAdSummary, likeAd, unlikeAd, saveAd, unsaveAd, shareAd as shareAdApi} from '../api/adsApi';
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
@@ -67,13 +66,21 @@ export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [adLiked, setAdLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(() => (hashString(ad._id) % 900) + 40);
-  const [commentCount] = useState(() => (hashString(`${ad._id}c`) % 80) + 3);
+  const [likeCount, setLikeCount] = useState(0);
   const [userPaused, setUserPaused] = useState(false);
   const [hidden, setHidden] = useState(false);
 
-  const pseudoViews = useMemo(() => (hashString(`${ad._id}v`) % 12_000) + 200, [ad._id]);
   const title = ad.brandName?.trim() || 'Sponsored';
+
+  // Fetch real engagement counts from server
+  useEffect(() => {
+    fetchAdSummary(ad._id).then(s => {
+      if (!s) return;
+      setLikeCount(s.likesCount);
+      setAdLiked(s.liked);
+      setBookmarked(s.saved);
+    }).catch(() => null);
+  }, [ad._id]);
 
   useEffect(() => {
     if (impressionSent.current) return;
@@ -91,7 +98,7 @@ export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
     }
   }, [ad, navigation, placement]);
 
-  const shareAd = useCallback(async () => {
+  const doShare = useCallback(async () => {
     trackAdEvent(ad._id, 'click', {placement});
     const url = ad.cta?.externalUrl ?? '';
     try {
@@ -99,6 +106,8 @@ export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
         message: url ? `${ad.caption || 'Sponsored'}\n${url}` : ad.caption || 'Sponsored',
         url: url || undefined,
       });
+      // Record share on server (fire-and-forget)
+      shareAdApi(ad._id).catch(() => null);
     } catch {
       /* ignore */
     }
@@ -109,13 +118,31 @@ export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
     void handleCta();
   }, [handleCta, placement, ad._id]);
 
-  const toggleLike = useCallback(() => {
-    setAdLiked(l => {
-      setLikeCount(c => c + (l ? -1 : 1));
-      return !l;
-    });
+  const toggleLike = useCallback(async () => {
+    const next = !adLiked;
+    setAdLiked(next);
+    setLikeCount(c => c + (next ? 1 : -1));
+    try {
+      const result = next ? await likeAd(ad._id) : await unlikeAd(ad._id);
+      setLikeCount(result.likesCount);
+      setAdLiked(result.liked);
+    } catch {
+      // revert optimistic update
+      setAdLiked(!next);
+      setLikeCount(c => c + (next ? -1 : 1));
+    }
     trackAdEvent(ad._id, 'click', {placement});
-  }, [ad._id, placement]);
+  }, [ad._id, adLiked, placement]);
+
+  const toggleSave = useCallback(async () => {
+    const next = !bookmarked;
+    setBookmarked(next);
+    try {
+      next ? await saveAd(ad._id) : await unsaveAd(ad._id);
+    } catch {
+      setBookmarked(!next);
+    }
+  }, [ad._id, bookmarked]);
 
   const videoPaused = !isVideoVisible || userPaused;
 
@@ -150,15 +177,15 @@ export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
                 label: 'Share',
                 onPress: () => {
                   setMenuOpen(false);
-                  void shareAd();
+                  void doShare();
                 },
               },
               {
                 icon: <Bookmark size={20} color={palette.foreground} />,
-                label: 'Save',
+                label: bookmarked ? 'Unsave' : 'Save',
                 onPress: () => {
                   setMenuOpen(false);
-                  setBookmarked(true);
+                  void toggleSave();
                 },
               },
               {
@@ -331,7 +358,7 @@ export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
 
       <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12}}>
         <View style={{flexDirection: 'row', gap: 20, alignItems: 'center'}}>
-          <Pressable onPress={toggleLike} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
+          <Pressable onPress={() => void toggleLike()} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
             <Heart
               size={24}
               color={adLiked ? palette.destructive : palette.foreground}
@@ -341,13 +368,12 @@ export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
           </Pressable>
           <Pressable onPress={onAdComment} style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
             <MessageCircle size={24} color={palette.foreground} />
-            <Text style={{color: palette.foreground, fontSize: 13, fontWeight: '600'}}>{formatCount(commentCount)}</Text>
           </Pressable>
-          <Pressable onPress={() => void shareAd()}>
+          <Pressable onPress={() => void doShare()}>
             <Send size={24} color={palette.foreground} />
           </Pressable>
         </View>
-        <Pressable onPress={() => setBookmarked(p => !p)}>
+        <Pressable onPress={() => void toggleSave()}>
           <Bookmark
             size={24}
             color={bookmarked ? palette.primary : palette.foreground}
@@ -359,7 +385,7 @@ export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
       <View style={{paddingHorizontal: 14, paddingBottom: 10, gap: 10}}>
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
           <Eye size={11} color={palette.foreground} style={{opacity: 0.55}} />
-          <Text style={{color: palette.foreground, opacity: 0.55, fontSize: 12}}>{formatCount(pseudoViews)} Views</Text>
+          <Text style={{color: palette.foreground, opacity: 0.55, fontSize: 12}}>Sponsored</Text>
         </View>
         {ad.cta ? (
           <AdCtaGradientButton

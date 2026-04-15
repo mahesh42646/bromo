@@ -21,23 +21,18 @@ export {ShareProfileScreen} from '../../ShareProfileScreen';
 
 export {FollowersFollowingScreen} from '../../FollowersFollowingScreen';
 
-export function PointsWalletScreen() {
-  const navigation = useNavigation<Nav>();
-  return (
-    <SopChrome title="Points wallet">
-      <SopMeta label="Earn → spend → redeem; coins convert to ad credits (simulated)." />
-      <SopRow title="Transaction history" onPress={() => navigation.navigate('TransactionHistory')} />
-    </SopChrome>
-  );
-}
+// PointsWalletScreen is now the real WalletScreen — see screens/WalletScreen.tsx
+// Re-exported here only so the existing bundle import still compiles.
+export {WalletScreen as PointsWalletScreen} from '../../WalletScreen';
 
 export function TransactionHistoryScreen() {
-  return (
-    <SopChrome title="Transactions">
-      <SopRow title="Watch reward +12" sub="Today" />
-      <SopRow title="Store redemption −80 coins" sub="Yesterday" />
-    </SopChrome>
-  );
+  const navigation = useNavigation<Nav>();
+  // Redirect to the real wallet screen
+  React.useEffect(() => {
+    navigation.replace('PointsWallet');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 export function SavedPostsScreen() {

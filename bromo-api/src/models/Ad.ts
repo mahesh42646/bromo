@@ -20,6 +20,7 @@ export interface AdDoc extends Document {
   mediaUrls: string[];
   thumbnailUrl: string;
   caption: string;
+  brandName?: string;
   cta: AdCta;
   placements: AdPlacement[];
   startDate: Date;
@@ -30,6 +31,9 @@ export interface AdDoc extends Document {
   totalVideoViews: number;
   totalVideoCompletions: number;
   totalWatchTimeMs: number;
+  likesCount: number;
+  sharesCount: number;
+  savesCount: number;
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -73,6 +77,10 @@ const adSchema = new Schema<AdDoc>(
     totalVideoViews: { type: Number, default: 0 },
     totalVideoCompletions: { type: Number, default: 0 },
     totalWatchTimeMs: { type: Number, default: 0 },
+    likesCount: { type: Number, default: 0 },
+    sharesCount: { type: Number, default: 0 },
+    savesCount: { type: Number, default: 0 },
+    brandName: { type: String, default: "" },
     createdBy: { type: Schema.Types.ObjectId, ref: "Admin", required: true },
   },
   { timestamps: true },

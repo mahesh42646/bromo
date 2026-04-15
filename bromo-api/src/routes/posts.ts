@@ -34,8 +34,50 @@ import { generateVideoThumbnail } from "../services/mediaProcessor.js";
 import { enqueueMediaJob } from "../workers/mediaWorker.js";
 import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 import { normalizeFeedCategory } from "../utils/feedCategory.js";
+import { PromotionCampaign } from "../models/PromotionCampaign.js";
 
 export const postsRouter = Router();
+
+/** Fetch promoted posts eligible for injection into a feed for a given userId. */
+async function getPromotedInjections(
+  viewerFollowingIds: mongoose.Types.ObjectId[],
+  excludeAuthorIds: mongoose.Types.ObjectId[],
+  limit = 2,
+): Promise<Record<string, unknown>[]> {
+  const now = new Date();
+  const campaigns = await PromotionCampaign.find({
+    status: "active",
+    startAt: { $lte: now },
+    $or: [{ endAt: { $gt: now } }, { endAt: null }, { endAt: { $exists: false } }],
+    $expr: { $lt: ["$spentCoins", "$budgetCoins"] },
+    "audience.placements": { $in: ["feed", "explore"] },
+  })
+    .sort({ createdAt: -1 })
+    .limit(limit * 3)
+    .lean();
+
+  if (!campaigns.length) return [];
+
+  // Exclude campaigns where author is already in the feed (followers see them organically)
+  const eligible = campaigns.filter(
+    (c) => !excludeAuthorIds.map(String).includes(String(c.ownerUserId)),
+  );
+
+  const postIds = eligible.slice(0, limit).map((c) => c.contentId);
+  const posts = await Post.find({
+    _id: { $in: postIds },
+    isActive: true,
+    isDeleted: { $ne: true },
+    processingStatus: { $nin: ["pending", "processing", "failed"] },
+  })
+    .populate("authorId", "username displayName profilePicture isPrivate emailVerified followersCount")
+    .lean();
+
+  return posts.map((p) => {
+    const matchingCampaign = eligible.find((c) => String(c.contentId) === String(p._id));
+    return { ...p, isPromoted: true, promotionId: matchingCampaign?._id ? String(matchingCampaign._id) : undefined };
+  });
+}
 
 /** Recompute trendingScore for a post (fire-and-forget — never throws). */
 function recomputeTrending(postId: string): void {
@@ -339,8 +381,26 @@ postsRouter.get(
         const hasMoreGeneral = posts.length === PAGE_SIZE;
         const nextCursorGeneral = hasMoreGeneral ? String(posts[posts.length - 1]._id) : null;
 
+        // Inject up to 2 promoted posts every ~10 posts (on first page only)
+        let allPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
+        if (!cg) {
+          const promoted = await getPromotedInjections(
+            followingIds as mongoose.Types.ObjectId[],
+            excludeAuthors as mongoose.Types.ObjectId[],
+            2,
+          );
+          if (promoted.length) {
+            const normalizedPromoted = promoted.map((p) =>
+              ({ ...normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)), isPromoted: true }),
+            );
+            // Splice at positions 3 and 8 (0-indexed) for natural insertion
+            if (normalizedPromoted[0]) allPosts.splice(Math.min(3, allPosts.length), 0, normalizedPromoted[0]);
+            if (normalizedPromoted[1]) allPosts.splice(Math.min(9, allPosts.length), 0, normalizedPromoted[1]);
+          }
+        }
+
         return res.json({
-          posts: mapPosts(posts as unknown as Record<string, unknown>[]),
+          posts: allPosts,
           tab: "for-you",
           forYouPhase: "general",
           hasMoreFriends: false,

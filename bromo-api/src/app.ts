@@ -46,6 +46,9 @@ import { liveRouter } from "./routes/live.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { adsAdminRouter } from "./routes/ads.js";
 import { adServeRouter } from "./routes/adServe.js";
+import { walletRouter } from "./routes/wallet.js";
+import { promotionsRouter } from "./routes/promotions.js";
+import { startPromotionBillingWorker } from "./workers/promotionBillingWorker.js";
 import { initFirebase } from "./config/firebase.js";
 
 export function createApp() {
@@ -141,10 +144,15 @@ export function createApp() {
   app.use("/notifications", notificationsRouter);
   app.use("/admin/ads", adsAdminRouter);
   app.use("/ads", adServeRouter);
+  app.use("/wallet", walletRouter);
+  app.use("/promotions", promotionsRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });
   });
+
+  // Start background workers
+  startPromotionBillingWorker();
 
   return app;
 }

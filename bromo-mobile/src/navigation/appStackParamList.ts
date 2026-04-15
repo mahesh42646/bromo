@@ -91,6 +91,11 @@ export type AppStackParamList = {
   AudioDetail: {trackId: string};
 
   AutoDm: undefined;
+
+  // Wallet & Promotions
+  PromoteCampaign: {contentId: string; contentType: 'post' | 'reel' | 'story'};
+  MyCampaigns: undefined;
+  CampaignAnalytics: {campaignId: string};
 };
 
 export type AuthStackParamList = {

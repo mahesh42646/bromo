@@ -17,6 +17,10 @@ import {
   SettingsMainScreen,
   TermsScreen,
 } from '../screens/sop/bundles/settingsBundle';
+import {WalletScreen} from '../screens/WalletScreen';
+import {PromoteCampaignScreen} from '../screens/promotions/PromoteCampaignScreen';
+import {MyCampaignsScreen} from '../screens/promotions/MyCampaignsScreen';
+import {CampaignAnalyticsScreen} from '../screens/promotions/CampaignAnalyticsScreen';
 import {
   CategoryFeedScreen,
   CloseFriendsPickerScreen,
@@ -70,7 +74,6 @@ import {
   NotificationsScreen,
   NotificationSettingsScreen,
   OtherUserProfileScreen,
-  PointsWalletScreen,
   ReferralDashboardScreen,
   SavedPostsScreen,
   ShareProfileScreen,
@@ -161,7 +164,6 @@ export function MainAppNavigator() {
       <Stack.Screen name="OtherUserProfile" component={OtherUserProfileScreen} />
       <Stack.Screen name="ShareProfile" component={ShareProfileScreen} />
       <Stack.Screen name="FollowersFollowing" component={FollowersFollowingScreen} />
-      <Stack.Screen name="PointsWallet" component={PointsWalletScreen} />
       <Stack.Screen name="TransactionHistory" component={TransactionHistoryScreen} />
       <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
       <Stack.Screen name="WatchHistory" component={WatchHistoryScreen} />
@@ -175,6 +177,11 @@ export function MainAppNavigator() {
       <Stack.Screen name="MusicLibrary" component={MusicLibraryScreen} />
       <Stack.Screen name="AudioDetail" component={AudioDetailScreen} />
       <Stack.Screen name="AutoDm" component={AutoDmScreen} />
+      {/* Wallet & Promotions */}
+      <Stack.Screen name="PointsWallet" component={WalletScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="PromoteCampaign" component={PromoteCampaignScreen} options={{animation: 'slide_from_bottom', presentation: 'modal'}} />
+      <Stack.Screen name="MyCampaigns" component={MyCampaignsScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="CampaignAnalytics" component={CampaignAnalyticsScreen} options={{animation: 'slide_from_right'}} />
     </Stack.Navigator>
     </MessagingProvider>
   );
