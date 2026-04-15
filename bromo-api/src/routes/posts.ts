@@ -117,6 +117,15 @@ const VISIBLE_POST = {
   processingStatus: { $nin: ["pending", "processing", "failed"] },
 } as const;
 
+/**
+ * Author's own profile grid + saved list: show processing drafts (async uploads) so counts match the grid.
+ * Still hide failed encodes and soft-deleted content.
+ */
+const PROFILE_OR_SAVED_POST = {
+  isDeleted: { $ne: true },
+  processingStatus: { $nin: ["failed"] },
+} as const;
+
 /** Paginate root comments; preview only a few replies per thread (see thread endpoint for more). */
 const COMMENT_ROOT_PAGE = 15;
 const COMMENT_THREAD_PREVIEW = 5;
@@ -562,7 +571,7 @@ postsRouter.get(
 
       const postsRaw = await Post.find({
         _id: {$in: ids},
-        ...VISIBLE_POST,
+        ...PROFILE_OR_SAVED_POST,
       })
         .populate("authorId", AUTHOR_SELECT)
         .lean();
@@ -972,7 +981,7 @@ postsRouter.get(
         }
         const postsRaw = await Post.find({
           _id: { $in: ids },
-          ...VISIBLE_POST,
+          ...PROFILE_OR_SAVED_POST,
         })
           .populate("authorId", AUTHOR_SELECT)
           .lean();
@@ -996,10 +1005,13 @@ postsRouter.get(
         return res.json({ posts: result, page, hasMore: saves.length === PAGE_SIZE });
       }
 
+      const isOwnProfile = dbUser != null && String(dbUser._id) === String(userId);
+      const listVisibility = isOwnProfile ? PROFILE_OR_SAVED_POST : VISIBLE_POST;
+
       const posts = await Post.find({
         authorId: userId,
         type,
-        ...VISIBLE_POST,
+        ...listVisibility,
       })
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -1651,7 +1663,7 @@ postsRouter.post(
       if (!mongoose.Types.ObjectId.isValid(postId)) {
         return res.status(404).json({ message: "Post not found" });
       }
-      const exists = await Post.findOne({_id: postId, ...VISIBLE_POST}).select("_id").lean();
+      const exists = await Post.findOne({_id: postId, ...PROFILE_OR_SAVED_POST}).select("_id").lean();
       if (!exists) return res.status(404).json({ message: "Post not found" });
 
       const col = mongoose.connection.collection("saved_posts");

@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
@@ -52,6 +53,7 @@ const BUDGET_PRESETS = [100, 250, 500, 1000, 2500];
 export function PromoteCampaignScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const insets = useSafeAreaInsets();
   const {contentId, contentType} = route.params;
   const {palette} = useTheme();
 
@@ -69,12 +71,17 @@ export function PromoteCampaignScreen() {
 
   // Fetch wallet balance before step 3
   const goToStep3 = useCallback(async () => {
+    setAudience(prev => {
+      const p = prev.placements ?? [];
+      if (p.length > 0) return prev;
+      return {...prev, placements: contentType === 'reel' ? ['reels', 'feed'] : ['feed', 'explore']};
+    });
     try {
       const w = await getWallet();
       setWalletBalance(w.balance);
     } catch {}
     setStep(3);
-  }, []);
+  }, [contentType]);
 
   const togglePlacement = useCallback((p: PromotionPlacement) => {
     setAudience(prev => {
@@ -164,7 +171,11 @@ export function PromoteCampaignScreen() {
         ))}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{padding: 16, gap: 12}}>
+      <ScrollView
+        style={{flex: 1}}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{padding: 16, gap: 12, paddingBottom: 24}}>
         {/* Step 1: Objective */}
         {step === 1 && (
           <>
@@ -423,7 +434,11 @@ export function PromoteCampaignScreen() {
 
       {/* Bottom action */}
       <View style={{
-        padding: 16, borderTopWidth: 1, borderTopColor: palette.border,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: Math.max(insets.bottom, 16),
+        borderTopWidth: 1,
+        borderTopColor: palette.border,
         backgroundColor: palette.background,
       }}>
         <Pressable
