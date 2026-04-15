@@ -18,7 +18,7 @@ import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {getUserProfile, followUser, unfollowUser, type UserProfile} from '../api/followApi';
-import {getUserPosts, type Post} from '../api/postsApi';
+import {getUserGridStats, getUserPosts, type Post, type UserGridStats} from '../api/postsApi';
 import {useMessaging} from '../messaging/MessagingContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
@@ -50,6 +50,7 @@ export function OtherUserProfileScreen() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [followStatus, setFollowStatus] = useState<'none' | 'following' | 'requested'>('none');
+  const [gridStats, setGridStats] = useState<UserGridStats | null>(null);
 
   const openChat = useCallback(async () => {
     if (!profile) return;
@@ -78,6 +79,12 @@ export function OtherUserProfileScreen() {
       setProfile(res.user);
       setFollowStatus(res.user.followStatus ?? 'none');
     } catch {}
+    try {
+      const s = await getUserGridStats(userId);
+      setGridStats(s);
+    } catch {
+      setGridStats(null);
+    }
   }, [userId]);
 
   const loadPosts = useCallback(async () => {
@@ -192,7 +199,7 @@ export function OtherUserProfileScreen() {
             />
             <View style={{flex: 1, flexDirection: 'row', justifyContent: 'space-around'}}>
               {[
-                {label: 'Posts', value: formatCount(profile.postsCount ?? 0)},
+                {label: 'Posts', value: formatCount(gridStats?.gridTotal ?? profile.postsCount ?? 0)},
                 {label: 'Followers', value: formatCount(profile.followersCount ?? 0)},
                 {label: 'Following', value: formatCount(profile.followingCount ?? 0)},
               ].map(s => (

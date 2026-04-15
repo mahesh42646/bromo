@@ -220,6 +220,22 @@ export async function getUserPosts(userId: string, type = 'post', page = 1): Pro
   return res.json() as Promise<FeedResponse>;
 }
 
+/** Matches profile grid visibility; server syncs User.postsCount to gridTotal. */
+export type UserGridStats = {
+  postCount: number;
+  reelCount: number;
+  gridTotal: number;
+  totalViews: number;
+  totalImpressions: number;
+};
+
+export async function getUserGridStats(userId: string): Promise<UserGridStats> {
+  const uid = encodeURIComponent(userId);
+  const res = await authedFetch(`/posts/user/${uid}/grid-stats`);
+  if (!res.ok) throw new Error('Failed to fetch grid stats');
+  return res.json() as Promise<UserGridStats>;
+}
+
 export async function getPost(id: string): Promise<{post: Post}> {
   const res = await authedFetch(`/posts/${id}`);
   if (!res.ok) throw new Error('Post not found');

@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -54,7 +54,7 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resetToAuth} from '../navigation/rootNavigation';
-import {getUserPosts, type Post} from '../api/postsApi';
+import {getUserGridStats, getUserPosts, type Post, type UserGridStats} from '../api/postsApi';
 import {getWallet} from '../api/walletApi';
 import {followUser, getUserSuggestions, type SuggestedUser} from '../api/followApi';
 import {socketService} from '../services/socketService';
@@ -213,11 +213,7 @@ export function ProfileScreen() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [discoverPeople, setDiscoverPeople] = useState<SuggestedUser[]>([]);
   const [dismissedSuggest, setDismissedSuggest] = useState<string[]>([]);
-
-  const recentGridViews = useMemo(
-    () => userPosts.reduce((acc, p) => acc + (p.viewsCount ?? 0), 0),
-    [userPosts],
-  );
+  const [gridStats, setGridStats] = useState<UserGridStats | null>(null);
 
   const loadWalletAndSuggestions = useCallback(async () => {
     try {
@@ -234,10 +230,22 @@ export function ProfileScreen() {
     }
   }, []);
 
+  const loadGridStats = useCallback(async () => {
+    if (!dbUser?._id) return;
+    try {
+      const s = await getUserGridStats(String(dbUser._id));
+      setGridStats(s);
+      void refreshDbUser();
+    } catch {
+      setGridStats(null);
+    }
+  }, [dbUser?._id, refreshDbUser]);
+
   useFocusEffect(
     useCallback(() => {
       void loadWalletAndSuggestions();
-    }, [loadWalletAndSuggestions]),
+      void loadGridStats();
+    }, [loadWalletAndSuggestions, loadGridStats]),
   );
 
   const displayName = dbUser?.displayName || 'User';
@@ -279,10 +287,12 @@ export function ProfileScreen() {
     const unsubDel = socketService.on('post:delete', ({postId}) => {
       setUserPosts(prev => prev.filter(p => p._id !== postId));
       void refreshDbUser();
+      void loadGridStats();
     });
     const unsubNew = socketService.on('post:new', p => {
       if (!dbUser?._id || String(p.author?._id) !== String(dbUser._id)) return;
       void refreshDbUser();
+      void loadGridStats();
       if (p.type === 'story') {
         void clearStoriesFeedCache().catch(() => null);
         return;
@@ -308,13 +318,13 @@ export function ProfileScreen() {
       unsubDel();
       unsubNew();
     };
-  }, [dbUser?._id, gridTab, refreshDbUser]);
+  }, [dbUser?._id, gridTab, refreshDbUser, loadGridStats]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshDbUser(), loadPosts(gridTab)]);
+    await Promise.all([refreshDbUser(), loadPosts(gridTab), loadGridStats()]);
     setRefreshing(false);
-  }, [refreshDbUser, loadPosts, gridTab]);
+  }, [refreshDbUser, loadPosts, gridTab, loadGridStats]);
 
   const appName = contract.branding.appTitle || 'bromo';
 
@@ -540,7 +550,11 @@ export function ProfileScreen() {
             {/* Stats */}
             <View style={styles.statsRow}>
               {[
-                {label: 'Posts', value: Math.max(0, dbUser?.postsCount ?? 0), onPress: () => parentNavigate(navigation, 'ManageContent')},
+                {
+                  label: 'Posts',
+                  value: Math.max(0, gridStats?.gridTotal ?? dbUser?.postsCount ?? 0),
+                  onPress: () => parentNavigate(navigation, 'ManageContent'),
+                },
                 {
                   label: 'Followers',
                   value: dbUser?.followersCount ?? 0,
@@ -640,8 +654,8 @@ export function ProfileScreen() {
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8}}>
               <TrendingUp size={15} color={palette.success} />
               <Text style={{flex: 1, color: palette.foregroundSubtle, fontSize: 13, lineHeight: 18}}>
-                {recentGridViews > 0
-                  ? `${recentGridViews} views across items in your current grid · Wallet, boost posts, campaigns`
+                {gridStats != null && (gridStats.totalViews > 0 || gridStats.totalImpressions > 0)
+                  ? `${gridStats.totalViews.toLocaleString()} views · ${gridStats.totalImpressions.toLocaleString()} impressions (all posts & reels) · Wallet & campaigns`
                   : 'Buy Bromo coins, run promotions, and view content insights'}
               </Text>
               <ChevronRight size={18} color={palette.foregroundSubtle} />

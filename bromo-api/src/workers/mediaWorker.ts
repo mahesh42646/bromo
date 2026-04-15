@@ -168,9 +168,11 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
 
     await broadcastActivatedPost(String(job.postDraftId));
 
-    await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
-      console.warn("[mediaWorker] postsCount increment failed:", e),
-    );
+    if (existing?.type === "post" || existing?.type === "reel") {
+      await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
+        console.warn("[mediaWorker] postsCount increment failed:", e),
+      );
+    }
 
     safeUnlinkRaw(job.rawRelPath);
   }
@@ -203,9 +205,11 @@ async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
 
     await broadcastActivatedPost(String(job.postDraftId));
 
-    await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
-      console.warn("[mediaWorker] postsCount increment failed:", e),
-    );
+    if (existing?.type === "post" || existing?.type === "reel") {
+      await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
+        console.warn("[mediaWorker] postsCount increment failed:", e),
+      );
+    }
 
     safeUnlinkRaw(job.rawRelPath);
   }

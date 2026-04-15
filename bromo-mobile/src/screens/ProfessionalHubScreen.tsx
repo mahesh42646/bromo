@@ -7,9 +7,11 @@ import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {BarChart2, ChevronRight, Coins, Megaphone, TrendingUp} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
+import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {parentNavigate} from '../navigation/parentNavigate';
+import {getUserGridStats, type UserGridStats} from '../api/postsApi';
 import {getWallet} from '../api/walletApi';
 import {getMyCampaigns} from '../api/promotionsApi';
 
@@ -24,16 +26,24 @@ function fmtCoins(n: number): string {
 export function ProfessionalHubScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
+  const {dbUser} = useAuth();
   const [balance, setBalance] = useState(0);
   const [activeCampaigns, setActiveCampaigns] = useState(0);
   const [promoStatsLine, setPromoStatsLine] = useState<string | null>(null);
   const [topCampaignId, setTopCampaignId] = useState<string | null>(null);
+  const [organicReach, setOrganicReach] = useState<UserGridStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [w, c] = await Promise.all([getWallet(), getMyCampaigns(1)]);
+      const uid = dbUser?._id ? String(dbUser._id) : null;
+      const [w, c, gs] = await Promise.all([
+        getWallet(),
+        getMyCampaigns(1),
+        uid ? getUserGridStats(uid).catch(() => null) : Promise.resolve(null),
+      ]);
+      setOrganicReach(gs);
       setBalance(w.balance);
       setActiveCampaigns(c.campaigns.filter(x => x.status === 'active' || x.status === 'pending_review').length);
       const list = c.campaigns;
@@ -58,10 +68,11 @@ export function ProfessionalHubScreen() {
       setActiveCampaigns(0);
       setPromoStatsLine(null);
       setTopCampaignId(null);
+      setOrganicReach(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dbUser?._id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -95,6 +106,24 @@ export function ProfessionalHubScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{padding: 16, gap: 12}} showsVerticalScrollIndicator={false}>
+          {organicReach != null && (organicReach.gridTotal > 0 || organicReach.totalViews > 0) ? (
+            <View
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                backgroundColor: `${palette.success}14`,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 6,
+              }}>
+              <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '800'}}>Posts & reels (organic)</Text>
+              <Text style={{color: palette.mutedForeground, fontSize: 13, lineHeight: 18}}>
+                {organicReach.gridTotal} items on profile · {organicReach.totalViews.toLocaleString()} views ·{' '}
+                {organicReach.totalImpressions.toLocaleString()} impressions — combined across posts and reels
+              </Text>
+            </View>
+          ) : null}
+
           <Pressable
             onPress={() => parentNavigate(navigation, 'PointsWallet')}
             style={{

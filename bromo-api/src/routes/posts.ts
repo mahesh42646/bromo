@@ -951,6 +951,72 @@ postsRouter.post(
   },
 );
 
+// ── GET /posts/user/:userId/grid-stats ───────────────────────────────
+/** Counts + metrics matching profile grids (post / reel); syncs User.postsCount to postCount + reelCount. */
+postsRouter.get(
+  "/user/:userId/grid-stats",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const dbUser = req.dbUser;
+      const userId = String(req.params.userId ?? "").trim();
+      if (!userId) {
+        return res.status(400).json({ message: "userId required" });
+      }
+
+      const targetUser = await User.findById(userId).lean();
+      if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+      const isOwnProfile =
+        (dbUser != null && String(dbUser._id) === String(userId)) ||
+        Boolean(
+          req.firebaseUser &&
+            typeof targetUser.firebaseUid === "string" &&
+            targetUser.firebaseUid === req.firebaseUser.uid,
+        );
+
+      const listVisibility = isOwnProfile ? PROFILE_OR_SAVED_POST : VISIBLE_POST;
+      const authorIdFilter = mongoose.Types.ObjectId.isValid(userId)
+        ? new mongoose.Types.ObjectId(userId)
+        : userId;
+
+      const base = { authorId: authorIdFilter, ...listVisibility };
+      const matchAgg = {...base, type: {$in: ["post", "reel"] as const}};
+
+      const [postCount, reelCount, agg] = await Promise.all([
+        Post.countDocuments({...base, type: "post"}),
+        Post.countDocuments({...base, type: "reel"}),
+        Post.aggregate([
+          {$match: matchAgg},
+          {
+            $group: {
+              _id: null as null,
+              totalViews: {$sum: {$ifNull: ["$viewsCount", 0]}},
+              totalImpressions: {$sum: {$ifNull: ["$impressionsCount", 0]}},
+            },
+          },
+        ]),
+      ]);
+
+      const totals = agg[0] as {totalViews?: number; totalImpressions?: number} | undefined;
+      const gridTotal = postCount + reelCount;
+
+      void User.updateOne({_id: authorIdFilter}, {$set: {postsCount: gridTotal}}).catch(() => null);
+
+      return res.json({
+        postCount,
+        reelCount,
+        gridTotal,
+        totalViews: Number(totals?.totalViews) || 0,
+        totalImpressions: Number(totals?.totalImpressions) || 0,
+      });
+    } catch (err) {
+      console.error("[posts] grid-stats error:", err);
+      return res.status(500).json({message: "Failed to fetch grid stats"});
+    }
+  },
+);
+
 // ── GET /posts/user/:userId ─────────────────────────────────────────
 postsRouter.get(
   "/user/:userId",
@@ -1231,7 +1297,9 @@ postsRouter.post(
         ...(type === "story" && storyMeta ? { storyMeta } : {}),
       });
 
-      await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
+      if (type === "post" || type === "reel") {
+        await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
+      }
 
       const populated = await Post.findById(post._id)
         .populate("authorId", AUTHOR_SELECT)
