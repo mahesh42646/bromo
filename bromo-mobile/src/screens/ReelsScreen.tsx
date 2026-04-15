@@ -3,10 +3,8 @@ import {NetworkVideo} from '../components/media/NetworkVideo';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   DeviceEventEmitter,
   Dimensions,
-  Easing,
   FlatList,
   Image,
   Modal,
@@ -32,10 +30,8 @@ import {
   Music2,
   MoreHorizontal,
   Play,
-  Wifi,
-  Maximize2,
   Repeat,
-  QrCode,
+  Share2,
   Info,
   CheckCircle2,
   XCircle,
@@ -48,11 +44,23 @@ import type {NavigationProp, RouteProp} from '@react-navigation/native';
 import type {MainTabParamList} from '../navigation/appStackParamList';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
-import {StoryRing} from '../components/ui/StoryRing';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {followUser, unfollowUser} from '../api/followApi';
-import {createStoryFromReel, getPost, getReels, toggleLike, recordView, recordShare, resolveVideoUrl, type Post} from '../api/postsApi';
+import {
+  createStoryFromReel,
+  getPost,
+  getReels,
+  toggleLike,
+  recordView,
+  recordShare,
+  resolveVideoUrl,
+  toggleSavePost,
+  sendReelFeedback,
+  fetchPostWhy,
+  reportPostStrict,
+  type Post,
+} from '../api/postsApi';
 import {fetchAds, type Ad} from '../api/adsApi';
 import {AdReelItem} from '../components/AdReelItem';
 import {socketService} from '../services/socketService';
@@ -66,12 +74,21 @@ type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
 };
 
-type Quality = 'auto' | 'low' | 'medium' | 'high';
-
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+/** Hashtag tokens from caption (e.g. #travel). */
+function hashtagTokensFromCaption(caption: string): string[] {
+  const m = caption.match(/#[\w\u0080-\uFFFF]+/g);
+  return m ?? [];
+}
+
+/** Caption text with hashtag tokens stripped (one-line display uses this). */
+function captionWithoutHashtags(caption: string): string {
+  return caption.replace(/#[\w\u0080-\uFFFF]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function pickAdSlots(contentCount: number, adCount: number, minGap = 2): number[] {
@@ -103,6 +120,8 @@ function ReelMoreSheet({
   autoScroll,
   onAutoScroll,
   reel,
+  navigation,
+  onRemoveFromFeed,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -111,29 +130,9 @@ function ReelMoreSheet({
   autoScroll: boolean;
   onAutoScroll: (v: boolean) => void;
   reel: Post | null;
+  navigation: Nav;
+  onRemoveFromFeed: (postId: string) => void;
 }) {
-  const row = (icon: React.ReactNode, label: string, onPress?: () => void, danger?: boolean) => (
-    <Pressable
-      key={label}
-      onPress={() => {
-        onPress?.();
-        onClose();
-      }}
-      style={({pressed}) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 14,
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-        backgroundColor: pressed ? `${palette.foreground}12` : 'transparent',
-      })}>
-      {icon}
-      <Text style={{flex: 1, color: danger ? palette.destructive : palette.foreground, fontSize: 15, fontWeight: '500'}}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-
   const groupStyle = {
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
@@ -166,68 +165,234 @@ function ReelMoreSheet({
             }}>
             <Pressable
               style={{alignItems: 'center', width: 88, paddingVertical: 8, borderRadius: 12, backgroundColor: palette.background}}
-              onPress={() => Alert.alert('Saved', 'Saved to your device (coming soon).')}>
+              onPress={() => {
+                if (!reel) return;
+                toggleSavePost(reel._id)
+                  .then(({saved}) => {
+                    onClose();
+                    Alert.alert(saved ? 'Saved' : 'Removed', saved ? 'Added to your saved posts.' : 'Removed from saved.');
+                  })
+                  .catch(e => Alert.alert('Save', e instanceof Error ? e.message : 'Try again.'));
+              }}>
               <Bookmark size={22} color={palette.foreground} />
               <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>Save</Text>
             </Pressable>
             <Pressable
               style={{alignItems: 'center', width: 88, paddingVertical: 8, borderRadius: 12, backgroundColor: palette.background}}
-              onPress={() => Alert.alert('Remix', 'Remix will be available in a future update.')}>
+              onPress={() => {
+                if (!reel) return;
+                onClose();
+                parentNavigate(navigation, 'CreateFlow', {
+                  mode: 'reel',
+                  bootstrapTs: Date.now(),
+                  remixSourcePostId: reel._id,
+                });
+              }}>
               <Repeat size={22} color={palette.foreground} />
               <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>Remix</Text>
             </Pressable>
             <Pressable
               style={{alignItems: 'center', width: 88, paddingVertical: 8, borderRadius: 12, backgroundColor: palette.background}}
-              onPress={() => Alert.alert('Sequence', 'Multi-clip sequences are coming soon.')}>
-              <Maximize2 size={22} color={palette.foreground} />
-              <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>Sequence</Text>
+              onPress={() => {
+                if (!reel) return;
+                onClose();
+                void recordShare(reel._id);
+                parentNavigate(navigation, 'ShareSend', {postId: reel._id});
+              }}>
+              <Share2 size={22} color={palette.foreground} strokeWidth={2} />
+              <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>Share</Text>
             </Pressable>
           </View>
           <ScrollView style={{maxHeight: 420}} showsVerticalScrollIndicator={false}>
-            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border}]}>
-              {row(<Maximize2 size={20} color={palette.foreground} />, 'View full-screen', () =>
-                Alert.alert('Full screen', 'Rotate device or use system full-screen when supported.'),
-              )}
-              <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border}}>
-                <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, paddingVertical: 12, paddingHorizontal: 16}}>
+            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, paddingVertical: 6, paddingHorizontal: 2}]}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                  justifyContent: 'space-between',
+                }}>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 14}}>
                   <Repeat size={20} color={palette.foreground} />
-                  <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500'}}>Auto-scroll</Text>
+                  <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Auto-scroll</Text>
                 </View>
-                <Switch value={autoScroll} onValueChange={onAutoScroll} style={{marginRight: 12}} />
+                <Switch value={autoScroll} onValueChange={onAutoScroll} />
               </View>
-            </View>
-            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, marginTop: 10}]}>
-              {row(<Sparkles size={20} color={palette.accent} />, 'Add reel to your story', () => {
-                if (!reel) return;
-                createStoryFromReel(reel._id)
-                  .then(({post}) => {
-                    DeviceEventEmitter.emit('bromo:storiesChanged');
-                    const pending = post.processingStatus === 'pending' || post.processingStatus === 'processing';
-                    Alert.alert(
-                      'Story',
-                      pending
-                        ? 'Your story is processing. You will get a notification when it is ready.'
-                        : 'This reel was added to your story.',
+
+              <Pressable
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                }}
+                onPress={() => {
+                  if (!reel) return;
+                  createStoryFromReel(reel._id)
+                    .then(({post}) => {
+                      DeviceEventEmitter.emit('bromo:storiesChanged');
+                      onClose();
+                      const pending =
+                        post.processingStatus === 'pending' || post.processingStatus === 'processing';
+                      Alert.alert(
+                        'Story',
+                        pending
+                          ? 'Your story is processing. You will get a notification when it is ready.'
+                          : 'This reel was added to your story.',
+                      );
+                    })
+                    .catch(e =>
+                      Alert.alert('Could not add', e instanceof Error ? e.message : 'Try again.'),
                     );
-                  })
-                  .catch(e => Alert.alert('Could not add', e instanceof Error ? e.message : 'Try again.'));
-              })}
-              {row(<QrCode size={20} color={palette.foreground} />, 'QR code', () => Alert.alert('QR code', 'Share link as QR (coming soon).'))}
-            </View>
-            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, marginTop: 10}]}>
-              {row(<Info size={20} color={palette.foreground} />, "Why you're seeing this post", () =>
-                Alert.alert('Why this reel', 'Shown because it is public and matches what you watch.'),
-              )}
-              {row(<CheckCircle2 size={20} color={palette.foreground} />, 'Interested', () => Alert.alert('Thanks', "We'll show more like this."))}
-              {row(<XCircle size={20} color={palette.foreground} />, 'Not interested', () => Alert.alert('OK', "We'll tune your feed."))}
-              {row(<Flag size={20} color={palette.destructive} />, 'Report', () => Alert.alert('Report', 'Thanks — moderation tools are coming soon.'), true)}
-            </View>
-            <View style={[groupStyle, {backgroundColor: palette.background, borderColor: palette.border, marginTop: 10, marginBottom: 8}]}>
-              {row(<SlidersHorizontal size={20} color={palette.foreground} />, 'Manage content preferences', () =>
-                Alert.alert('Preferences', 'Open Settings → Content to tune recommendations (coming soon).'),
-              )}
+                }}>
+                <Sparkles size={20} color={palette.accent} />
+                <Text style={{color: palette.accent, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Add reel to your story</Text>
+              </Pressable>
+
+              <Pressable
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                }}
+                onPress={() => {
+                  if (!reel) return;
+                  sendReelFeedback(reel._id, 'interested')
+                    .then(() => {
+                      onClose();
+                      Alert.alert('Thanks', "We'll show you more reels like this.");
+                    })
+                    .catch(e => Alert.alert('Feedback', e instanceof Error ? e.message : 'Try again.'));
+                }}>
+                <CheckCircle2 size={20} color={palette.foreground} />
+                <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Interested</Text>
+              </Pressable>
+
+              <Pressable
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                }}
+                onPress={() => {
+                  if (!reel) return;
+                  sendReelFeedback(reel._id, 'not_interested')
+                    .then(() => {
+                      onRemoveFromFeed(reel._id);
+                      onClose();
+                      Alert.alert('Updated', "We won't push similar reels as hard in your feed.");
+                    })
+                    .catch(e => Alert.alert('Feedback', e instanceof Error ? e.message : 'Try again.'));
+                }}>
+                <XCircle size={20} color={palette.foreground} />
+                <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Not interested</Text>
+              </Pressable>
+
+              <Pressable
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                }}
+                onPress={() => {
+                  if (!reel) return;
+                  Alert.alert('Report', 'What is wrong with this reel?', [
+                    {text: 'Cancel', style: 'cancel'},
+                    {
+                      text: 'Spam',
+                      onPress: () =>
+                        reportPostStrict(reel._id, 'spam')
+                          .then(() => {
+                            onClose();
+                            Alert.alert('Reported', 'Thanks — our team will review it.');
+                          })
+                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
+                    },
+                    {
+                      text: 'Harassment',
+                      onPress: () =>
+                        reportPostStrict(reel._id, 'harassment')
+                          .then(() => {
+                            onClose();
+                            Alert.alert('Reported', 'Thanks — our team will review it.');
+                          })
+                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
+                    },
+                    {
+                      text: 'Nudity / sexual',
+                      onPress: () =>
+                        reportPostStrict(reel._id, 'nudity')
+                          .then(() => {
+                            onClose();
+                            Alert.alert('Reported', 'Thanks — our team will review it.');
+                          })
+                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
+                    },
+                    {
+                      text: 'Other',
+                      onPress: () =>
+                        reportPostStrict(reel._id, 'other')
+                          .then(() => {
+                            onClose();
+                            Alert.alert('Reported', 'Thanks — our team will review it.');
+                          })
+                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
+                    },
+                  ]);
+                }}>
+                <Flag size={20} color={palette.destructive} />
+                <Text style={{color: palette.destructive, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Report</Text>
+              </Pressable>
+
+              <Pressable
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                }}
+                onPress={() => {
+                  onClose();
+                  parentNavigate(navigation, 'Profile', {openSettings: true});
+                }}>
+                <SlidersHorizontal size={20} color={palette.foreground} />
+                <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Manage content preferences</Text>
+              </Pressable>
+
+              <Pressable
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                }}
+                onPress={() => {
+                  if (!reel) return;
+                  fetchPostWhy(reel._id)
+                    .then(why => {
+                      Alert.alert("Why you're seeing this", why.lines.join('\n\n'));
+                    })
+                    .catch(e => Alert.alert('Why this reel', e instanceof Error ? e.message : 'Try again.'));
+                }}>
+                <Info size={20} color={palette.foreground} />
+                <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500', marginLeft: 8}}>
+                  {"Why you're seeing this"}
+                </Text>
+              </Pressable>
             </View>
           </ScrollView>
+     
         </Pressable>
       </Pressable>
     </Modal>
@@ -248,6 +413,7 @@ function ReelItem({
   isCellular,
   maxBitRate,
   viewerAvatarUri,
+  onRemoveFromFeed,
 }: {
   item: Post;
   isActive: boolean;
@@ -262,12 +428,12 @@ function ReelItem({
   isCellular: boolean;
   maxBitRate: number | null;
   viewerAvatarUri?: string;
+  onRemoveFromFeed: (postId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const {palette, contract} = useTheme();
   const {dbUser} = useAuth();
   const {reelsMuted, toggleReelsMuted} = usePlaybackMute();
-  const [captionExpanded, setCaptionExpanded] = useState(false);
   const [holdPaused, setHoldPaused] = useState(false);
   const suppressMuteTap = useRef(false);
   const [following, setFollowing] = useState(item.isFollowing);
@@ -282,9 +448,6 @@ function ReelItem({
   const clearedSpinnerOnProgress = useRef(false);
   /** One completion signal per reel (avoids counting every loop when repeat is on). */
   const naturalEndSentRef = useRef(false);
-  // Rotating disc animation
-  const discRotation = useRef(new Animated.Value(0)).current;
-  const discAnim = useRef<Animated.CompositeAnimation | null>(null);
   const {borderRadiusScale} = contract.brandGuidelines;
   const avatarUri = item.author.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.author.displayName)}&background=random`;
 
@@ -301,20 +464,6 @@ function ReelItem({
   }, [isActive]);
 
   const paused = !isActive || holdPaused;
-
-  // Disc spin: start/stop with active state
-  useEffect(() => {
-    if (isActive && !holdPaused) {
-      discAnim.current = Animated.loop(
-        Animated.timing(discRotation, {
-          toValue: 1, duration: 4000, easing: Easing.linear, useNativeDriver: true,
-        }),
-      );
-      discAnim.current.start();
-    } else {
-      discAnim.current?.stop();
-    }
-  }, [isActive, holdPaused, discRotation]);
 
   // Record view + accumulate watch time
   useEffect(() => {
@@ -351,8 +500,13 @@ function ReelItem({
   };
 
   const isOwnReel = Boolean(dbUser?._id && String(item.author._id) === String(dbUser._id));
-  const discUri = isOwnReel && viewerAvatarUri ? viewerAvatarUri : avatarUri;
-  const captionLong = (item.caption ?? '').length > 140;
+  const discUriRaw = isOwnReel && viewerAvatarUri ? viewerAvatarUri : avatarUri;
+  const discUri = resolveMediaUrl(discUriRaw) || discUriRaw;
+  const rawCaption = item.caption ?? '';
+  const hashtagLine = hashtagTokensFromCaption(rawCaption).join(' ');
+  const captionLine = captionWithoutHashtags(rawCaption);
+  /** Match `TabNavigator` tab bar: `56 + max(insets.bottom, 10)`. */
+  const tabBarTopFromBottom = 56 + Math.max(insets.bottom, 10);
 
   // Prefer HLS master URL for ABR playback; fall back to progressive MP4 for legacy posts
   const rawVideoUrl = resolveVideoUrl(item, isCellular);
@@ -475,26 +629,7 @@ function ReelItem({
       />
 
       {/* Right side actions */}
-      <View style={{position: 'absolute', right: 14, bottom: 120, alignItems: 'center', gap: 22, zIndex: 10}}>
-        <View style={{position: 'relative'}}>
-          <Pressable onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: item.author._id})}>
-            <StoryRing uri={avatarUri} size={44} />
-          </Pressable>
-          {!following && (
-            <Pressable
-              onPress={handleFollowToggle}
-              style={{
-                position: 'absolute', bottom: -10, left: '50%',
-                transform: [{translateX: -10}],
-                width: 20, height: 20, borderRadius: 10,
-                backgroundColor: palette.primary, alignItems: 'center',
-                justifyContent: 'center', borderWidth: 2, borderColor: '#000',
-              }}>
-              <Text style={{color: '#fff', fontSize: 12, fontWeight: '900', lineHeight: 14}}>+</Text>
-            </Pressable>
-          )}
-        </View>
-
+      <View style={{position: 'absolute', right: 14, bottom: tabBarTopFromBottom + 54, alignItems: 'center', gap: 18, zIndex: 10}}>
         <Pressable onPress={() => onLike(item._id)} style={{alignItems: 'center', gap: 4}}>
           <Heart
             size={28}
@@ -530,24 +665,32 @@ function ReelItem({
           <MoreHorizontal size={28} color="#fff" strokeWidth={2} />
         </Pressable>
 
-        {/* Rotating audio disc — viewer avatar on own reels */}
+        {/* Audio tile — static cover (no spin) */}
+
         <Pressable onPress={() => parentNavigate(navigation, 'ReuseAudio', {audioId: item._id})}>
-          <Animated.View style={{
-            width: 40, height: 40, borderRadius: 8,
-            borderWidth: 2, borderColor: '#fff', overflow: 'hidden',
-            transform: [{rotate: discRotation.interpolate({inputRange: [0, 1], outputRange: ['0deg', '360deg']})}],
-          }}>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 8,
+              borderWidth: 2,
+              borderColor: '#fff',
+              overflow: 'hidden',
+            }}>
             <Image source={{uri: discUri}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
-          </Animated.View>
+          </View>
         </Pressable>
       </View>
 
-      {/* Bottom info — no dimmed panel; text reads on video */}
-      <View style={{position: 'absolute', bottom: 88, left: 14, right: 76, gap: 6, zIndex: 10}} pointerEvents="box-none">
+      {/* Bottom info — compact: @user, optional verified, follow; then 1-line hashtags / caption only when present */}
+      <View
+        style={{position: 'absolute', bottom: tabBarTopFromBottom - 5, left: 14, right: 76, gap: 2, zIndex: 10}}
+        pointerEvents="box-none">
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
-          <Image source={{uri: resolveMediaUrl(avatarUri) || avatarUri}} style={{width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)'}} />
+        <Image source={{uri: resolveMediaUrl(avatarUri) || avatarUri}} style={{width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)'}} />
+        
           <Pressable onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: item.author._id})}>
-            <Text style={{color: '#fff', fontSize: 14, fontWeight: '800'}}>{item.author.username}</Text>
+            <Text style={{color: '#fff', fontSize: 14, fontWeight: '800'}}>@{item.author.username}</Text>
           </Pressable>
           {item.author.emailVerified ? (
             <BadgeCheck size={16} color={palette.accent} fill={palette.accent} strokeWidth={2} />
@@ -555,31 +698,53 @@ function ReelItem({
           <Pressable
             onPress={handleFollowToggle}
             style={{
-              borderWidth: 1, borderColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#fff',
               borderRadius: borderRadiusScale === 'bold' ? 8 : 5,
-              paddingHorizontal: 12, paddingVertical: 4,
+              paddingHorizontal: 12,
+              paddingVertical: 4,
             }}>
             <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>{following ? 'Following' : 'Follow'}</Text>
           </Pressable>
         </View>
-        {item.caption ? (
-          <View>
-            <Text
-              style={{color: '#fff', fontSize: 13, lineHeight: 19, fontWeight: '500', textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 6, textShadowOffset: {width: 0, height: 1}}}
-              numberOfLines={captionExpanded ? undefined : 2}>
-              {item.caption}
-            </Text>
-            {captionLong ? (
-              <Pressable onPress={() => setCaptionExpanded(e => !e)} hitSlop={6} style={{marginTop: 2, alignSelf: 'flex-start'}}>
-                <Text style={{color: '#fff', fontSize: 12, fontWeight: '800'}}>{captionExpanded ? 'Show less' : 'Read more'}</Text>
-              </Pressable>
-            ) : null}
-          </View>
+        {hashtagLine ? (
+          <Text
+            style={{
+              color: '#fff',
+              fontSize: 12,
+              lineHeight: 16,
+              fontWeight: '600',
+              textShadowColor: 'rgba(0,0,0,0.45)',
+              textShadowRadius: 6,
+              textShadowOffset: {width: 0, height: 1},
+            }}
+            numberOfLines={1}
+            ellipsizeMode="tail">
+            {hashtagLine}
+          </Text>
+        ) : null}
+        {captionLine ? (
+          <Text
+            style={{
+              color: '#fff',
+              fontSize: 13,
+              lineHeight: 17,
+              fontWeight: '500',
+              textShadowColor: 'rgba(0,0,0,0.45)',
+              textShadowRadius: 6,
+              textShadowOffset: {width: 0, height: 1},
+            }}
+            numberOfLines={1}
+            ellipsizeMode="tail">
+            {captionLine}
+          </Text>
         ) : null}
         {item.music ? (
-          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2}}>
             <Music2 size={12} color="#fff" strokeWidth={2} />
-            <Text style={{color: '#fff', fontSize: 11, fontWeight: '600'}} numberOfLines={1}>{item.music}</Text>
+            <Text style={{color: '#fff', fontSize: 11, fontWeight: '600'}} numberOfLines={1}>
+              {item.music}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -592,6 +757,8 @@ function ReelItem({
         autoScroll={autoScroll}
         onAutoScroll={onAutoScrollChange}
         reel={item}
+        navigation={navigation}
+        onRemoveFromFeed={onRemoveFromFeed}
       />
     </View>
   );
@@ -640,8 +807,6 @@ export function ReelsScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [quality, setQuality] = useState<Quality>('auto');
-  const [showQualityPicker, setShowQualityPicker] = useState(false);
   const [autoScroll, setAutoScroll] = useState(false);
   const listRef = useRef<FlatList>(null);
   const pageRef = useRef(1);
@@ -822,6 +987,10 @@ export function ReelsScreen() {
         ),
       );
     });
+  }, []);
+
+  const removeReelFromFeed = useCallback((postId: string) => {
+    setReels(prev => prev.filter(r => r._id !== postId));
   }, []);
 
   const onViewableItemsChanged = useRef(({viewableItems}: {viewableItems: ViewToken[]}) => {
@@ -1034,44 +1203,11 @@ export function ReelsScreen() {
               isCellular={isCellular}
               maxBitRate={maxBitRate}
               viewerAvatarUri={viewerAvatarUri}
+              onRemoveFromFeed={removeReelFromFeed}
             />
           );
         }}
       />
-
-      {/* Quality picker */}
-      <View style={{position: 'absolute', top: insets.top + 52, left: 14, zIndex: 20}}>
-        <Pressable
-          onPress={() => setShowQualityPicker(p => !p)}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 4,
-            backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 6,
-            borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
-          }}>
-          <Wifi size={12} color="#fff" />
-          <Text style={{color: '#fff', fontSize: 11, fontWeight: '700', textTransform: 'uppercase'}}>{quality}</Text>
-        </Pressable>
-        {showQualityPicker && (
-          <View style={{
-            marginTop: 6, backgroundColor: 'rgba(0,0,0,0.85)',
-            borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-          }}>
-            {(['auto', 'low', 'medium', 'high'] as Quality[]).map(q => (
-              <Pressable
-                key={q}
-                onPress={() => { setQuality(q); setShowQualityPicker(false); }}
-                style={{
-                  paddingHorizontal: 16, paddingVertical: 10,
-                  backgroundColor: quality === q ? 'rgba(255,255,255,0.15)' : 'transparent',
-                }}>
-                <Text style={{color: '#fff', fontSize: 13, fontWeight: quality === q ? '800' : '400', textTransform: 'capitalize'}}>
-                  {q}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </View>
 
       <Modal visible={sessionGateOpen} transparent animationType="fade" onRequestClose={() => setSessionGateOpen(false)}>
         <View style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', paddingHorizontal: 28}}>

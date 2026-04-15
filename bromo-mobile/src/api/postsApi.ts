@@ -338,6 +338,49 @@ export async function reportPost(postId: string, reason = 'other'): Promise<void
   }).catch(() => null);
 }
 
+export async function toggleSavePost(postId: string): Promise<{saved: boolean}> {
+  const res = await authedFetch(`/posts/${postId}/save`, {method: 'POST'});
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Could not update saved');
+  }
+  return res.json() as Promise<{saved: boolean}>;
+}
+
+export async function sendReelFeedback(postId: string, signal: 'interested' | 'not_interested'): Promise<void> {
+  const res = await authedFetch(`/posts/${postId}/feedback`, {
+    method: 'POST',
+    body: JSON.stringify({signal}),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Could not send feedback');
+  }
+}
+
+export type PostWhyResponse = {summary: string; lines: string[]};
+
+export async function fetchPostWhy(postId: string): Promise<PostWhyResponse> {
+  const res = await authedFetch(`/posts/${postId}/why`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Could not load explanation');
+  }
+  return res.json() as Promise<PostWhyResponse>;
+}
+
+/** Report with error propagation (reels / modals). */
+export async function reportPostStrict(postId: string, reason: string): Promise<void> {
+  const res = await authedFetch(`/posts/${postId}/report`, {
+    method: 'POST',
+    body: JSON.stringify({reason}),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Could not submit report');
+  }
+}
+
 export async function uploadMedia(
   localUri: string,
   meta?: {type: 'image' | 'video'; fileName?: string | null; category?: 'posts' | 'reels' | 'stories' | 'public'},

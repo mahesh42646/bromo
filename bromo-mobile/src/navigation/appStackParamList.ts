@@ -16,7 +16,7 @@ export type AppStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   CreateFlow: NavigatorScreenParams<CreateStackParamList> | undefined;
   MessagesFlow: NavigatorScreenParams<MessagesStackParamList> | undefined;
-  Profile: undefined;
+  Profile: {openSettings?: boolean} | undefined;
 
   CategoryFeed: {categoryId: string};
   PostDetail: {postId: string};

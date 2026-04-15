@@ -8,7 +8,7 @@ type LooseNav = {
 
 type CreateFlowNavParams = {
   screen: 'CreateHub';
-  params: {mode?: string; bootstrapTs: number};
+  params: {mode?: string; bootstrapTs: number; remixSourcePostId?: string};
 };
 
 /**
@@ -25,12 +25,13 @@ export function parentNavigate(navigation: any, name: string, params?: Record<st
     const routeNames = state?.routeNames;
     if (routeNames?.includes(name)) {
       if (name === 'CreateFlow') {
-        const p = (params ?? {}) as {mode?: string; bootstrapTs?: number};
+        const p = (params ?? {}) as {mode?: string; bootstrapTs?: number; remixSourcePostId?: string};
         const payload: CreateFlowNavParams = {
           screen: 'CreateHub',
           params: {
             mode: p.mode,
             bootstrapTs: typeof p.bootstrapTs === 'number' ? p.bootstrapTs : Date.now(),
+            remixSourcePostId: p.remixSourcePostId,
           },
         };
         current.navigate?.(name, payload as object);

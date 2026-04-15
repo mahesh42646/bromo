@@ -46,6 +46,7 @@ import type {CreateMode, MediaAsset} from '../../create/createTypes';
 import {loadCameraSettings, type StoredCameraSettings} from '../../lib/cameraSettingsStorage';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import type {ThemePalette} from '../../config/platform-theme';
+import {getPost} from '../../api/postsApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'CreateHub'>;
 type RouteProps = RouteProp<CreateStackParamList, 'CreateHub'>;
@@ -95,7 +96,7 @@ export function CreateHubScreen() {
   const route = useRoute<RouteProps>();
   const {palette} = useTheme();
   const styles = makeStyles(palette);
-  const {draft, setMode, setAssets, reset, setLiveMeta} = useCreateDraft();
+  const {draft, setMode, setAssets, reset, setLiveMeta, setSelectedAudio} = useCreateDraft();
 
   const [roll, setRoll] = useState<{uri: string; type: 'image' | 'video'}[]>([]);
   const [loadingRoll, setLoadingRoll] = useState(true);
@@ -122,7 +123,28 @@ export function CreateHubScreen() {
       if (initialMode) {
         setMode(initialMode);
       }
-    }, [reset, route.params?.bootstrapTs, route.params?.mode, setMode, navigation]),
+      const remixId = route.params?.remixSourcePostId;
+      if (remixId && initialMode === 'reel') {
+        getPost(remixId)
+          .then(({post}) => {
+            const title = post.music?.trim() ? post.music.trim() : 'Original audio';
+            setSelectedAudio({
+              id: post._id,
+              title,
+              artist: `@${post.author.username}`,
+            });
+          })
+          .catch(() => null);
+      }
+    }, [
+      reset,
+      route.params?.bootstrapTs,
+      route.params?.mode,
+      route.params?.remixSourcePostId,
+      setMode,
+      setSelectedAudio,
+      navigation,
+    ]),
   );
 
   useEffect(() => {

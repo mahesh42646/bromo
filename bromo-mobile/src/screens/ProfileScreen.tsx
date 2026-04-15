@@ -13,7 +13,9 @@ import {
   Text,
   View,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
+import type {RouteProp} from '@react-navigation/native';
+import type {AppStackParamList} from '../navigation/appStackParamList';
 import {
   Grid3X3,
   Clapperboard,
@@ -191,6 +193,7 @@ function SettingsModal({
 
 export function ProfileScreen() {
   const navigation = useNavigation();
+  const route = useRoute<RouteProp<AppStackParamList, 'Profile'>>();
   const {palette, contract} = useTheme();
   const {dbUser, logout, refreshDbUser} = useAuth();
   const [gridTab, setGridTab] = useState('posts');
@@ -210,7 +213,7 @@ export function ProfileScreen() {
     if (!dbUser?._id) return;
     setPostsLoading(true);
     try {
-      const typeMap: Record<string, string> = {posts: 'post', reels: 'reel', saved: 'post'};
+      const typeMap: Record<string, string> = {posts: 'post', reels: 'reel', saved: 'saved'};
       const res = await getUserPosts(dbUser._id, typeMap[tab] ?? 'post');
       setUserPosts(res.posts);
     } catch {
@@ -223,6 +226,15 @@ export function ProfileScreen() {
   useEffect(() => {
     loadPosts(gridTab);
   }, [gridTab, loadPosts]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (route.params?.openSettings) {
+        setMenuOpen(true);
+        navigation.setParams({openSettings: undefined} as never);
+      }
+    }, [navigation, route.params?.openSettings]),
+  );
 
   useEffect(() => {
     const unsubDel = socketService.on('post:delete', ({postId}) => {

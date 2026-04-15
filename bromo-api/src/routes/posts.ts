@@ -311,10 +311,31 @@ postsRouter.get(
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = cursor ? 0 : (page - 1) * PAGE_SIZE;
 
+      const hiddenIds: mongoose.Types.ObjectId[] = [];
+      if (dbUser) {
+        const hides = await mongoose.connection
+          .collection("post_hides")
+          .find({ userId: dbUser._id })
+          .project({ postId: 1 })
+          .toArray();
+        for (const h of hides) {
+          const pid = h.postId as mongoose.Types.ObjectId | undefined;
+          if (pid) hiddenIds.push(pid);
+        }
+      }
+
       const baseQuery = { type: "reel" as const, ...VISIBLE_POST };
-      const query = cursor
-        ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cursor) } }
-        : baseQuery;
+      const idClause = cursor
+        ? {
+            _id: {
+              $lt: new mongoose.Types.ObjectId(cursor),
+              ...(hiddenIds.length ? {$nin: hiddenIds} : {}),
+            },
+          }
+        : hiddenIds.length
+          ? {_id: {$nin: hiddenIds}}
+          : {};
+      const query = {...baseQuery, ...idClause};
 
       // Fetch posts + likes + follows all in parallel — was 3 sequential round-trips
       const [posts, likes, follows] = await Promise.all([
@@ -349,6 +370,60 @@ postsRouter.get(
   },
 );
 
+// ── GET /posts/saved ────────────────────────────────────────────────
+postsRouter.get(
+  "/saved",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const skip = (page - 1) * PAGE_SIZE;
+
+      const saves = await mongoose.connection
+        .collection("saved_posts")
+        .find({userId: user._id})
+        .sort({createdAt: -1})
+        .skip(skip)
+        .limit(PAGE_SIZE)
+        .toArray();
+
+      const ids = saves.map((s) => s.postId as mongoose.Types.ObjectId).filter(Boolean);
+      if (ids.length === 0) {
+        res.setHeader("Cache-Control", "private, no-store");
+        return res.json({posts: [], page, hasMore: false});
+      }
+
+      const postsRaw = await Post.find({
+        _id: {$in: ids},
+        ...VISIBLE_POST,
+      })
+        .populate("authorId", AUTHOR_SELECT)
+        .lean();
+
+      const follows = await Follow.find({followerId: user._id, status: "accepted"}).select("followingId").lean();
+      const followingSet = new Set(follows.map((f) => String(f.followingId)));
+      const likes = await Like.find({userId: user._id, targetType: "post", targetId: {$in: ids}})
+        .select("targetId")
+        .lean();
+      const likedSet = new Set(likes.map((l) => String(l.targetId)));
+
+      const order = new Map(ids.map((id, i) => [String(id), i]));
+      postsRaw.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+
+      const result = postsRaw.map((p) =>
+        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(user._id)),
+      );
+
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.json({posts: result, page, hasMore: saves.length === PAGE_SIZE});
+    } catch (err) {
+      console.error("[posts] saved error:", err);
+      return res.status(500).json({message: "Failed to fetch saved posts"});
+    }
+  },
+);
+
 // ── GET /posts/explore ──────────────────────────────────────────────
 postsRouter.get(
   "/explore",
@@ -361,7 +436,7 @@ postsRouter.get(
 
       // Single Follow query shared for both exclude-ids and followingSet
       const follows = dbUser
-        ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
+        ? await Follow.find({followerId: dbUser._id, status: "accepted"}).select("followingId").lean()
         : [];
       const followingIds = follows.map((f) => f.followingId);
       const excludeIds = dbUser ? [...followingIds, dbUser._id] : [];
@@ -714,6 +789,47 @@ postsRouter.get(
       const targetUser = await User.findById(userId).lean();
       if (!targetUser) return res.status(404).json({ message: "User not found" });
 
+      if (type === "saved") {
+        if (!dbUser || String(userId) !== String(dbUser._id)) {
+          return res.status(403).json({ message: "Saved posts are private" });
+        }
+        const saves = await mongoose.connection
+          .collection("saved_posts")
+          .find({ userId: dbUser._id })
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(PAGE_SIZE)
+          .toArray();
+        const ids = saves.map((s) => s.postId as mongoose.Types.ObjectId).filter(Boolean);
+        if (ids.length === 0) {
+          return res.json({ posts: [], page, hasMore: false });
+        }
+        const postsRaw = await Post.find({
+          _id: { $in: ids },
+          ...VISIBLE_POST,
+        })
+          .populate("authorId", AUTHOR_SELECT)
+          .lean();
+        const follows = await Follow.find({ followerId: dbUser._id, status: "accepted" })
+          .select("followingId")
+          .lean();
+        const followingSet = new Set(follows.map((f) => String(f.followingId)));
+        const likes = await Like.find({
+          userId: dbUser._id,
+          targetType: "post",
+          targetId: { $in: ids },
+        })
+          .select("targetId")
+          .lean();
+        const likedSet = new Set(likes.map((l) => String(l.targetId)));
+        const order = new Map(ids.map((id, i) => [String(id), i]));
+        postsRaw.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+        const result = postsRaw.map((p) =>
+          normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
+        );
+        return res.json({ posts: result, page, hasMore: saves.length === PAGE_SIZE });
+      }
+
       const posts = await Post.find({
         authorId: userId,
         type,
@@ -722,7 +838,14 @@ postsRouter.get(
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(PAGE_SIZE)
+        .populate("authorId", AUTHOR_SELECT)
         .lean();
+
+      const follows =
+        dbUser != null
+          ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
+          : [];
+      const followingSet = new Set(follows.map((f) => String(f.followingId)));
 
       const likedSet = new Set<string>();
       if (dbUser) {
@@ -734,17 +857,61 @@ postsRouter.get(
         likes.forEach((l) => likedSet.add(String(l.targetId)));
       }
 
-      const result = posts.map((p) => ({
-        ...p,
-        likesCount: Number(p.likesCount) || 0,
-        commentsCount: Number(p.commentsCount) || 0,
-        viewsCount: Number(p.viewsCount) || 0,
-        isLiked: likedSet.has(String(p._id)),
-      }));
+      const result = posts.map((p) =>
+        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+      );
       return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE });
     } catch (err) {
       console.error("[posts] user posts error:", err);
       return res.status(500).json({ message: "Failed to fetch user posts" });
+    }
+  },
+);
+
+// ── GET /posts/:id/why ──────────────────────────────────────────────
+postsRouter.get(
+  "/:id/why",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      const post = await Post.findById(id).select("authorId feedCategory viewsCount type isActive isDeleted").lean();
+      if (!post || !post.isActive || post.isDeleted) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      const dbUser = req.dbUser;
+      const author = await User.findById(post.authorId).select("username").lean();
+      const uname = author?.username ? `@${author.username}` : "this creator";
+      const lines: string[] = [];
+      let following = false;
+      if (dbUser) {
+        const f = await Follow.findOne({
+          followerId: dbUser._id,
+          followingId: post.authorId,
+          status: "accepted",
+        }).select("_id");
+        following = !!f;
+      }
+      if (following) {
+        lines.push(`You're seeing this because you follow ${uname}.`);
+      } else {
+        lines.push("This reel is public in the community feed.");
+        lines.push("Ranking uses engagement (likes, comments, watch time) and how fresh the post is.");
+      }
+      const fcRaw = (post as { feedCategory?: string }).feedCategory;
+      const fc = typeof fcRaw === "string" && fcRaw.trim() ? fcRaw.trim() : "general";
+      if (fc !== "general") {
+        lines.push(`Topic bucket: ${fc}.`);
+      }
+      lines.push("Tap Interested or Not interested so we can tune what you see next.");
+      const summary = lines.join(" ");
+      return res.json({ summary, lines });
+    } catch (err) {
+      console.error("[posts] why error:", err);
+      return res.status(500).json({ message: "Failed to explain recommendation" });
     }
   },
 );
@@ -1151,6 +1318,84 @@ postsRouter.delete(
     } catch (err) {
       console.error("[posts] delete comment error:", err);
       return res.status(500).json({ message: "Failed to delete comment" });
+    }
+  },
+);
+
+// ── POST /posts/:id/save (toggle) ───────────────────────────────────
+postsRouter.post(
+  "/:id/save",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const postId = String(req.params.id);
+      if (!mongoose.Types.ObjectId.isValid(postId)) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      const exists = await Post.findOne({_id: postId, ...VISIBLE_POST}).select("_id").lean();
+      if (!exists) return res.status(404).json({ message: "Post not found" });
+
+      const col = mongoose.connection.collection("saved_posts");
+      const oid = new mongoose.Types.ObjectId(postId);
+      const row = await col.findOne({userId: user._id, postId: oid});
+      if (row) {
+        await col.deleteOne({_id: row._id});
+        return res.json({saved: false});
+      }
+      await col.insertOne({userId: user._id, postId: oid, createdAt: new Date()});
+      return res.json({saved: true});
+    } catch (err) {
+      console.error("[posts] save toggle error:", err);
+      return res.status(500).json({ message: "Failed to update saved" });
+    }
+  },
+);
+
+// ── POST /posts/:id/feedback (interested / not_interested) ──────────
+postsRouter.post(
+  "/:id/feedback",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const postId = String(req.params.id);
+      if (!mongoose.Types.ObjectId.isValid(postId)) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      const { signal } = req.body as { signal?: string };
+      if (signal !== "interested" && signal !== "not_interested") {
+        return res.status(400).json({ message: "signal must be interested or not_interested" });
+      }
+      const post = await Post.findById(postId).select("authorId isActive isDeleted").lean();
+      if (!post || !post.isActive || post.isDeleted) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      const col = mongoose.connection.collection("reel_feedback_signals");
+      await col.updateOne(
+        { userId: user._id, postId: post._id },
+        {
+          $set: { signal, authorId: post.authorId, updatedAt: new Date() },
+          $setOnInsert: { createdAt: new Date() },
+        },
+        { upsert: true },
+      );
+      if (signal === "not_interested") {
+        await mongoose.connection.collection("post_hides").updateOne(
+          { postId: post._id, userId: user._id },
+          {
+            $setOnInsert: { postId: post._id, userId: user._id, createdAt: new Date() },
+          },
+          { upsert: true },
+        );
+      } else {
+        await Post.updateOne({_id: post._id}, {$inc: {trendingScore: 0.25}}).catch(() => null);
+        recomputeTrending(postId);
+      }
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[posts] feedback error:", err);
+      return res.status(500).json({ message: "Failed to record feedback" });
     }
   },
 );
