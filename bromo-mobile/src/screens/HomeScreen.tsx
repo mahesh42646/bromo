@@ -6,7 +6,6 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -76,6 +75,7 @@ import {getConversations} from '../api/chatApi';
 import {socketService} from '../services/socketService';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
 import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
+import {openExternalUrl} from '../lib/openExternalUrl';
 
 type IconComp = ComponentType<{size?: number; color?: string}>;
 
@@ -421,33 +421,6 @@ function PostCard({
         </View>
       ) : null}
 
-      {post.promotionCta && post.promotionId ? (
-        <Pressable
-          onPress={() => {
-            const url = post.promotionCta?.url;
-            if (!url || !post.promotionId) return;
-            void logPromotionDelivery(post.promotionId, {
-              surface: 'feed',
-              contentAuthorId: post.author._id,
-              isFollowerOfAuthor: post.isFollowing,
-              kind: 'cta_click',
-            });
-            Linking.openURL(url).catch(() => null);
-          }}
-          style={{
-            marginHorizontal: 14,
-            marginBottom: 10,
-            paddingVertical: 12,
-            borderRadius: 12,
-            backgroundColor: palette.primary,
-            alignItems: 'center',
-          }}>
-          <Text style={{color: palette.primaryForeground, fontWeight: '900', fontSize: 14}}>
-            {post.promotionCta.label}
-          </Text>
-        </Pressable>
-      ) : null}
-
       {post.type === 'reel' ? (
         <Pressable onPress={openReelsAtThisPost}>
           {post.mediaType === 'video' ? (
@@ -608,6 +581,81 @@ function PostCard({
           )}
         </View>
       )}
+
+      {post.isPromoted && post.promotionId
+        ? (() => {
+            const cta = post.promotionCta;
+            const hasCustomCta = Boolean(cta?.label?.trim() && cta?.url?.trim());
+            const objective = post.promotionObjective;
+
+            const logCta = () => {
+              void logPromotionDelivery(post.promotionId!, {
+                surface: 'feed',
+                contentAuthorId: post.author._id,
+                isFollowerOfAuthor: post.isFollowing,
+                kind: 'cta_click',
+              });
+            };
+
+            const promoBtnStyle = {
+              marginHorizontal: 14,
+              marginTop: 10,
+              marginBottom: 4,
+              paddingVertical: 12,
+              borderRadius: 12,
+              backgroundColor: palette.primary,
+              alignItems: 'center' as const,
+            };
+
+            if (hasCustomCta) {
+              return (
+                <Pressable
+                  onPress={() => {
+                    logCta();
+                    void openExternalUrl(cta!.url);
+                  }}
+                  style={promoBtnStyle}>
+                  <Text style={{color: palette.primaryForeground, fontWeight: '900', fontSize: 14}}>
+                    {cta!.label}
+                  </Text>
+                </Pressable>
+              );
+            }
+
+            if (isOwnPost) return null;
+
+            if (objective === 'followers') {
+              if (following) return null;
+              return (
+                <Pressable
+                  onPress={() => {
+                    logCta();
+                    void handleFollow();
+                  }}
+                  style={promoBtnStyle}>
+                  <Text style={{color: palette.primaryForeground, fontWeight: '900', fontSize: 14}}>Follow</Text>
+                </Pressable>
+              );
+            }
+
+            if (objective === 'engagement') {
+              return (
+                <Pressable
+                  onPress={() => {
+                    logCta();
+                    onLikeToggle(post._id);
+                  }}
+                  style={promoBtnStyle}>
+                  <Text style={{color: palette.primaryForeground, fontWeight: '900', fontSize: 14}}>
+                    {post.isLiked ? 'Liked' : 'Like'}
+                  </Text>
+                </Pressable>
+              );
+            }
+
+            return null;
+          })()
+        : null}
 
       <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12}}>
         <View style={{flexDirection: 'row', gap: 20, alignItems: 'center'}}>

@@ -1,5 +1,6 @@
 import auth from '@react-native-firebase/auth';
 import {authedFetch, apiBase, authorizedFetch} from './authApi';
+import type {PromotionObjective} from './promotionsApi';
 import {buildMediaUploadPart} from '../lib/mediaUploadPart';
 
 export type PostAuthor = {
@@ -69,6 +70,7 @@ export type Post = {
   /** Injected sponsored post from PromotionCampaign (API). */
   isPromoted?: boolean;
   promotionId?: string;
+  promotionObjective?: PromotionObjective;
   promotionCta?: {label: string; url: string};
 };
 

@@ -110,14 +110,18 @@ async function getPromotedPostDocs(
   for (const c of sliced) {
     const raw = byId.get(String(c.contentId));
     if (!raw) continue;
+    const ctaDoc = c.cta as { label?: string; url?: string } | undefined;
+    const ctaLabel = typeof ctaDoc?.label === "string" ? ctaDoc.label.trim() : "";
+    const ctaUrl = typeof ctaDoc?.url === "string" ? ctaDoc.url.trim() : "";
+    const promotionCta =
+      ctaLabel && ctaUrl ? { label: ctaLabel, url: ctaUrl } : undefined;
+
     out.push({
       ...raw,
       isPromoted: true,
       promotionId: String(c._id),
-      promotionCta:
-        c.cta && typeof (c.cta as { label?: string }).label === "string" && typeof (c.cta as { url?: string }).url === "string"
-          ? { label: (c.cta as { label: string }).label, url: (c.cta as { url: string }).url }
-          : undefined,
+      promotionObjective: c.objective,
+      promotionCta,
     });
   }
   return out;
@@ -177,6 +181,11 @@ async function getPromotedStoryTrayGroups(
       .populate("authorId", AUTHOR_SELECT)
       .lean();
     if (!s) continue;
+    const ctaDoc = c.cta as { label?: string; url?: string } | undefined;
+    const ctaLabel = typeof ctaDoc?.label === "string" ? ctaDoc.label.trim() : "";
+    const ctaUrl = typeof ctaDoc?.url === "string" ? ctaDoc.url.trim() : "";
+    const promotionCta = ctaLabel && ctaUrl ? { label: ctaLabel, url: ctaUrl } : undefined;
+
     out.push({
       isPromoted: true,
       promotionId: String(c._id),
@@ -186,10 +195,8 @@ async function getPromotedStoryTrayGroups(
           ...s,
           isPromoted: true,
           promotionId: String(c._id),
-          promotionCta:
-            c.cta && typeof (c.cta as { label?: string }).label === "string" && typeof (c.cta as { url?: string }).url === "string"
-              ? { label: (c.cta as { label: string }).label, url: (c.cta as { url: string }).url }
-              : undefined,
+          promotionObjective: c.objective,
+          promotionCta,
           seenByMe: seenSet.has(String(s._id)),
           mediaUrl: typeof s.mediaUrl === "string" ? rewritePublicMediaUrl(s.mediaUrl) : s.mediaUrl,
           thumbnailUrl:
