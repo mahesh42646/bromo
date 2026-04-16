@@ -28,7 +28,7 @@ adsAdminRouter.get("/", requireAdminToken, async (req: AuthedRequest, res: Respo
 // ─── Create ad ───────────────────────────────────────────────────────────────
 adsAdminRouter.post("/", requireAdminToken, async (req: AuthedRequest, res: Response) => {
   const admin = req.admin!;
-  const { title, adType, mediaUrls, thumbnailUrl, caption, cta, placements, startDate, endDate, priority, status } = req.body as Record<string, unknown>;
+  const { title, adType, mediaUrls, thumbnailUrl, caption, category, cta, placements, startDate, endDate, priority, status } = req.body as Record<string, unknown>;
 
   if (!title || !adType || !Array.isArray(mediaUrls) || !mediaUrls.length || !cta || !Array.isArray(placements) || !placements.length || !startDate) {
     res.status(400).json({ message: "Missing required fields: title, adType, mediaUrls, cta, placements, startDate" });
@@ -42,6 +42,7 @@ adsAdminRouter.post("/", requireAdminToken, async (req: AuthedRequest, res: Resp
     mediaUrls,
     thumbnailUrl: thumbnailUrl ?? "",
     caption: caption ?? "",
+    category: typeof category === "string" ? category : "",
     cta,
     placements,
     startDate: new Date(startDate as string),
@@ -63,7 +64,7 @@ adsAdminRouter.get("/:id", requireAdminToken, async (req: AuthedRequest, res: Re
 
 // ─── Update ad ───────────────────────────────────────────────────────────────
 adsAdminRouter.patch("/:id", requireAdminToken, async (req: AuthedRequest, res: Response) => {
-  const { title, adType, mediaUrls, thumbnailUrl, caption, cta, placements, startDate, endDate, priority } = req.body as Record<string, unknown>;
+  const { title, adType, mediaUrls, thumbnailUrl, caption, category, cta, placements, startDate, endDate, priority } = req.body as Record<string, unknown>;
   const update: Record<string, unknown> = {};
 
   if (title !== undefined) update.title = title;
@@ -71,6 +72,7 @@ adsAdminRouter.patch("/:id", requireAdminToken, async (req: AuthedRequest, res: 
   if (mediaUrls !== undefined) update.mediaUrls = mediaUrls;
   if (thumbnailUrl !== undefined) update.thumbnailUrl = thumbnailUrl;
   if (caption !== undefined) update.caption = caption;
+  if (category !== undefined) update.category = category;
   if (cta !== undefined) update.cta = cta;
   if (placements !== undefined) update.placements = placements;
   if (startDate !== undefined) update.startDate = new Date(startDate as string);

@@ -35,10 +35,12 @@ import { enqueueMediaJob } from "../workers/mediaWorker.js";
 import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 import { normalizeFeedCategory } from "../utils/feedCategory.js";
 import { PromotionCampaign } from "../models/PromotionCampaign.js";
+import { ContentDeliveryLog } from "../models/ContentDeliveryLog.js";
 
 export const postsRouter = Router();
 
 const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
+const DELIVERY_FREQ_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Public listings: active, not soft-deleted, and not still processing. */
 const VISIBLE_POST = {
@@ -69,33 +71,102 @@ function campaignPlacementOr(placementKeys: string[]) {
   };
 }
 
+function normalizeCategory(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+async function getViewerInterestScores(viewerId: mongoose.Types.ObjectId): Promise<Map<string, number>> {
+  const scores = new Map<string, number>();
+  const add = (category: string, weight: number) => {
+    if (!category) return;
+    scores.set(category, (scores.get(category) ?? 0) + weight);
+  };
+
+  const likes = await Like.find({ userId: viewerId, targetType: "post" })
+    .sort({ createdAt: -1 })
+    .limit(120)
+    .select("targetId")
+    .lean();
+  if (likes.length) {
+    const likedPosts = await Post.find({ _id: { $in: likes.map((l) => l.targetId) } })
+      .select("feedCategory")
+      .lean();
+    likedPosts.forEach((p) => add(normalizeCategory((p as { feedCategory?: unknown }).feedCategory), 4));
+  }
+
+  const follows = await Follow.find({ followerId: viewerId, status: "accepted" })
+    .sort({ createdAt: -1 })
+    .limit(160)
+    .select("followingId")
+    .lean();
+  if (follows.length) {
+    const followedPosts = await Post.find({
+      authorId: { $in: follows.map((f) => f.followingId) },
+      ...VISIBLE_POST,
+    })
+      .sort({ createdAt: -1 })
+      .limit(160)
+      .select("feedCategory")
+      .lean();
+    followedPosts.forEach((p) => add(normalizeCategory((p as { feedCategory?: unknown }).feedCategory), 2));
+  }
+
+  return scores;
+}
+
 /**
  * Promoted post docs for feed/explore/reels/stories injection.
  * Skips campaign owners the viewer already follows (they get organic delivery instead).
  */
 async function getPromotedPostDocs(
+  viewerId: mongoose.Types.ObjectId,
   excludeOwnerIds: mongoose.Types.ObjectId[],
   placementKeys: string[],
   limit: number,
   contentType?: "post" | "reel" | "story",
 ): Promise<Array<Record<string, unknown>>> {
   const now = new Date();
+  const capSince = new Date(Date.now() - DELIVERY_FREQ_CAP_WINDOW_MS);
   const typeClause = contentType ? { contentType } : {};
-  const campaigns = await PromotionCampaign.find({
-    ...activePromotionClause(now),
-    ...campaignPlacementOr(placementKeys),
-    ...typeClause,
-  })
-    .sort({ createdAt: -1 })
-    .limit(Math.max(limit * 5, 12))
-    .lean();
+  const [campaigns, recentImpressions, interestScores] = await Promise.all([
+    PromotionCampaign.find({
+      ...activePromotionClause(now),
+      ...campaignPlacementOr(placementKeys),
+      ...typeClause,
+    })
+      .sort({ createdAt: -1 })
+      .limit(Math.max(limit * 8, 20))
+      .lean(),
+    ContentDeliveryLog.find({
+      viewerId,
+      deliveryKind: "impression",
+      createdAt: { $gte: capSince },
+      promotionId: { $exists: true },
+    })
+      .select("promotionId")
+      .lean(),
+    getViewerInterestScores(viewerId),
+  ]);
 
   if (!campaigns.length) return [];
 
+  const blockedPromotionIds = new Set(
+    recentImpressions.map((x) => String((x as { promotionId?: unknown }).promotionId ?? "")),
+  );
   const ex = new Set(excludeOwnerIds.map(String));
-  const eligible = campaigns.filter((c) => !ex.has(String(c.ownerUserId)));
-  const sliced = eligible.slice(0, limit);
-  const postIds = sliced.map((c) => c.contentId);
+  const eligible = campaigns.filter(
+    (c) => !ex.has(String(c.ownerUserId)) && !blockedPromotionIds.has(String(c._id)),
+  );
+  if (!eligible.length) return [];
+
+  const postToCampaigns = new Map<string, typeof eligible>();
+  for (const c of eligible) {
+    const key = String(c.contentId);
+    const arr = postToCampaigns.get(key) ?? [];
+    arr.push(c);
+    postToCampaigns.set(key, arr);
+  }
+  const postIds = [...postToCampaigns.keys()].map((id) => new mongoose.Types.ObjectId(id));
   if (!postIds.length) return [];
 
   const posts = await Post.find({
@@ -106,15 +177,30 @@ async function getPromotedPostDocs(
     .lean();
 
   const byId = new Map(posts.map((p) => [String(p._id), p]));
+  const ranked: Array<{ campaign: (typeof eligible)[number]; score: number }> = [];
+  for (const [postId, postCampaigns] of postToCampaigns.entries()) {
+    const raw = byId.get(postId);
+    if (!raw) continue;
+    const category = normalizeCategory((raw as { feedCategory?: unknown }).feedCategory);
+    const interestBoost = (interestScores.get(category) ?? 0) * 20;
+    for (const campaign of postCampaigns) {
+      ranked.push({
+        campaign,
+        score: interestBoost + new Date(campaign.createdAt).getTime() / 1_000_000_000_000,
+      });
+    }
+  }
+  ranked.sort((a, b) => b.score - a.score);
+
   const out: Array<Record<string, unknown>> = [];
-  for (const c of sliced) {
+  for (const row of ranked.slice(0, limit)) {
+    const c = row.campaign;
     const raw = byId.get(String(c.contentId));
     if (!raw) continue;
     const ctaDoc = c.cta as { label?: string; url?: string } | undefined;
     const ctaLabel = typeof ctaDoc?.label === "string" ? ctaDoc.label.trim() : "";
     const ctaUrl = typeof ctaDoc?.url === "string" ? ctaDoc.url.trim() : "";
-    const promotionCta =
-      ctaLabel && ctaUrl ? { label: ctaLabel, url: ctaUrl } : undefined;
+    const promotionCta = ctaLabel && ctaUrl ? { label: ctaLabel, url: ctaUrl } : undefined;
 
     out.push({
       ...raw,
@@ -160,6 +246,7 @@ async function getPromotedStoryTrayGroups(
   seenSet: Set<string>,
 ): Promise<Array<{ author: unknown; stories: unknown[]; isPromoted: boolean; promotionId: string }>> {
   const now = new Date();
+  const capSince = new Date(Date.now() - DELIVERY_FREQ_CAP_WINDOW_MS);
   const campaigns = await PromotionCampaign.find({
     ...activePromotionClause(now),
     contentType: "story",
@@ -167,11 +254,27 @@ async function getPromotedStoryTrayGroups(
     ownerUserId: { $nin: [viewerId, ...followingIds] },
   })
     .sort({ createdAt: -1 })
-    .limit(6)
+    .limit(12)
     .lean();
+
+  const [recentImpressions, interestScores] = await Promise.all([
+    ContentDeliveryLog.find({
+      viewerId,
+      deliveryKind: "impression",
+      createdAt: { $gte: capSince },
+      promotionId: { $exists: true },
+    })
+      .select("promotionId")
+      .lean(),
+    getViewerInterestScores(viewerId),
+  ]);
+  const blockedPromotionIds = new Set(
+    recentImpressions.map((x) => String((x as { promotionId?: unknown }).promotionId ?? "")),
+  );
 
   const out: Array<{ author: unknown; stories: unknown[]; isPromoted: boolean; promotionId: string }> = [];
   for (const c of campaigns) {
+    if (blockedPromotionIds.has(String(c._id))) continue;
     const s = await Post.findOne({
       _id: c.contentId,
       type: "story",
@@ -181,6 +284,8 @@ async function getPromotedStoryTrayGroups(
       .populate("authorId", AUTHOR_SELECT)
       .lean();
     if (!s) continue;
+    const storyCategory = normalizeCategory((s as { feedCategory?: unknown }).feedCategory);
+    if (interestScores.size > 0 && (interestScores.get(storyCategory) ?? 0) <= 0) continue;
     const ctaDoc = c.cta as { label?: string; url?: string } | undefined;
     const ctaLabel = typeof ctaDoc?.label === "string" ? ctaDoc.label.trim() : "";
     const ctaUrl = typeof ctaDoc?.url === "string" ? ctaDoc.url.trim() : "";
@@ -209,6 +314,7 @@ async function getPromotedStoryTrayGroups(
         },
       ],
     });
+    if (out.length >= 6) break;
   }
   return out;
 }
@@ -465,7 +571,7 @@ postsRouter.get(
 
         // No follows: home still uses "friends" phase but only surfaces promoted content (no organic stranger posts).
         if (fyPhase === "friends" && dbUser && !hasFollows) {
-          const promotedRaw = await getPromotedPostDocs([dbUser._id], ["feed", "explore"], 8);
+          const promotedRaw = await getPromotedPostDocs(dbUser._id, [dbUser._id], ["feed", "explore"], 8);
           const onlyPromoted = promotedRaw.map((p) =>
             normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
           );
@@ -507,7 +613,7 @@ postsRouter.get(
           // Inject promoted feed slots for non-followers of the advertiser (friends feed otherwise never shows promos).
           if (!cf && dbUser) {
             const excludeAuthors = [...followingIds, dbUser._id] as mongoose.Types.ObjectId[];
-            const promotedRaw = await getPromotedPostDocs(excludeAuthors, ["feed", "explore"], 2);
+            const promotedRaw = await getPromotedPostDocs(dbUser._id, excludeAuthors, ["feed", "explore"], 2);
             friendPosts = splicePromotedIntoFeed(
               friendPosts,
               promotedRaw,
@@ -542,6 +648,7 @@ postsRouter.get(
         let allPosts = mapPosts(posts);
         if (dbUser) {
           const promotedRaw = await getPromotedPostDocs(
+            dbUser._id,
             excludeAuthors as mongoose.Types.ObjectId[],
             ["feed", "explore"],
             6,
@@ -687,6 +794,7 @@ postsRouter.get(
 
       if (!cursor && page === 1 && dbUser) {
         const promotedRaw = await getPromotedPostDocs(
+          dbUser._id,
           [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
           ["reels", "feed", "explore"],
           1,
@@ -816,6 +924,7 @@ postsRouter.get(
 
       if (page === 1 && dbUser) {
         const promotedRaw = await getPromotedPostDocs(
+          dbUser._id,
           [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
           ["explore", "feed"],
           2,
@@ -876,6 +985,7 @@ postsRouter.get(
 
       if (dbUser) {
         const promotedRaw = await getPromotedPostDocs(
+          dbUser._id,
           [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
           ["reels", "feed", "explore"],
           1,

@@ -20,6 +20,8 @@ export interface AdDoc extends Document {
   mediaUrls: string[];
   thumbnailUrl: string;
   caption: string;
+  /** Primary targeting bucket (e.g. sports, tech, politics). */
+  category?: string;
   brandName?: string;
   cta: AdCta;
   placements: AdPlacement[];
@@ -63,6 +65,7 @@ const adSchema = new Schema<AdDoc>(
     mediaUrls: { type: [String], required: true, validate: (v: string[]) => v.length >= 1 && v.length <= 10 },
     thumbnailUrl: { type: String, default: "" },
     caption: { type: String, default: "", maxlength: 2200 },
+    category: { type: String, default: "", maxlength: 40, index: true },
     cta: { type: ctaSchema, required: true },
     placements: {
       type: [{ type: String, enum: ["feed", "reels", "stories", "explore"] }],

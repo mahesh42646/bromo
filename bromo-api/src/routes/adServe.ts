@@ -3,6 +3,9 @@ import mongoose from "mongoose";
 import { Ad } from "../models/Ad.js";
 import { AdEvent } from "../models/AdEvent.js";
 import { AdEngagement } from "../models/AdEngagement.js";
+import { Like } from "../models/Like.js";
+import { Follow } from "../models/Follow.js";
+import { Post } from "../models/Post.js";
 import {
   requireFirebaseToken,
   requireVerifiedUser,
@@ -12,6 +15,76 @@ import {
 export const adServeRouter = Router();
 
 const VALID_PLACEMENTS = new Set(["feed", "reels", "stories", "explore"]);
+const FREQUENCY_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function normalizeCategory(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+async function getViewerInterestScores(viewerId: mongoose.Types.ObjectId): Promise<Map<string, number>> {
+  const scores = new Map<string, number>();
+  const add = (category: string, weight: number) => {
+    if (!category) return;
+    scores.set(category, (scores.get(category) ?? 0) + weight);
+  };
+
+  const likes = await Like.find({ userId: viewerId, targetType: "post" })
+    .sort({ createdAt: -1 })
+    .limit(120)
+    .select("targetId")
+    .lean();
+  if (likes.length) {
+    const likedPosts = await Post.find({ _id: { $in: likes.map((l) => l.targetId) } })
+      .select("feedCategory")
+      .lean();
+    likedPosts.forEach((p) => add(normalizeCategory((p as { feedCategory?: unknown }).feedCategory), 4));
+  }
+
+  const follows = await Follow.find({ followerId: viewerId, status: "accepted" })
+    .sort({ createdAt: -1 })
+    .limit(150)
+    .select("followingId")
+    .lean();
+  if (follows.length) {
+    const followedPosts = await Post.find({
+      authorId: { $in: follows.map((f) => f.followingId) },
+      isActive: true,
+      isDeleted: { $ne: true },
+    })
+      .sort({ createdAt: -1 })
+      .limit(150)
+      .select("feedCategory")
+      .lean();
+    followedPosts.forEach((p) => add(normalizeCategory((p as { feedCategory?: unknown }).feedCategory), 2));
+  }
+
+  const adEngagements = await AdEngagement.find({
+    userId: viewerId,
+    $or: [{ likedAt: { $exists: true } }, { savedAt: { $exists: true } }, { sharedAt: { $exists: true } }],
+  })
+    .sort({ updatedAt: -1 })
+    .limit(80)
+    .select("adId likedAt savedAt sharedAt")
+    .lean();
+  if (adEngagements.length) {
+    const adMap = new Map(
+      (
+        await Ad.find({ _id: { $in: adEngagements.map((e) => e.adId) } })
+          .select("category")
+          .lean()
+      ).map((a) => [String(a._id), normalizeCategory((a as { category?: unknown }).category)]),
+    );
+    adEngagements.forEach((e) => {
+      const category = adMap.get(String(e.adId)) ?? "";
+      if (!category) return;
+      if (e.savedAt) add(category, 5);
+      if (e.likedAt) add(category, 3);
+      if (e.sharedAt) add(category, 2);
+    });
+  }
+
+  return scores;
+}
 
 // ─── Serve active ads for a placement ────────────────────────────────────────
 adServeRouter.get("/serve", requireFirebaseToken, async (req: FirebaseAuthedRequest, res: Response) => {
@@ -24,19 +97,46 @@ adServeRouter.get("/serve", requireFirebaseToken, async (req: FirebaseAuthedRequ
 
   const limitNum = Math.min(10, Math.max(1, parseInt(limit)));
   const now = new Date();
+  const viewerId = req.dbUser?._id;
+  const since = new Date(Date.now() - FREQUENCY_CAP_WINDOW_MS);
+
+  let blockedAdIds: mongoose.Types.ObjectId[] = [];
+  let interestScores = new Map<string, number>();
+  if (viewerId) {
+    const [recentImpressions, scores] = await Promise.all([
+      AdEvent.find({
+        userId: viewerId,
+        event: "impression",
+        createdAt: { $gte: since },
+      })
+        .select("adId")
+        .lean(),
+      getViewerInterestScores(viewerId),
+    ]);
+    blockedAdIds = recentImpressions.map((e) => e.adId);
+    interestScores = scores;
+  }
 
   const ads = await Ad.find({
     status: "active",
     placements: placement,
+    ...(blockedAdIds.length ? { _id: { $nin: blockedAdIds } } : {}),
     startDate: { $lte: now },
     $or: [{ endDate: { $gt: now } }, { endDate: null }, { endDate: { $exists: false } }],
   })
     .sort({ priority: -1, createdAt: -1 })
     .limit(limitNum * 3)
-    .select("adType mediaUrls thumbnailUrl caption cta placements brandName")
+    .select("adType mediaUrls thumbnailUrl caption cta placements brandName category priority createdAt")
     .lean();
 
-  const shuffled = shuffleWithinPriority(ads as AdWithPriority[]);
+  const scored = (ads as Array<AdWithPriority & { category?: string; createdAt?: Date }>).map((ad) => {
+    const category = normalizeCategory(ad.category);
+    const score = (ad.priority ?? 1) * 100 + (interestScores.get(category) ?? 0) * 25;
+    return { ad, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  const ranked = scored.map((x) => x.ad);
+  const shuffled = shuffleWithinPriority(ranked);
   res.json({ ads: shuffled.slice(0, limitNum) });
 });
 
@@ -87,10 +187,25 @@ adServeRouter.post("/:id/event", requireFirebaseToken, async (req: FirebaseAuthe
     return;
   }
 
+  const userId = req.dbUser?._id;
+  if (userId && (event === "impression" || event === "click")) {
+    const capSince = new Date(Date.now() - FREQUENCY_CAP_WINDOW_MS);
+    const duplicate = await AdEvent.exists({
+      adId: adObjectId,
+      userId,
+      event,
+      createdAt: { $gte: capSince },
+    });
+    if (duplicate) {
+      res.json({ ok: true, deduped: true });
+      return;
+    }
+  }
+
   Promise.all([
     AdEvent.create({
       adId: adObjectId,
-      userId: req.dbUser?._id,
+      userId,
       event,
       placement,
       watchTimeMs: typeof watchTimeMs === "number" ? Math.round(watchTimeMs) : undefined,

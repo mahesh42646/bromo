@@ -13,6 +13,7 @@ export const promotionsRouter = Router();
 // Minimum budget and reserve (coins) required to activate a campaign
 const MIN_BUDGET_COINS = 100;
 const ACTIVATION_RESERVE_COINS = 50; // minimum coins available to allow activation
+const DELIVERY_FREQ_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // ─── POST /promotions — create draft ─────────────────────────────────────────
 promotionsRouter.post("/", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
@@ -276,6 +277,18 @@ promotionsRouter.post("/:id/log-delivery", requireVerifiedUser, async (req: Fire
       : isFollowerOfAuthor && surface === "feed"
         ? "organic"
         : "promoted";
+
+  const capSince = new Date(Date.now() - DELIVERY_FREQ_CAP_WINDOW_MS);
+  const duplicateInWindow = await ContentDeliveryLog.exists({
+    viewerId: req.dbUser!._id,
+    promotionId: campaign._id,
+    deliveryKind,
+    createdAt: { $gte: capSince },
+  });
+  if (duplicateInWindow) {
+    res.json({ ok: true, billingCategory: "organic", deliveryKind, deduped: true });
+    return;
+  }
 
   // Fire-and-forget log creation
   ContentDeliveryLog.create({
