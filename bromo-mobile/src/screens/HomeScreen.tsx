@@ -1262,22 +1262,27 @@ export function HomeScreen() {
                 flexShrink: 1,
                 minWidth: 0,
                 marginRight: 12,
-                gap: 12,
+                gap: 10,
               }}>
-              {/* {brandIconUri ? (
-                <Image
-                  source={{uri: brandIconUri}}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    // borderRadius: 10,
-                    // backgroundColor: palette.surface,
-                    // borderWidth: 1,
-                    // borderColor: palette.border,
-                  }}
-                  resizeMode="contain"
-                />
-              ) : null} */}
+              <Pressable
+                hitSlop={10}
+                accessibilityLabel="Create"
+                onPress={() =>
+                  parentNavigate(navigation, 'CreateFlow', {
+                    screen: 'CreateHub',
+                    params: {mode: 'reel', bootstrapTs: Date.now()},
+                  })
+                }
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: palette.primary,
+                }}>
+                <Plus size={20} color={palette.primaryForeground} strokeWidth={2.75} />
+              </Pressable>
               <ThemedText
                 variant="heading"
                 numberOfLines={1}
@@ -1328,33 +1333,6 @@ export function HomeScreen() {
                 </Pressable>
                 <HeaderBadge count={messagesUnread} />
               </View>
-              <Pressable
-                onPress={() => parentNavigate(navigation, 'Profile')}
-                hitSlop={10}
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 19,
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  overflow: 'hidden',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: palette.muted,
-                }}>
-                {myAvatar ? (
-                  <Image source={{uri: myAvatarResolved || myAvatar}} style={{width: 38, height: 38, borderRadius: 19}} />
-                ) : (
-                  <Text
-                    style={{
-                      color: palette.foreground,
-                      fontSize: 13,
-                      fontWeight: '700',
-                    }}>
-                    {profileInitials}
-                  </Text>
-                )}
-              </Pressable>
             </View>
           </>
         )}

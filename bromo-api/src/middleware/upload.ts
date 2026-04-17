@@ -177,10 +177,11 @@ const storageGeneral = multer.diskStorage({
   },
 });
 
+// Max media upload — 600MB raw; server will transcode to 1080p30 ≤ ~200MB.
 export const uploadSingle = multer({
   storage: storageGeneral,
   fileFilter: makeFileFilter(null),
-  limits: { fileSize: 100 * 1024 * 1024 },
+  limits: { fileSize: 600 * 1024 * 1024 },
 }).single("file");
 
 const storageAvatar = multer.diskStorage({

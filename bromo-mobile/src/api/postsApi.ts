@@ -1,7 +1,36 @@
 import auth from '@react-native-firebase/auth';
-import {authedFetch, apiBase, authorizedFetch} from './authApi';
+import ReactNativeBlobUtil from 'react-native-blob-util';
+import {authedFetch, apiBase, authorizedFetch, getIdToken} from './authApi';
 import type {PromotionObjective} from './promotionsApi';
 import {buildMediaUploadPart} from '../lib/mediaUploadPart';
+
+/** Matches server `upload.ts` — larger files rejected before upload starts. */
+export const MAX_UPLOAD_BYTES = 600 * 1024 * 1024;
+
+export async function getLocalFileSizeBytes(uri: string): Promise<number | null> {
+  const path = uri.replace(/^file:\/\//, '');
+  try {
+    const stat = await ReactNativeBlobUtil.fs.stat(path);
+    return typeof stat.size === 'number' ? stat.size : null;
+  } catch {
+    return null;
+  }
+}
+
+export type PostUploadSettings = {
+  commentsOff?: boolean;
+  hideLikes?: boolean;
+  allowRemix?: boolean;
+  closeFriendsOnly?: boolean;
+};
+
+export type PostLocationMeta = {
+  name: string;
+  lat?: number;
+  lng?: number;
+  address?: string;
+  placeId?: string;
+};
 
 export type PostAuthor = {
   _id: string;
@@ -257,8 +286,13 @@ export async function createPost(data: {
   mediaType: 'image' | 'video';
   caption?: string;
   location?: string;
+  locationMeta?: PostLocationMeta;
   music?: string;
   tags?: string[];
+  taggedUserIds?: string[];
+  productIds?: string[];
+  settings?: PostUploadSettings;
+  durationMs?: number;
   storyMeta?: StoryMeta;
   feedCategory?: string;
 }): Promise<{post: Post}> {
@@ -470,6 +504,71 @@ export async function uploadMedia(
   };
 }
 
+export type UploadMediaAsyncMeta = {
+  type: 'image' | 'video';
+  fileName?: string | null;
+  category?: 'posts' | 'reels' | 'stories';
+  caption?: string;
+  location?: string;
+  music?: string;
+  tags?: string[];
+  feedCategory?: string;
+  taggedUserIds?: string[];
+  productIds?: string[];
+  locationMeta?: PostLocationMeta | null;
+  settings?: PostUploadSettings | null;
+  durationMs?: number;
+};
+
+function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
+  if (meta.caption) form.append('caption', meta.caption);
+  if (meta.location) form.append('location', meta.location);
+  if (meta.music) form.append('music', meta.music);
+  if (meta.tags?.length) form.append('tags', meta.tags.join(','));
+  if (meta.feedCategory && meta.feedCategory !== 'general') form.append('feedCategory', meta.feedCategory);
+  if (meta.taggedUserIds?.length) form.append('taggedUserIds', meta.taggedUserIds.join(','));
+  if (meta.productIds?.length) form.append('productIds', meta.productIds.join(','));
+  if (meta.locationMeta?.name) {
+    form.append('locationMeta', JSON.stringify(meta.locationMeta));
+  }
+  if (meta.settings && Object.keys(meta.settings).length > 0) {
+    form.append('settings', JSON.stringify(meta.settings));
+  }
+  if (typeof meta.durationMs === 'number' && !Number.isNaN(meta.durationMs)) {
+    form.append('durationMs', String(Math.round(meta.durationMs)));
+  }
+}
+
+function postFormWithProgress(
+  url: string,
+  form: FormData,
+  onProgress?: (fraction: number) => void,
+): Promise<{ok: boolean; status: number; body: string}> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.responseType = 'text';
+    void getIdToken(false).then(
+      token => {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.upload.onprogress = (e: ProgressEvent) => {
+          if (onProgress && e.lengthComputable && e.total > 0) {
+            onProgress(Math.min(1, e.loaded / e.total));
+          }
+        };
+        xhr.onload = () => {
+          resolve({ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, body: xhr.responseText ?? ''});
+        };
+        xhr.onerror = () => reject(new Error('Upload failed (network)'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out'));
+        xhr.timeout = 900_000;
+        xhr.send(form as never);
+      },
+      err => reject(err instanceof Error ? err : new Error('Not authenticated')),
+    );
+  });
+}
+
 /**
  * Upload media asynchronously — returns immediately with jobId + postId.
  * Server processes HLS transcode in background and sends a notification when done.
@@ -477,16 +576,8 @@ export async function uploadMedia(
  */
 export async function uploadMediaAsync(
   localUri: string,
-  meta: {
-    type: 'image' | 'video';
-    fileName?: string | null;
-    category?: 'posts' | 'reels' | 'stories';
-    caption?: string;
-    location?: string;
-    music?: string;
-    tags?: string[];
-    feedCategory?: string;
-  },
+  meta: UploadMediaAsyncMeta,
+  onProgress?: (fraction: number) => void,
 ): Promise<{jobId: string; postId: string; thumbnailUrl?: string}> {
   if (!auth().currentUser) throw new Error('Not authenticated');
   const base = apiBase();
@@ -495,11 +586,30 @@ export async function uploadMediaAsync(
   const part = buildMediaUploadPart(localUri, meta.type, meta.fileName);
   const form = new FormData();
   form.append('file', {uri: part.uri, type: part.type, name: part.name} as unknown as Blob);
-  if (meta.caption) form.append('caption', meta.caption);
-  if (meta.location) form.append('location', meta.location);
-  if (meta.music) form.append('music', meta.music);
-  if (meta.tags?.length) form.append('tags', meta.tags.join(','));
-  if (meta.feedCategory && meta.feedCategory !== 'general') form.append('feedCategory', meta.feedCategory);
+  appendAsyncMeta(form, meta);
+
+  if (onProgress) {
+    const url = `${base}/media/upload-async?category=${encodeURIComponent(category)}`;
+    const {ok, body: text} = await postFormWithProgress(url, form, onProgress);
+    const body = (() => {
+      try {
+        return JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        return {} as Record<string, unknown>;
+      }
+    })();
+    if (!ok) {
+      throw new Error((body.message as string | undefined) ?? (text.trim() || 'Async upload failed'));
+    }
+    const jobId = body.jobId as string | undefined;
+    const postId = body.postId as string | undefined;
+    if (!jobId || !postId) throw new Error('Server did not return jobId/postId');
+    return {
+      jobId,
+      postId,
+      thumbnailUrl: typeof body.thumbnailUrl === 'string' ? body.thumbnailUrl : undefined,
+    };
+  }
 
   const res = await authorizedFetch(`${base}/media/upload-async?category=${encodeURIComponent(category)}`, {
     method: 'POST',

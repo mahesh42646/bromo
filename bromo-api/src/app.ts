@@ -49,6 +49,9 @@ import { adsAdminRouter } from "./routes/ads.js";
 import { adServeRouter } from "./routes/adServe.js";
 import { walletRouter } from "./routes/wallet.js";
 import { promotionsRouter } from "./routes/promotions.js";
+import { affiliateAdminRouter, affiliatePublicRouter } from "./routes/affiliateProducts.js";
+import { draftsRouter } from "./routes/drafts.js";
+import { placesRouter } from "./routes/places.js";
 import { startPromotionBillingWorker } from "./workers/promotionBillingWorker.js";
 import { initFirebase } from "./config/firebase.js";
 
@@ -148,6 +151,10 @@ export function createApp() {
   app.use("/ads", adServeRouter);
   app.use("/wallet", walletRouter);
   app.use("/promotions", promotionsRouter);
+  app.use("/admin/products", affiliateAdminRouter);
+  app.use("/products", affiliatePublicRouter);
+  app.use("/drafts", draftsRouter);
+  app.use("/places", placesRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });

@@ -8,6 +8,10 @@ import {ShareScreen} from '@/screens/create/ShareScreen';
 import {CameraSettingsScreen} from '@/screens/create/CameraSettingsScreen';
 import {DraftsScreen} from '@/screens/create/DraftsScreen';
 import {LivePreviewScreen} from '@/screens/create/LivePreviewScreen';
+import {InAppCameraScreen} from '@/screens/create/InAppCameraScreen';
+import {LocationPickerScreen} from '@/screens/create/LocationPickerScreen';
+import {TagPeoplePickerScreen} from '@/screens/create/TagPeoplePickerScreen';
+import {ProductPickerScreen} from '@/screens/create/ProductPickerScreen';
 import {
   CloseFriendsPickerScreen,
   CollaborationInviteScreen,
@@ -26,11 +30,15 @@ export type CreateStackParamList = {
   CameraSettings: undefined;
   Drafts: undefined;
   LivePreview: undefined;
+  InAppCamera: undefined;
   FilterEffects: undefined;
   CloseFriendsPicker: undefined;
   MusicPicker: {mode: 'reel' | 'story' | 'post'};
   VideoTrim: {uri: string};
   CollaborationInvite: undefined;
+  LocationPicker: undefined;
+  TagPeoplePicker: undefined;
+  ProductPicker: undefined;
 };
 
 const Stack = createNativeStackNavigator<CreateStackParamList>();
@@ -53,6 +61,11 @@ export function CreateStackNavigator() {
           options={{animation: 'slide_from_bottom'}}
         />
         <Stack.Screen name="CameraSettings" component={CameraSettingsScreen} />
+        <Stack.Screen
+          name="InAppCamera"
+          component={InAppCameraScreen}
+          options={{animation: 'fade'}}
+        />
         <Stack.Screen name="Drafts" component={DraftsScreen} />
         <Stack.Screen
           name="LivePreview"
@@ -64,6 +77,9 @@ export function CreateStackNavigator() {
         <Stack.Screen name="MusicPicker" component={MusicPickerScreen} />
         <Stack.Screen name="VideoTrim" component={VideoTrimScreen} />
         <Stack.Screen name="CollaborationInvite" component={CollaborationInviteScreen} />
+        <Stack.Screen name="LocationPicker" component={LocationPickerScreen} />
+        <Stack.Screen name="TagPeoplePicker" component={TagPeoplePickerScreen} />
+        <Stack.Screen name="ProductPicker" component={ProductPickerScreen} />
       </Stack.Navigator>
     </CreateDraftProvider>
   );

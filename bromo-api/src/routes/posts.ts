@@ -1614,8 +1614,13 @@ postsRouter.post(
         mediaType,
         caption,
         location,
+        locationMeta,
         music,
         tags,
+        taggedUserIds,
+        productIds,
+        settings,
+        durationMs,
         storyMeta,
         feedCategory: feedCategoryRaw,
       } = req.body as {
@@ -1625,8 +1630,13 @@ postsRouter.post(
         mediaType: "image" | "video";
         caption?: string;
         location?: string;
+        locationMeta?: { name: string; lat?: number; lng?: number; address?: string; placeId?: string };
         music?: string;
         tags?: string[];
+        taggedUserIds?: string[];
+        productIds?: string[];
+        settings?: { commentsOff?: boolean; hideLikes?: boolean; allowRemix?: boolean; closeFriendsOnly?: boolean };
+        durationMs?: number;
         storyMeta?: { bgColor?: string; overlays?: unknown[] };
         feedCategory?: string;
       };
@@ -1655,6 +1665,15 @@ postsRouter.post(
               ? normalizeFeedCategory(feedCategoryRaw)
               : "followers";
 
+      const safeTaggedUserIds = (taggedUserIds ?? [])
+        .filter((x) => typeof x === "string" && mongoose.Types.ObjectId.isValid(x))
+        .slice(0, 20)
+        .map((x) => new mongoose.Types.ObjectId(x));
+      const safeProductIds = (productIds ?? [])
+        .filter((x) => typeof x === "string" && mongoose.Types.ObjectId.isValid(x))
+        .slice(0, 6)
+        .map((x) => new mongoose.Types.ObjectId(x));
+
       const post = await Post.create({
         authorId: user._id,
         type,
@@ -1663,8 +1682,13 @@ postsRouter.post(
         mediaType: mediaType ?? "image",
         caption: caption?.trim() ?? "",
         location: location?.trim() ?? "",
+        ...(locationMeta && locationMeta.name ? { locationMeta } : {}),
         music: music?.trim() ?? "",
         tags: tags ?? [],
+        ...(safeTaggedUserIds.length ? { taggedUserIds: safeTaggedUserIds } : {}),
+        ...(safeProductIds.length ? { productIds: safeProductIds } : {}),
+        ...(settings ? { settings } : {}),
+        ...(typeof durationMs === "number" ? { durationMs } : {}),
         expiresAt,
         isDeleted: false,
         feedCategory,

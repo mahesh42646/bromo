@@ -17,7 +17,6 @@ import type {RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {
-  launchCamera,
   launchImageLibrary,
   type Asset,
 } from 'react-native-image-picker';
@@ -186,26 +185,10 @@ export function CreateHubScreen() {
       navigation.navigate('LivePreview');
       return;
     }
-    launchCamera(
-      {
-        mediaType: draft.mode === 'reel' ? 'video' : 'mixed',
-        cameraType: frontCam ? 'front' : 'back',
-        videoQuality: 'high',
-        saveToPhotos: true,
-        durationLimit: draft.mode === 'story' ? 60 : draft.mode === 'reel' ? 90 : undefined,
-      },
-      res => {
-        if (res.didCancel || res.errorCode) return;
-        const a = res.assets?.[0];
-        if (!a) return;
-        const m = mapAsset(a);
-        if (m) {
-          setAssets([m]);
-          navigation.navigate('MediaEditor');
-        }
-      },
-    );
-  }, [draft.mode, frontCam, navigation, setAssets]);
+    // In-app camera (tap = photo, hold = record). Video-only for reel.
+    navigation.navigate('InAppCamera');
+  }, [draft.mode, navigation]);
+  void frontCam;
 
   const openLibraryFull = useCallback(() => {
     launchImageLibrary(

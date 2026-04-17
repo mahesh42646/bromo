@@ -21,6 +21,21 @@ export type StoryMeta = {
 
 export type ProcessingStatus = "pending" | "processing" | "ready" | "failed";
 
+export type PostSettings = {
+  commentsOff?: boolean;
+  hideLikes?: boolean;
+  allowRemix?: boolean;
+  closeFriendsOnly?: boolean;
+};
+
+export type LocationMeta = {
+  name: string;
+  lat?: number;
+  lng?: number;
+  address?: string;
+  placeId?: string;
+};
+
 export interface PostDoc extends Document {
   authorId: Types.ObjectId;
   type: "post" | "reel" | "story";
@@ -29,7 +44,12 @@ export interface PostDoc extends Document {
   thumbnailUrl: string;
   caption: string;
   location: string;
+  locationMeta?: LocationMeta;
   tags: string[];
+  taggedUserIds: Types.ObjectId[];
+  productIds: Types.ObjectId[];
+  settings?: PostSettings;
+  durationMs?: number;
   music: string;
   likesCount: number;
   commentsCount: number;
@@ -72,7 +92,23 @@ const postSchema = new Schema<PostDoc>(
     thumbnailUrl: { type: String, default: "" },
     caption: { type: String, default: "", maxlength: 2200 },
     location: { type: String, default: "" },
+    locationMeta: {
+      name: String,
+      lat: Number,
+      lng: Number,
+      address: String,
+      placeId: String,
+    },
     tags: [{ type: String }],
+    taggedUserIds: [{ type: Schema.Types.ObjectId, ref: "User", index: true }],
+    productIds: [{ type: Schema.Types.ObjectId, ref: "AffiliateProduct" }],
+    settings: {
+      commentsOff: Boolean,
+      hideLikes: Boolean,
+      allowRemix: Boolean,
+      closeFriendsOnly: Boolean,
+    },
+    durationMs: { type: Number },
     music: { type: String, default: "" },
     likesCount: { type: Number, default: 0 },
     commentsCount: { type: Number, default: 0 },

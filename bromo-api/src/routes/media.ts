@@ -183,6 +183,50 @@ mediaRouter.post(
     const music = body.music ?? "";
     const tags: string[] = body.tags ? String(body.tags).split(",").map((t) => t.trim()).filter(Boolean) : [];
 
+    const parseIds = (raw?: string): string[] =>
+      raw
+        ? String(raw)
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s && /^[a-f0-9]{24}$/i.test(s))
+        : [];
+
+    const taggedUserIdStrs = parseIds(body.taggedUserIds);
+    const productIdStrs = parseIds(body.productIds).slice(0, 6);
+
+    let locationMeta: { name: string; lat?: number; lng?: number; address?: string; placeId?: string } | undefined;
+    if (body.locationMeta) {
+      try {
+        const m = JSON.parse(body.locationMeta) as Record<string, unknown>;
+        if (m && typeof m.name === "string") {
+          locationMeta = {
+            name: m.name,
+            lat: typeof m.lat === "number" ? m.lat : undefined,
+            lng: typeof m.lng === "number" ? m.lng : undefined,
+            address: typeof m.address === "string" ? m.address : undefined,
+            placeId: typeof m.placeId === "string" ? m.placeId : undefined,
+          };
+        }
+      } catch { /* ignore */ }
+    }
+
+    let settings: { commentsOff?: boolean; hideLikes?: boolean; allowRemix?: boolean; closeFriendsOnly?: boolean } | undefined;
+    if (body.settings) {
+      try {
+        const s = JSON.parse(body.settings) as Record<string, unknown>;
+        settings = {
+          commentsOff: Boolean(s.commentsOff),
+          hideLikes: Boolean(s.hideLikes),
+          allowRemix: s.allowRemix === undefined ? true : Boolean(s.allowRemix),
+          closeFriendsOnly: Boolean(s.closeFriendsOnly),
+        };
+      } catch { /* ignore */ }
+    }
+
+    const durationMs = body.durationMs != null && !isNaN(Number(body.durationMs))
+      ? Number(body.durationMs)
+      : undefined;
+
     // Thumbnail for immediate preview (sync, lightweight)
     let thumbnailUrl = "";
     if (mediaType === "video") {
@@ -198,6 +242,12 @@ mediaRouter.post(
       postType === "story" ? "general" : normalizeFeedCategory(body.feedCategory);
 
     // Create draft post — hidden until processingStatus === ready
+    const mongooseRef = (await import("mongoose")).default;
+    const safeTaggedUserIds = taggedUserIdStrs
+      .slice(0, 20)
+      .map((x) => new mongooseRef.Types.ObjectId(x));
+    const safeProductIds = productIdStrs.map((x) => new mongooseRef.Types.ObjectId(x));
+
     const draftPost = await Post.create({
       authorId: dbUser._id,
       type: postType,
@@ -206,8 +256,13 @@ mediaRouter.post(
       thumbnailUrl,
       caption,
       location,
+      ...(locationMeta ? { locationMeta } : {}),
       music,
       tags,
+      ...(safeTaggedUserIds.length ? { taggedUserIds: safeTaggedUserIds } : {}),
+      ...(safeProductIds.length ? { productIds: safeProductIds } : {}),
+      ...(settings ? { settings } : {}),
+      ...(typeof durationMs === "number" ? { durationMs } : {}),
       feedCategory,
       expiresAt: storyExpiresAt,
       processingStatus: "pending",

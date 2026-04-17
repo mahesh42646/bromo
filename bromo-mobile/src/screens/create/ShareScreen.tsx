@@ -5,17 +5,20 @@ import {
   Animated,
   Dimensions,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  ToastAndroid,
   View,
 } from 'react-native';
+import ViewShot from 'react-native-view-shot';
+import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Video from 'react-native-video';
 import {
   Check,
@@ -34,15 +37,22 @@ import {
   Users,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import {useCreateDraft, type FeedCategoryPreset} from '../../create/CreateDraftContext';
+import {useCreateDraft} from '../../create/CreateDraftContext';
+import {packClientSnapshot} from '../../create/draftSnapshot';
+import type {FeedCategoryPreset, Visibility} from '../../create/createTypes';
 import {FILTER_LAYERS} from '../../create/filterStyles';
-import type {Visibility} from '../../create/createTypes';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
-import {uploadMedia, uploadMediaAsync, createPost} from '../../api/postsApi';
+import {
+  uploadMedia,
+  uploadMediaAsync,
+  createPost,
+  getLocalFileSizeBytes,
+  MAX_UPLOAD_BYTES,
+} from '../../api/postsApi';
+import {createDraft} from '../../api/draftsApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'ShareFinal'>;
 
-const DRAFT_KEY = 'bromo_ugc_drafts_v1';
 const {width: W} = Dimensions.get('window');
 
 type SharePhase = 'review' | 'posting' | 'processing' | 'done';
@@ -65,6 +75,17 @@ function slugFeedCategory(manual: string, preset: string): string {
   return t || preset;
 }
 
+function buildCaptionWithProducts(caption: string, hashtags: string[], products: {productUrl?: string}[]): string {
+  const head = [caption.trim(), ...hashtags].filter(Boolean).join(' ').trim();
+  const links = products.map(p => p.productUrl?.trim()).filter((u): u is string => !!u);
+  if (!links.length) return head;
+  return [head, ...links].filter(Boolean).join('\n\n');
+}
+
+function toastOk(msg: string) {
+  if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT);
+}
+
 export function ShareScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
@@ -80,6 +101,9 @@ export function ShareScreen() {
 
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<SharePhase>('review');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const previewShotRef = useRef<ViewShot>(null);
+  const processingNavTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -95,20 +119,67 @@ export function ShareScreen() {
   }, [navigation, reset]);
 
   const saveDraft = async () => {
+    if (!asset) {
+      Alert.alert('No media', 'Add something to save.');
+      return;
+    }
     setBusy(true);
     try {
-      const raw = await AsyncStorage.getItem(DRAFT_KEY);
-      const list = raw ? JSON.parse(raw) : [];
-      list.push({savedAt: Date.now(), draft: {...draft}});
-      await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(list.slice(-20)));
-      Alert.alert('Saved', 'Draft saved to your device.', [{text: 'OK', onPress: closeAll}]);
+      const feedCategory = slugFeedCategory(draft.feedCategoryManual, draft.feedCategoryPreset);
+      const caption = buildCaptionWithProducts(draft.caption, draft.hashtags, draft.products);
+      await createDraft({
+        type: draft.mode === 'live' ? 'reel' : draft.mode,
+        localUri: asset.uri,
+        thumbnailUri: asset.uri,
+        mediaType: asset.type,
+        caption,
+        location: draft.location?.name ?? '',
+        locationMeta:
+          draft.location?.lat != null && draft.location?.lng != null
+            ? {name: draft.location.name, lat: draft.location.lat, lng: draft.location.lng}
+            : undefined,
+        tags: draft.hashtags,
+        taggedUserIds: draft.tagged.map(t => t.id),
+        productIds: draft.products.map(p => p.id),
+        music: draft.selectedAudio?.title ?? '',
+        feedCategory,
+        filters: packClientSnapshot(draft),
+        settings: {
+          commentsOff: draft.advanced.commentsOff,
+          hideLikes: draft.advanced.hideLikeCount,
+          allowRemix: true,
+          closeFriendsOnly: draft.visibility === 'close_friends',
+        },
+        durationMs:
+          asset.type === 'video' && typeof asset.duration === 'number'
+            ? Math.round(asset.duration * 1000)
+            : undefined,
+      });
+      toastOk('Draft saved');
+      Alert.alert('Saved', 'Continue editing anytime from Drafts.', [{text: 'OK', onPress: closeAll}]);
+    } catch (e) {
+      Alert.alert('Could not save draft', e instanceof Error ? e.message : 'Try again');
     } finally {
       setBusy(false);
     }
   };
 
-  const downloadMock = () => {
-    Alert.alert('Downloaded', 'Content saved to Photos (simulated).', [{text: 'OK'}]);
+  const downloadExport = async () => {
+    if (!asset) return;
+    try {
+      const captured = await previewShotRef.current?.capture?.();
+      if (captured) {
+        await CameraRoll.save(captured, {type: 'photo'});
+      } else {
+        await CameraRoll.save(asset.uri, {type: asset.type === 'video' ? 'video' : 'photo'});
+      }
+      toastOk('Saved to gallery');
+      if (Platform.OS === 'ios') {
+        Alert.alert('Saved', 'Your preview (with on-screen filters and stickers) was saved to Photos.');
+      }
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : 'Try again');
+    }
   };
 
   const publish = async () => {
@@ -116,34 +187,78 @@ export function ShareScreen() {
       Alert.alert('No media', 'Please add a photo or video first.');
       return;
     }
+    if (asset.type === 'video') {
+      const sz = await getLocalFileSizeBytes(asset.uri);
+      if (sz != null && sz > MAX_UPLOAD_BYTES) {
+        Alert.alert(
+          'File too large',
+          `Videos can be up to ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB. Pick a shorter clip or lower resolution.`,
+        );
+        return;
+      }
+    }
+    setUploadProgress(0);
     setPhase('posting');
     try {
       const uploadCategory: 'reels' | 'stories' | 'posts' =
         draft.mode === 'reel' ? 'reels' : draft.mode === 'story' ? 'stories' : 'posts';
-      const caption = [draft.caption, ...draft.hashtags].filter(Boolean).join(' ') || undefined;
+      const caption = buildCaptionWithProducts(draft.caption, draft.hashtags, draft.products) || undefined;
       const feedCategory =
         draft.mode === 'story'
           ? undefined
           : slugFeedCategory(draft.feedCategoryManual, draft.feedCategoryPreset);
 
+      const locationMeta = draft.location?.name
+        ? {
+            name: draft.location.name,
+            lat: draft.location.lat,
+            lng: draft.location.lng,
+            address: draft.location.address,
+            placeId: draft.location.placeId,
+          }
+        : undefined;
+
+      const settings = {
+        commentsOff: draft.advanced.commentsOff,
+        hideLikes: draft.advanced.hideLikeCount,
+        allowRemix: true,
+        closeFriendsOnly: draft.visibility === 'close_friends',
+      };
+
+      const taggedUserIds = draft.tagged.map(t => t.id).filter(Boolean);
+      const productIds = draft.products.map(p => p.id).filter(Boolean);
+      const durationMs =
+        asset.type === 'video' && typeof asset.duration === 'number'
+          ? Math.round(asset.duration * 1000)
+          : undefined;
+
       // Use async pipeline for video reels/stories/posts — server does HLS transcode in background
       const useAsync = asset.type === 'video' && (draft.mode === 'reel' || draft.mode === 'story' || draft.mode === 'post');
 
       if (useAsync) {
-        // Upload raw → server queues HLS transcode → sends notification when ready
-        await uploadMediaAsync(asset.uri, {
-          type: asset.type,
-          fileName: asset.fileName,
-          category: uploadCategory,
-          caption,
-          location: draft.location?.name,
-          music: draft.selectedAudio?.title,
-          tags: draft.tagged.map(t => t.username),
-          feedCategory,
-        });
+        await uploadMediaAsync(
+          asset.uri,
+          {
+            type: asset.type,
+            fileName: asset.fileName,
+            category: uploadCategory,
+            caption,
+            location: draft.location?.name,
+            music: draft.selectedAudio?.title,
+            tags: draft.tagged.map(t => t.username),
+            feedCategory,
+            taggedUserIds,
+            productIds,
+            locationMeta: locationMeta ?? null,
+            settings,
+            durationMs,
+          },
+          pct => setUploadProgress(pct),
+        );
+        setUploadProgress(1);
+        toastOk('Upload complete — processing');
         setPhase('processing');
       } else {
-        // Sync path: images and small media (legacy)
         const {url, thumbnailUrl, mediaType: mediaTypeFromServer} = await uploadMedia(asset.uri, {
           type: asset.type,
           fileName: asset.fileName,
@@ -158,10 +273,16 @@ export function ShareScreen() {
           mediaType,
           caption,
           location: draft.location?.name,
+          locationMeta: locationMeta ?? undefined,
           music: draft.selectedAudio?.title,
           tags: draft.tagged.map(t => t.username),
+          taggedUserIds,
+          productIds,
+          settings,
+          durationMs,
           ...(postType !== 'story' && feedCategory ? {feedCategory} : {}),
         });
+        toastOk('Posted');
         setPhase('done');
       }
     } catch (err) {
@@ -178,6 +299,26 @@ export function ShareScreen() {
       ]).start();
     }
   }, [phase, scaleAnim, fadeAnim]);
+
+  useEffect(() => {
+    if (phase !== 'processing') {
+      if (processingNavTimer.current) {
+        clearTimeout(processingNavTimer.current);
+        processingNavTimer.current = null;
+      }
+      return;
+    }
+    processingNavTimer.current = setTimeout(() => {
+      processingNavTimer.current = null;
+      closeAll();
+    }, 3000);
+    return () => {
+      if (processingNavTimer.current) {
+        clearTimeout(processingNavTimer.current);
+        processingNavTimer.current = null;
+      }
+    };
+  }, [phase, closeAll]);
 
   const discard = () => {
     Alert.alert('Discard?', 'Your edits will be lost.', [
@@ -211,16 +352,23 @@ export function ShareScreen() {
             <ActivityIndicator color={palette.accent} size="large" />
           </Animated.View>
           <Animated.Text style={[styles.doneTitle, {color: palette.foreground, opacity: fadeAnim}]}>
-            Processing…
+            Posted — processing
           </Animated.Text>
           <Animated.Text
             style={[styles.doneSubtitle, {color: palette.foregroundMuted, opacity: fadeAnim, textAlign: 'center'}]}>
             Your{' '}
-            {draft.mode === 'story' ? 'story' : draft.mode === 'reel' ? 'reel' : 'post'} is being
-            optimized for all devices.{'\n'}You'll get a notification when it's ready.
+            {draft.mode === 'story' ? 'story' : draft.mode === 'reel' ? 'reel' : 'post'} will show up in
+            feed and reels after we finish optimizing it.{'\n\n'}
+            Returning home in a few seconds…
           </Animated.Text>
           <Pressable
-            onPress={closeAll}
+            onPress={() => {
+              if (processingNavTimer.current) {
+                clearTimeout(processingNavTimer.current);
+                processingNavTimer.current = null;
+              }
+              closeAll();
+            }}
             style={{
               marginTop: 24,
               paddingHorizontal: 28,
@@ -310,8 +458,19 @@ export function ShareScreen() {
     return (
       <ThemedSafeScreen style={[styles.root, {backgroundColor: palette.background}]}>
         <View style={styles.doneContainer}>
-          <Animated.View style={[styles.postingCircle, {borderColor: palette.accent}]} />
-          <Text style={[styles.postingText, {color: palette.foregroundMuted}]}>Sharing your {draft.mode}...</Text>
+          <ActivityIndicator color={palette.accent} size="large" />
+          <Text style={[styles.postingText, {color: palette.foreground}]}>Uploading your {draft.mode}…</Text>
+          <View style={[styles.progressTrack, {backgroundColor: palette.surfaceHigh}]}>
+            <View
+              style={[
+                styles.progressFill,
+                {width: `${Math.round(Math.min(1, uploadProgress) * 100)}%`, backgroundColor: palette.accent},
+              ]}
+            />
+          </View>
+          <Text style={[styles.postingSub, {color: palette.foregroundMuted}]}>
+            {Math.round(Math.min(1, uploadProgress) * 100)}%
+          </Text>
         </View>
       </ThemedSafeScreen>
     );
@@ -330,7 +489,7 @@ export function ShareScreen() {
 
       <ScrollView>
         {/* Preview */}
-        <View style={[styles.preview, {height: W * 1.05, backgroundColor: palette.surface}]}>
+        <ViewShot ref={previewShotRef} style={[styles.preview, {height: W * 1.05, backgroundColor: palette.surface}]} options={{format: 'jpg', quality: 0.92}}>
           {asset?.type === 'video' ? (
             <Video source={{uri: asset.uri}} style={styles.media} resizeMode="cover" repeat muted />
           ) : asset ? (
@@ -367,7 +526,6 @@ export function ShareScreen() {
               <Text style={[styles.pollQ, {color: palette.foreground}]}>{draft.poll.optionB || 'Option B'}</Text>
             </View>
           )}
-          {/* Carousel indicator */}
           {draft.assets.length > 1 && (
             <View style={styles.carouselIndicator}>
               {draft.assets.map((_, idx) => (
@@ -382,7 +540,7 @@ export function ShareScreen() {
               ))}
             </View>
           )}
-        </View>
+        </ViewShot>
 
         {/* Caption & metadata */}
         <View style={styles.metaSection}>
@@ -508,7 +666,7 @@ export function ShareScreen() {
             <Save size={22} color={palette.foreground} />
             <Text style={[styles.actionLabel, {color: palette.foreground}]}>Save draft</Text>
           </Pressable>
-          <Pressable style={[styles.actionCard, {backgroundColor: palette.card, borderColor: palette.surfaceHigh}]} onPress={downloadMock}>
+          <Pressable style={[styles.actionCard, {backgroundColor: palette.card, borderColor: palette.surfaceHigh}]} onPress={downloadExport}>
             <Download size={22} color={palette.foreground} />
             <Text style={[styles.actionLabel, {color: palette.foreground}]}>Download</Text>
           </Pressable>
@@ -644,13 +802,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   shareMoreTxt: {fontWeight: '700', fontSize: 14},
-  postingCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 4,
-    borderTopColor: 'transparent',
-    borderRightColor: 'transparent',
-  },
-  postingText: {fontSize: 16, fontWeight: '600', marginTop: 20},
+  postingText: {fontSize: 17, fontWeight: '700', marginTop: 20},
+  postingSub: {fontSize: 13, fontWeight: '600', marginTop: 8},
+  progressTrack: {width: '80%', maxWidth: 320, height: 8, borderRadius: 4, marginTop: 20, overflow: 'hidden'},
+  progressFill: {height: '100%', borderRadius: 4},
 });

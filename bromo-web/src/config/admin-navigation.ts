@@ -115,6 +115,13 @@ export const ADMIN_NAVIGATION: AdminNavGroup[] = [
     label: "Commerce & billing",
     items: [
       {
+        title: "Affiliate products",
+        href: "/admin/commerce/products",
+        description:
+          "Curate affiliate products users can tag in reels and posts. Links auto-append to caption.",
+        icon: ShoppingCart,
+      },
+      {
         title: "Orders",
         href: "/admin/commerce/orders",
         description:

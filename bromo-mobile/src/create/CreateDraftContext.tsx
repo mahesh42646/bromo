@@ -5,6 +5,7 @@ import type {
   AudioTrack,
   CreateMode,
   CropAspect,
+  FeedCategoryPreset,
   FilterId,
   LocationTag,
   MediaAsset,
@@ -17,9 +18,7 @@ import type {
 } from './createTypes';
 import {DEFAULT_ADJUSTMENTS, DEFAULT_ADVANCED} from './createTypes';
 
-export type FeedCategoryPreset = 'general' | 'politics' | 'sports' | 'shopping' | 'tech';
-
-type Draft = {
+export type CreateDraftState = {
   mode: CreateMode;
   assets: MediaAsset[];
   activeAssetIndex: number;
@@ -49,6 +48,8 @@ type Draft = {
   feedCategoryPreset: FeedCategoryPreset;
   feedCategoryManual: string;
 };
+
+type Draft = CreateDraftState;
 
 const initialPoll: PollState = {
   enabled: false,
@@ -121,6 +122,8 @@ type Ctx = {
   setFeedCategoryPreset: (p: FeedCategoryPreset) => void;
   setFeedCategoryManual: (s: string) => void;
   reset: () => void;
+  /** Replace editor state (e.g. resume cloud draft). */
+  replaceDraft: (next: CreateDraftState) => void;
 };
 
 const CreateDraftContext = createContext<Ctx | null>(null);
@@ -129,6 +132,15 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
   const [draft, setDraft] = useState<Draft>(initialDraft);
 
   const reset = useCallback(() => setDraft(initialDraft), []);
+
+  const replaceDraft = useCallback((next: CreateDraftState) => {
+    setDraft({
+      ...initialDraft,
+      ...next,
+      poll: {...initialPoll, ...next.poll},
+      advanced: {...DEFAULT_ADVANCED, ...next.advanced},
+    });
+  }, []);
 
   const setMode = useCallback((mode: CreateMode) => {
     setDraft(d => ({...d, mode}));
@@ -332,6 +344,7 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
       setFeedCategoryPreset,
       setFeedCategoryManual,
       reset,
+      replaceDraft,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [draft],

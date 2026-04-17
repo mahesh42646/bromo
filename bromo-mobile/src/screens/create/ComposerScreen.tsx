@@ -1,7 +1,7 @@
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
-  FlatList,
   Image,
   Pressable,
   ScrollView,
@@ -27,13 +27,12 @@ import {
   Image as ImageIcon,
   ShoppingBag,
   UserPlus,
-  FileText,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import type {ThemePalette} from '../../config/platform-theme';
 import {useCreateDraft} from '../../create/CreateDraftContext';
-import type {LocationTag} from '../../create/createTypes';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
+import {getUserSuggestions, type SuggestedUser} from '../../api/followApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'Composer'>;
 
@@ -42,29 +41,6 @@ const {width: W} = Dimensions.get('window');
 const SUGGEST_TAGS = [
   '#fyp', '#reels', '#shopping', '#local', '#creator',
   '#bromo', '#sale', '#story', '#trending', '#ootd',
-];
-
-const MOCK_USERS = [
-  {id: 'u1', username: 'priya_vibes'},
-  {id: 'u2', username: 'tech_marathi'},
-  {id: 'u3', username: 'shop_local'},
-  {id: 'u4', username: 'foodie_india'},
-  {id: 'u5', username: 'travel_squad'},
-];
-
-const MOCK_PRODUCTS = [
-  {id: 'p1', name: 'Air Max Elite', priceLabel: '\u20B92,499', imageUri: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200'},
-  {id: 'p2', name: 'Smart Watch X', priceLabel: '\u20B94,999', imageUri: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200'},
-  {id: 'p3', name: 'Slim Jeans', priceLabel: '\u20B91,299', imageUri: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=200'},
-  {id: 'p4', name: 'Canvas Bag', priceLabel: '\u20B9799', imageUri: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=200'},
-];
-
-const MOCK_LOCATIONS: LocationTag[] = [
-  {id: 'loc1', name: 'Mumbai, Maharashtra', address: 'India'},
-  {id: 'loc2', name: 'Pune, Maharashtra', address: 'India'},
-  {id: 'loc3', name: 'Indiranagar, Bangalore', address: 'Karnataka'},
-  {id: 'loc4', name: 'Connaught Place', address: 'New Delhi'},
-  {id: 'loc5', name: 'Bandra West', address: 'Mumbai'},
 ];
 
 function makeStyles(p: ThemePalette) {
@@ -108,28 +84,18 @@ function makeStyles(p: ThemePalette) {
       borderColor: 'transparent',
     },
     tagText: {color: p.borderFaint, fontWeight: '700', fontSize: 12},
-    locationPane: {marginHorizontal: 14, marginTop: 8},
-    locationInput: {
-      backgroundColor: p.card,
-      borderRadius: 10,
-      padding: 12,
-      color: p.foreground,
-      marginBottom: 8,
-    },
-    locationItem: {
+    linkRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      backgroundColor: p.surface,
-      borderRadius: 10,
-      marginBottom: 6,
+      marginHorizontal: 14,
+      marginTop: 8,
+      padding: 14,
+      borderRadius: 12,
       borderWidth: 1,
-      borderColor: p.surfaceHigh,
+      gap: 10,
     },
-    locationName: {color: p.foreground, fontSize: 14, fontWeight: '600'},
-    locationAddr: {color: p.foregroundMuted, fontSize: 12, marginTop: 1},
+    linkRowTxt: {flex: 1, color: p.foreground, fontSize: 14, fontWeight: '600'},
+    linkRowMeta: {color: p.foregroundSubtle, fontSize: 12, fontWeight: '600'},
     pollBox: {paddingHorizontal: 14, gap: 8, marginTop: 8},
     pollInput: {
       backgroundColor: p.card,
@@ -146,19 +112,14 @@ function makeStyles(p: ThemePalette) {
       borderRadius: 999,
     },
     userChipTxt: {color: p.foreground, fontSize: 13, fontWeight: '600'},
-    product: {
-      width: 130,
-      backgroundColor: p.card,
-      borderRadius: 14,
-      padding: 8,
+    moreChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
       borderWidth: 1,
-      borderColor: p.border,
+      borderColor: p.accent,
     },
-    productImg: {width: '100%', height: 80, borderRadius: 10},
-    productName: {color: p.foreground, fontWeight: '800', fontSize: 12, marginTop: 6},
-    productPrice: {color: p.success, fontSize: 11, fontWeight: '700', marginTop: 2},
-    stickerBtn: {marginTop: 8, backgroundColor: p.surfaceHigh, paddingVertical: 6, borderRadius: 8, alignItems: 'center'},
-    stickerBtnTxt: {color: p.foreground, fontSize: 11, fontWeight: '800'},
+    moreChipTxt: {color: p.accent, fontSize: 13, fontWeight: '800'},
     carouselThumb: {alignItems: 'center'},
     carouselImg: {width: 64, height: 64, borderRadius: 8},
     carouselBadge: {
@@ -174,16 +135,6 @@ function makeStyles(p: ThemePalette) {
     },
     carouselBadgeTxt: {color: p.foreground, fontSize: 10, fontWeight: '800'},
     coverLabel: {color: p.accent, fontSize: 10, fontWeight: '800', marginTop: 2},
-    altInput: {
-      color: p.foreground,
-      marginHorizontal: 14,
-      marginTop: 8,
-      minHeight: 60,
-      backgroundColor: p.card,
-      borderRadius: 12,
-      padding: 12,
-      textAlignVertical: 'top',
-    },
     advancedTitle: {
       color: p.foregroundMuted,
       fontSize: 12,
@@ -208,6 +159,28 @@ function makeStyles(p: ThemePalette) {
   });
 }
 
+type Styles = ReturnType<typeof makeStyles>;
+
+function SectionHeader({icon, label, right, s}: {icon: React.ReactNode; label: string; right?: React.ReactNode; s: Styles}) {
+  return (
+    <View style={s.rowTitle}>
+      {icon}
+      <Text style={s.labelInline}>{label}</Text>
+      {right && <View style={{marginLeft: 'auto'}}>{right}</View>}
+    </View>
+  );
+}
+
+function ToggleRow({icon, label, value, onToggle, s}: {icon: React.ReactNode; label: string; value: boolean; onToggle: (v: boolean) => void; s: Styles}) {
+  return (
+    <View style={s.toggleRow}>
+      {icon}
+      <Text style={s.toggleLabel}>{label}</Text>
+      <Switch value={value} onValueChange={onToggle} />
+    </View>
+  );
+}
+
 export function ComposerScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
@@ -218,7 +191,6 @@ export function ComposerScreen() {
     setHashtags,
     setTagged,
     setLocation,
-    setProducts,
     setPoll,
     setAdvanced,
     addSticker,
@@ -229,31 +201,38 @@ export function ComposerScreen() {
   const [captionLocal, setCaptionLocal] = useState(draft.caption);
   const [pollA, setPollA] = useState(poll.optionA);
   const [pollB, setPollB] = useState(poll.optionB);
-  const [showLocation, setShowLocation] = useState(false);
-  const [locationQuery, setLocationQuery] = useState('');
-  const [showAltText, setShowAltText] = useState(!!advanced.altText);
-  const [altTextLocal, setAltTextLocal] = useState(advanced.altText);
+  const [friends, setFriends] = useState<SuggestedUser[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const {users} = await getUserSuggestions(24);
+        if (!cancelled) setFriends(users);
+      } finally {
+        if (!cancelled) setFriendsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const syncCaption = useCallback(() => {
     setCaption(captionLocal);
-    const tags = captionLocal.match(/#[\w]+/g) ?? [];
+    const tags = captionLocal.match(/#[\w\u0900-\u0fff]+/g) ?? [];
     setHashtags(tags);
-  }, [captionLocal, setCaption, setHashtags]);
+    setAdvanced({altText: captionLocal.trim()});
+  }, [captionLocal, setCaption, setHashtags, setAdvanced]);
 
-  const toggleUser = (u: (typeof MOCK_USERS)[0]) => {
-    const exists = tagged.find(t => t.id === u.id);
-    if (exists) setTagged(tagged.filter(t => t.id !== u.id));
-    else setTagged([...tagged, {id: u.id, username: u.username}]);
+  const toggleFriendTag = (u: SuggestedUser) => {
+    const exists = tagged.find(t => t.id === u._id);
+    if (exists) setTagged(tagged.filter(t => t.id !== u._id));
+    else setTagged([...tagged, {id: u._id, username: u.username, avatar: u.profilePicture || undefined}]);
   };
 
-  const attachProduct = (p: (typeof MOCK_PRODUCTS)[0]) => {
-    const list = products.some(x => x.id === p.id)
-      ? products.filter(x => x.id !== p.id)
-      : [...products, {id: p.id, name: p.name, priceLabel: p.priceLabel, imageUri: p.imageUri}];
-    setProducts(list);
-  };
-
-  const stickerFromProduct = (p: (typeof MOCK_PRODUCTS)[0]) => {
+  const stickerFromProduct = (p: (typeof products)[0]) => {
     addSticker({
       productId: p.id,
       label: `${p.name} ${p.priceLabel}`,
@@ -262,16 +241,9 @@ export function ComposerScreen() {
     });
   };
 
-  const filteredLocations = locationQuery.length > 0
-    ? MOCK_LOCATIONS.filter(l =>
-        l.name.toLowerCase().includes(locationQuery.toLowerCase()),
-      )
-    : MOCK_LOCATIONS;
-
   const goNext = () => {
     syncCaption();
     setPoll({optionA: pollA, optionB: pollB});
-    if (altTextLocal) setAdvanced({altText: altTextLocal});
     navigation.navigate('ShareFinal');
   };
 
@@ -288,7 +260,6 @@ export function ComposerScreen() {
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled">
-        {/* Thumbnail preview */}
         {draft.assets.length > 0 && (
           <View style={s.thumbRow}>
             <Image source={{uri: draft.assets[0].uri}} style={s.thumbImg} />
@@ -296,7 +267,7 @@ export function ComposerScreen() {
               value={captionLocal}
               onChangeText={setCaptionLocal}
               onBlur={syncCaption}
-              placeholder="Write a caption..."
+              placeholder="Write a caption…"
               placeholderTextColor={palette.placeholder}
               multiline
               style={s.captionInline}
@@ -304,8 +275,7 @@ export function ComposerScreen() {
           </View>
         )}
 
-        {/* Hashtags */}
-        <SectionHeader icon={<Hash size={16} color={palette.foreground} />} label="Hashtags" palette={palette} s={s} />
+        <SectionHeader icon={<Hash size={16} color={palette.foreground} />} label="Hashtags" s={s} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tagRow}>
           {SUGGEST_TAGS.map(t => {
             const active = captionLocal.includes(t);
@@ -319,7 +289,8 @@ export function ComposerScreen() {
                       : `${captionLocal} ${t}`;
                   setCaptionLocal(next);
                   setCaption(next);
-                  setHashtags(next.match(/#[\w]+/g) ?? []);
+                  setHashtags(next.match(/#[\w\u0900-\u0fff]+/g) ?? []);
+                  setAdvanced({altText: next.trim()});
                 }}
                 style={[s.tagChip, active && {backgroundColor: palette.accent + '33', borderColor: palette.accent}]}>
                 <Text style={[s.tagText, active && {color: palette.accent}]}>{t}</Text>
@@ -328,59 +299,27 @@ export function ComposerScreen() {
           })}
         </ScrollView>
 
-        {/* Location */}
-        <Pressable onPress={() => setShowLocation(v => !v)}>
-          <SectionHeader
-            icon={<MapPin size={16} color={palette.foreground} />}
-            label={location ? location.name : 'Add location'}
-            palette={palette}
-            s={s}
-            right={location
-              ? <Pressable onPress={() => setLocation(null)}><Text style={s.removeLink}>Remove</Text></Pressable>
-              : <ChevronRight size={16} color={palette.foregroundSubtle} />
-            }
-          />
-        </Pressable>
-        {showLocation && (
-          <View style={s.locationPane}>
-            <TextInput
-              value={locationQuery}
-              onChangeText={setLocationQuery}
-              placeholder="Search places..."
-              placeholderTextColor={palette.placeholder}
-              style={s.locationInput}
-            />
-            {filteredLocations.map(l => (
-              <Pressable
-                key={l.id}
-                onPress={() => {
-                  setLocation(l);
-                  setShowLocation(false);
-                  setLocationQuery('');
-                }}
-                style={[s.locationItem, location?.id === l.id && {borderColor: palette.accent}]}>
-                <MapPin size={14} color={palette.foregroundMuted} />
-                <View style={{flex: 1}}>
-                  <Text style={s.locationName}>{l.name}</Text>
-                  {l.address && <Text style={s.locationAddr}>{l.address}</Text>}
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        )}
+        <View style={s.rowTitle}>
+          <MapPin size={16} color={palette.foreground} />
+          <Pressable style={{flex: 1}} onPress={() => navigation.navigate('LocationPicker')}>
+            <Text style={s.labelInline}>{location ? location.name : 'Add location'}</Text>
+          </Pressable>
+          {location ? (
+            <Pressable onPress={() => setLocation(null)}>
+              <Text style={s.removeLink}>Remove</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => navigation.navigate('LocationPicker')}>
+              <ChevronRight size={16} color={palette.foregroundSubtle} />
+            </Pressable>
+          )}
+        </View>
 
-        {/* Poll */}
         <SectionHeader
           icon={<BarChart2 size={16} color={palette.foreground} />}
           label="Poll"
-          palette={palette}
           s={s}
-          right={
-            <Switch
-              value={poll.enabled}
-              onValueChange={v => setPoll({enabled: v})}
-            />
-          }
+          right={<Switch value={poll.enabled} onValueChange={v => setPoll({enabled: v})} />}
         />
         {poll.enabled && (
           <View style={s.pollBox}>
@@ -389,46 +328,63 @@ export function ComposerScreen() {
           </View>
         )}
 
-        {/* Tag people */}
-        <SectionHeader icon={<UserPlus size={16} color={palette.foreground} />} label="Tag people" palette={palette} s={s} />
-        <View style={s.userRow}>
-          {MOCK_USERS.map(u => {
-            const on = tagged.some(t => t.id === u.id);
-            return (
-              <Pressable key={u.id} onPress={() => toggleUser(u)} style={[s.userChip, on && {borderColor: palette.accent, backgroundColor: palette.accent + '22'}]}>
-                <Text style={[s.userChipTxt, on && {color: palette.accent}]}>@{u.username}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {/* Products */}
-        <SectionHeader icon={<ShoppingBag size={16} color={palette.foreground} />} label="Products" palette={palette} s={s} />
-        <FlatList
-          horizontal
-          data={MOCK_PRODUCTS}
-          keyExtractor={item => item.id}
-          contentContainerStyle={{paddingHorizontal: 12, gap: 10, paddingBottom: 4}}
-          showsHorizontalScrollIndicator={false}
-          renderItem={({item}) => {
-            const on = products.some(p => p.id === item.id);
-            return (
-              <Pressable onPress={() => attachProduct(item)} style={[s.product, on && {borderColor: palette.accent}]}>
-                <Image source={{uri: item.imageUri}} style={s.productImg} />
-                <Text style={s.productName} numberOfLines={1}>{item.name}</Text>
-                <Text style={s.productPrice}>{item.priceLabel}</Text>
-                <Pressable onPress={() => stickerFromProduct(item)} style={[s.stickerBtn, on && {backgroundColor: palette.accent + '33'}]}>
-                  <Text style={[s.stickerBtnTxt, on && {color: palette.accent}]}>+ Sticker</Text>
+        <SectionHeader icon={<UserPlus size={16} color={palette.foreground} />} label="Tag people" s={s} />
+        {friendsLoading ? (
+          <ActivityIndicator color={palette.foreground} style={{marginVertical: 12}} />
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 12, gap: 8, paddingBottom: 8}}>
+            {friends.slice(0, 12).map(u => {
+              const on = tagged.some(t => t.id === u._id);
+              return (
+                <Pressable
+                  key={u._id}
+                  onPress={() => toggleFriendTag(u)}
+                  style={[s.userChip, on && {borderColor: palette.accent, backgroundColor: palette.accent + '22'}]}>
+                  <Text style={[s.userChipTxt, on && {color: palette.accent}]}>@{u.username}</Text>
                 </Pressable>
-              </Pressable>
-            );
-          }}
-        />
+              );
+            })}
+            <Pressable onPress={() => navigation.navigate('TagPeoplePicker')} style={s.moreChip}>
+              <Text style={s.moreChipTxt}>Search…</Text>
+            </Pressable>
+          </ScrollView>
+        )}
 
-        {/* Carousel order */}
+        <Pressable onPress={() => navigation.navigate('ProductPicker')}>
+          <SectionHeader
+            icon={<ShoppingBag size={16} color={palette.foreground} />}
+            label={products.length ? `Products (${products.length}/6)` : 'Tag products'}
+            s={s}
+            right={<ChevronRight size={16} color={palette.foregroundSubtle} />}
+          />
+        </Pressable>
+        {products.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 12, gap: 10, paddingBottom: 8}}>
+            {products.map(p => (
+              <Pressable
+                key={p.id}
+                onPress={() => stickerFromProduct(p)}
+                style={{
+                  width: 120,
+                  backgroundColor: palette.card,
+                  borderRadius: 14,
+                  padding: 8,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                }}>
+                {p.imageUri ? <Image source={{uri: p.imageUri}} style={{width: '100%', height: 72, borderRadius: 10}} /> : null}
+                <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 11, marginTop: 6}} numberOfLines={2}>
+                  {p.name}
+                </Text>
+                <Text style={{color: palette.success, fontSize: 10, fontWeight: '700', marginTop: 2}}>{p.priceLabel}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+
         {draft.assets.length > 1 && (
           <>
-            <SectionHeader icon={<ImageIcon size={16} color={palette.foreground} />} label="Carousel order" palette={palette} s={s} />
+            <SectionHeader icon={<ImageIcon size={16} color={palette.foreground} />} label="Carousel order" s={s} />
             <ScrollView horizontal style={{marginTop: 8}} contentContainerStyle={{paddingHorizontal: 12, gap: 8}}>
               {draft.assets.map((a, idx) => (
                 <View key={a.uri} style={s.carouselThumb}>
@@ -443,29 +399,6 @@ export function ComposerScreen() {
           </>
         )}
 
-        {/* Alt text */}
-        <Pressable onPress={() => setShowAltText(v => !v)}>
-          <SectionHeader
-            icon={<FileText size={16} color={palette.foreground} />}
-            label="Alt text"
-            palette={palette}
-            s={s}
-            right={<ChevronRight size={16} color={palette.foregroundSubtle} style={{transform: [{rotate: showAltText ? '90deg' : '0deg'}]}} />}
-          />
-        </Pressable>
-        {showAltText && (
-          <TextInput
-            value={altTextLocal}
-            onChangeText={setAltTextLocal}
-            onBlur={() => setAdvanced({altText: altTextLocal})}
-            placeholder="Describe this content for accessibility..."
-            placeholderTextColor={palette.placeholder}
-            multiline
-            style={s.altInput}
-          />
-        )}
-
-        {/* Advanced settings */}
         <Text style={s.advancedTitle}>Advanced settings</Text>
 
         <ToggleRow
@@ -502,27 +435,5 @@ export function ComposerScreen() {
         <View style={{height: 40}} />
       </ScrollView>
     </ThemedSafeScreen>
-  );
-}
-
-type Styles = ReturnType<typeof makeStyles>;
-
-function SectionHeader({icon, label, right, s}: {icon: React.ReactNode; label: string; right?: React.ReactNode; palette: ThemePalette; s: Styles}) {
-  return (
-    <View style={s.rowTitle}>
-      {icon}
-      <Text style={s.labelInline}>{label}</Text>
-      {right && <View style={{marginLeft: 'auto'}}>{right}</View>}
-    </View>
-  );
-}
-
-function ToggleRow({icon, label, value, onToggle, s}: {icon: React.ReactNode; label: string; value: boolean; onToggle: (v: boolean) => void; s: Styles}) {
-  return (
-    <View style={s.toggleRow}>
-      {icon}
-      <Text style={s.toggleLabel}>{label}</Text>
-      <Switch value={value} onValueChange={onToggle} />
-    </View>
   );
 }

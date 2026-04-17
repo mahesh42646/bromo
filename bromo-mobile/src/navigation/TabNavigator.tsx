@@ -1,80 +1,22 @@
 import React from 'react';
-import {Pressable, StyleSheet, View} from 'react-native';
+import {StyleSheet} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
-import type {BottomTabBarButtonProps} from '@react-navigation/bottom-tabs';
-import {useNavigation} from '@react-navigation/native';
-import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import type {AppStackParamList, MainTabParamList} from './appStackParamList';
 import {
   Home,
   Search,
   Play,
   ShoppingBag,
-  Plus,
+  User as UserIcon,
 } from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {HomeScreen} from '../screens/HomeScreen';
 import {SearchScreen} from '../screens/SearchScreen';
 import {ReelsScreen} from '../screens/ReelsScreen';
 import {StoreScreen} from '../screens/StoreScreen';
+import {ProfileScreen} from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
-
-function EmptyCreateScreen() {
-  return <View />;
-}
-
-function CreateTabButton({style, children: _children, accessibilityState, testID}: BottomTabBarButtonProps) {
-  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
-  const {palette} = useTheme();
-
-  return (
-    <View style={[style, styles.createSlot]} collapsable={false}>
-      <Pressable
-        testID={testID}
-        accessibilityRole="button"
-        accessibilityLabel="Create post"
-        accessibilityState={accessibilityState}
-        onPress={() => {
-          const parent = navigation.getParent() as NativeStackNavigationProp<AppStackParamList> | undefined;
-          if (!parent) return;
-          const tabState = navigation.getState();
-          const tabName = tabState?.routes[tabState.index ?? 0]?.name;
-          // Reels tab → reel; Home tab → story; others → post (same create stack, mode from tab)
-          if (tabName === 'Reels') {
-            parent.navigate('CreateFlow', {
-              screen: 'CreateHub',
-              params: {mode: 'reel', bootstrapTs: Date.now()},
-            });
-          } else if (tabName === 'Home') {
-            parent.navigate('CreateFlow', {
-              screen: 'CreateHub',
-              params: {mode: 'story', bootstrapTs: Date.now()},
-            });
-          } else {
-            parent.navigate('CreateFlow', {
-              screen: 'CreateHub',
-              params: {mode: 'post', bootstrapTs: Date.now()},
-            });
-          }
-        }}>
-        <View
-          style={[
-            styles.fab,
-            {
-              backgroundColor: palette.primary,
-              borderColor: palette.background,
-              shadowColor: palette.primary,
-            },
-          ]}>
-          <Plus size={26} color={palette.primaryForeground} strokeWidth={2.75} />
-        </View>
-      </Pressable>
-    </View>
-  );
-}
 
 export function TabNavigator() {
   const {palette, isDark} = useTheme();
@@ -115,13 +57,6 @@ export function TabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Create"
-        component={EmptyCreateScreen}
-        options={{
-          tabBarButton: props => <CreateTabButton {...props} />,
-        }}
-      />
-      <Tab.Screen
         name="Reels"
         component={ReelsScreen}
         options={{
@@ -135,6 +70,13 @@ export function TabNavigator() {
           tabBarIcon: ({color, size}) => <ShoppingBag size={size} color={color} />,
         }}
       />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarIcon: ({color, size}) => <UserIcon size={size} color={color} />,
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -143,24 +85,5 @@ const styles = StyleSheet.create({
   tabItem: {
     height: 48,
     paddingTop: 0,
-  },
-  createSlot: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 0,
-  },
-  fab: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -22,
-    borderWidth: 3,
-    shadowOffset: {width: 0, height: 6},
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 12,
   },
 });

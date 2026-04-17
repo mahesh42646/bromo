@@ -1,5 +1,8 @@
 export type CreateMode = 'post' | 'story' | 'reel' | 'live';
 
+/** Post/reel home-feed bucket; manual input overrides preset when non-empty. */
+export type FeedCategoryPreset = 'general' | 'politics' | 'sports' | 'shopping' | 'tech';
+
 export type MediaAsset = {
   uri: string;
   type: 'image' | 'video';
@@ -16,6 +19,7 @@ export type ProductAttachment = {
   name: string;
   priceLabel: string;
   imageUri?: string;
+  productUrl?: string;
 };
 
 export type StickerPlacement = {
@@ -72,6 +76,9 @@ export type LocationTag = {
   id: string;
   name: string;
   address?: string;
+  lat?: number;
+  lng?: number;
+  placeId?: string;
 };
 
 export type AdvancedPostOptions = {

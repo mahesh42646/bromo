@@ -1,5 +1,6 @@
-import React, {useCallback, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   FlatList,
   Image,
@@ -9,6 +10,7 @@ import {
   Text,
   TextInput,
   View,
+  type ViewStyle,
 } from 'react-native';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
@@ -37,6 +39,7 @@ import {useCreateDraft} from '../../create/CreateDraftContext';
 import {
   FILTER_IDS,
   TEXT_COLORS,
+  type AdjustmentState,
   type CropAspect,
   type FilterId,
 } from '../../create/createTypes';
@@ -77,6 +80,86 @@ const ADJUST_KEYS = [
   {key: 'fade', label: 'Fade', Icon: Minus},
 ] as const;
 
+function adjustOverlayStyle(adjustments: AdjustmentState): ViewStyle {
+  return {
+    opacity: 1 + adjustments.brightness * 0.3 + adjustments.fade * 0.15,
+    backgroundColor: `rgba(${adjustments.warmth > 0 ? '255,200,100' : '100,150,255'},${Math.abs(adjustments.warmth) * 0.08})`,
+  };
+}
+
+function TrimmingVideo({
+  uri,
+  trimStart,
+  trimEnd,
+  playbackSpeed,
+  onDuration,
+}: {
+  uri: string;
+  trimStart: number;
+  trimEnd: number;
+  playbackSpeed: number;
+  onDuration?: (seconds: number) => void;
+}) {
+  const videoRef = useRef<React.ElementRef<typeof Video>>(null);
+  const [dur, setDur] = useState(0);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setDur(0);
+    setReady(false);
+  }, [uri]);
+
+  const tStart = trimStart * dur;
+  const tEnd = trimEnd * dur;
+
+  useEffect(() => {
+    if (dur <= 0) return;
+    videoRef.current?.seek(tStart);
+  }, [trimStart, trimEnd, dur, tStart]);
+
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      {!ready && (
+        <View style={[StyleSheet.absoluteFill, {backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', zIndex: 2}]}>
+          <ActivityIndicator color="#aaa" />
+        </View>
+      )}
+      <Video
+        ref={videoRef}
+        source={{uri}}
+        style={[StyleSheet.absoluteFill, {zIndex: 1}]}
+        resizeMode="cover"
+        repeat={false}
+        muted
+        rate={playbackSpeed}
+        playInBackground={false}
+        bufferConfig={{
+          minBufferMs: 250,
+          maxBufferMs: 8000,
+          bufferForPlaybackMs: 100,
+          bufferForPlaybackAfterRebufferMs: 400,
+        }}
+        onLoad={e => {
+          const d = e.duration ?? 0;
+          setDur(d);
+          onDuration?.(d);
+          if (d > 0) {
+            videoRef.current?.seek(trimStart * d);
+          }
+        }}
+        onReadyForDisplay={() => setReady(true)}
+        progressUpdateInterval={120}
+        onProgress={p => {
+          if (dur <= 0 || tEnd <= tStart) return;
+          if (p.currentTime >= tEnd - 0.06) {
+            videoRef.current?.seek(tStart);
+          }
+        }}
+      />
+    </View>
+  );
+}
+
 export function MediaEditorScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
@@ -110,8 +193,19 @@ export function MediaEditorScreen() {
   const [textColor, setTextColor] = useState('#FFFFFF');
   const [textSize, setTextSize] = useState(18);
   const [showTextInput, setShowTextInput] = useState(false);
+  const [videoDurationSec, setVideoDurationSec] = useState(
+    () => (cur?.type === 'video' && typeof cur.duration === 'number' ? cur.duration : 0),
+  );
 
   const carouselRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    if (cur?.type === 'video' && typeof cur.duration === 'number' && cur.duration > 0) {
+      setVideoDurationSec(cur.duration);
+    } else if (cur?.type === 'video') {
+      setVideoDurationSec(0);
+    }
+  }, [cur?.uri, cur?.type, cur?.duration]);
 
   const layer = FILTER_LAYERS[filter];
 
@@ -119,13 +213,7 @@ export function MediaEditorScreen() {
     crop === '1:1' ? 1 : crop === '4:5' ? 4 / 5 : crop === '16:9' ? 16 / 9 : draft.mode === 'reel' ? 9 / 16 : 1;
   const previewHeight = W / aspectRatio;
 
-  const adjustOverlay = {
-    opacity:
-      1 +
-      adjustments.brightness * 0.3 +
-      adjustments.fade * 0.15,
-    backgroundColor: `rgba(${adjustments.warmth > 0 ? '255,200,100' : '100,150,255'},${Math.abs(adjustments.warmth) * 0.08})`,
-  };
+  const adjustOverlay = adjustOverlayStyle(adjustments);
 
   const onTrimChange = useCallback(
     (range: [number, number]) => {
@@ -184,16 +272,20 @@ export function MediaEditorScreen() {
                 const f = draft.filterByAsset[index] ?? 'normal';
                 const fl = FILTER_LAYERS[f];
                 const r = draft.rotationByAsset[index] ?? 0;
+                const adj = draft.adjustByAsset[index] ?? {...DEFAULT_ADJUSTMENTS};
+                const ts = draft.trimStartByAsset[index] ?? 0;
+                const te = draft.trimEndByAsset[index] ?? 1;
+                const ao = adjustOverlayStyle(adj);
                 return (
                   <View style={{width: W, height: previewHeight, backgroundColor: palette.background}}>
                     <View style={[styles.media, {transform: [{rotate: `${r}deg`}]}]}>
                       {item.type === 'video' ? (
-                        <Video
-                          source={{uri: item.uri}}
-                          style={StyleSheet.absoluteFill}
-                          resizeMode="cover"
-                          repeat
-                          muted
+                        <TrimmingVideo
+                          uri={item.uri}
+                          trimStart={ts}
+                          trimEnd={te}
+                          playbackSpeed={draft.playbackSpeed}
+                          onDuration={index === i ? setVideoDurationSec : undefined}
                         />
                       ) : (
                         <Image source={{uri: item.uri}} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
@@ -204,6 +296,7 @@ export function MediaEditorScreen() {
                           style={[StyleSheet.absoluteFill, {backgroundColor: fl.backgroundColor, opacity: fl.opacity ?? 0.85}]}
                         />
                       ) : null}
+                      <View pointerEvents="none" style={[StyleSheet.absoluteFill, ao]} />
                     </View>
                   </View>
                 );
@@ -221,13 +314,12 @@ export function MediaEditorScreen() {
           <View style={[styles.previewWrap, {height: previewHeight}]}>
             <View style={[styles.media, {transform: [{rotate: `${rotation}deg`}]}]}>
               {cur.type === 'video' ? (
-                <Video
-                  source={{uri: cur.uri}}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                  repeat
-                  muted
-                  rate={draft.playbackSpeed}
+                <TrimmingVideo
+                  uri={cur.uri}
+                  trimStart={trimStart}
+                  trimEnd={trimEnd}
+                  playbackSpeed={draft.playbackSpeed}
+                  onDuration={setVideoDurationSec}
                 />
               ) : (
                 <Image source={{uri: cur.uri}} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
@@ -416,7 +508,9 @@ export function MediaEditorScreen() {
           <>
             <Text style={styles.sectionLabel}>Trim</Text>
             <Text style={styles.hint}>
-              Start {(trimStart * 100).toFixed(0)}% · End {(trimEnd * 100).toFixed(0)}%
+              {videoDurationSec > 0
+                ? `Start ${(trimStart * videoDurationSec).toFixed(1)}s · End ${(trimEnd * videoDurationSec).toFixed(1)}s (${videoDurationSec.toFixed(1)}s total)`
+                : `Start ${(trimStart * 100).toFixed(0)}% · End ${(trimEnd * 100).toFixed(0)}%`}
             </Text>
             <View style={styles.trimSliders}>
               <Slider

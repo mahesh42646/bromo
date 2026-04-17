@@ -6,9 +6,9 @@ import type {MessagesStackParamList} from './MessagesStackNavigator';
 export type MainTabParamList = {
   Home: undefined;
   Search: undefined;
-  Create: undefined;
   Reels: {initialPostId?: string} | undefined;
   Store: undefined;
+  Profile: {openSettings?: boolean} | undefined;
 };
 
 /** Screens registered on the main app stack (post-login). */

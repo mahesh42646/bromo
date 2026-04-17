@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -11,23 +12,19 @@ import {
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ChevronLeft, Trash2, Clock, FileText} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import type {ThemePalette} from '../../config/platform-theme';
 import {useCreateDraft} from '../../create/CreateDraftContext';
+import {unpackClientSnapshot} from '../../create/draftSnapshot';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
+import {deleteDraft, listDrafts, type DraftRecord} from '../../api/draftsApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'Drafts'>;
 
-const DRAFT_KEY = 'bromo_ugc_drafts_v1';
-
-type SavedDraft = {
-  savedAt: number;
-  draft: any;
-};
-
-function timeAgo(ts: number): string {
+function timeAgo(iso: string): string {
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return '';
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'Just now';
@@ -71,7 +68,6 @@ function makeStyles(palette: ThemePalette) {
     cardCaption: {color: palette.foreground, fontSize: 14, fontWeight: '600', lineHeight: 18},
     cardMeta: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2},
     cardTime: {color: palette.foregroundSubtle, fontSize: 11},
-    cardAssets: {color: palette.foregroundSubtle, fontSize: 11},
     deleteBtn: {padding: 8},
   });
 }
@@ -80,15 +76,15 @@ export function DraftsScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
   const styles = makeStyles(palette);
-  const {setMode, setAssets, setCaption, setHashtags} = useCreateDraft();
-  const [drafts, setDrafts] = useState<SavedDraft[]>([]);
+  const {replaceDraft} = useCreateDraft();
+  const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadDrafts = useCallback(async () => {
+    setLoading(true);
     try {
-      const raw = await AsyncStorage.getItem(DRAFT_KEY);
-      const list: SavedDraft[] = raw ? JSON.parse(raw) : [];
-      setDrafts(list.reverse());
+      const {drafts: list} = await listDrafts();
+      setDrafts(list);
     } catch {
       setDrafts([]);
     } finally {
@@ -97,52 +93,104 @@ export function DraftsScreen() {
   }, []);
 
   useEffect(() => {
-    loadDrafts();
+    void loadDrafts();
   }, [loadDrafts]);
 
-  const deleteDraft = useCallback(
-    (idx: number) => {
+  const removeOne = useCallback(
+    (id: string) => {
       Alert.alert('Delete draft?', 'This cannot be undone.', [
         {text: 'Cancel', style: 'cancel'},
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            const updated = [...drafts];
-            updated.splice(idx, 1);
-            setDrafts(updated);
-            await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify([...updated].reverse()));
+            try {
+              await deleteDraft(id);
+              setDrafts(prev => prev.filter(d => d._id !== id));
+            } catch {
+              Alert.alert('Could not delete', 'Try again.');
+            }
           },
         },
       ]);
     },
-    [drafts],
+    [],
   );
 
-  const deleteAll = useCallback(() => {
+  const clearAll = useCallback(() => {
+    if (drafts.length === 0) return;
     Alert.alert('Delete all drafts?', 'This cannot be undone.', [
       {text: 'Cancel', style: 'cancel'},
       {
         text: 'Delete all',
         style: 'destructive',
         onPress: async () => {
-          setDrafts([]);
-          await AsyncStorage.removeItem(DRAFT_KEY);
+          try {
+            await Promise.all(drafts.map(d => deleteDraft(d._id)));
+            setDrafts([]);
+          } catch {
+            Alert.alert('Some drafts could not be deleted', 'Try again.');
+            void loadDrafts();
+          }
         },
       },
     ]);
-  }, []);
+  }, [drafts, loadDrafts]);
 
-  const resumeDraft = useCallback(
-    (d: SavedDraft) => {
-      const dd = d.draft;
-      if (dd.mode) setMode(dd.mode);
-      if (dd.assets?.length) setAssets(dd.assets);
-      if (dd.caption) setCaption(dd.caption);
-      if (dd.hashtags?.length) setHashtags(dd.hashtags);
+  const resume = useCallback(
+    (rec: DraftRecord) => {
+      const snap = unpackClientSnapshot(rec.filters);
+      if (snap) {
+        replaceDraft(snap);
+        navigation.navigate('MediaEditor');
+        return;
+      }
+      replaceDraft({
+        mode: rec.type,
+        assets: rec.localUri ? [{uri: rec.localUri, type: rec.mediaType}] : [],
+        activeAssetIndex: 0,
+        caption: rec.caption,
+        hashtags: rec.tags?.filter(t => t.startsWith('#')) ?? [],
+        tagged: [],
+        location: rec.location
+          ? {
+              id: rec.locationMeta ? `${rec.locationMeta.lat}_${rec.locationMeta.lng}` : rec.location,
+              name: rec.location,
+              lat: rec.locationMeta?.lat,
+              lng: rec.locationMeta?.lng,
+            }
+          : null,
+        products: [],
+        filterByAsset: {},
+        adjustByAsset: {},
+        rotationByAsset: {},
+        cropByAsset: {},
+        trimStartByAsset: {},
+        trimEndByAsset: {},
+        playbackSpeed: 1,
+        selectedAudio: rec.music ? {id: 'x', title: rec.music, artist: ''} : null,
+        textOverlays: [],
+        stickers: [],
+        poll: {enabled: false, optionA: 'Yes', optionB: 'No', votesA: 0, votesB: 0},
+        visibility: rec.settings?.closeFriendsOnly ? 'close_friends' : 'public',
+        advanced: {
+          commentsOff: Boolean(rec.settings?.commentsOff),
+          hideLikeCount: Boolean(rec.settings?.hideLikes),
+          brandedContent: false,
+          altText: rec.caption,
+          shareToStory: false,
+          scheduledAt: null,
+        },
+        storyAllowReplies: true,
+        storyShareOffPlatform: false,
+        liveAudience: 'everyone',
+        liveTitle: '',
+        feedCategoryPreset: 'general',
+        feedCategoryManual: rec.feedCategory && rec.feedCategory !== 'general' ? rec.feedCategory : '',
+      });
       navigation.navigate('MediaEditor');
     },
-    [navigation, setMode, setAssets, setCaption, setHashtags],
+    [navigation, replaceDraft],
   );
 
   return (
@@ -153,7 +201,7 @@ export function DraftsScreen() {
         </Pressable>
         <Text style={styles.title}>Drafts</Text>
         {drafts.length > 0 ? (
-          <Pressable onPress={deleteAll}>
+          <Pressable onPress={clearAll}>
             <Text style={styles.deleteAll}>Clear all</Text>
           </Pressable>
         ) : (
@@ -163,26 +211,26 @@ export function DraftsScreen() {
 
       {loading ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>Loading...</Text>
+          <ActivityIndicator color={palette.foreground} />
+          <Text style={styles.emptyText}>Loading drafts…</Text>
         </View>
       ) : drafts.length === 0 ? (
         <View style={styles.empty}>
           <FileText size={40} color={palette.foregroundFaint} />
           <Text style={styles.emptyTitle}>No drafts</Text>
           <Text style={styles.emptyText}>
-            Drafts you save while creating content will appear here.
+            Save from the review screen to sync drafts to your account.
           </Text>
         </View>
       ) : (
         <FlatList
           data={drafts}
-          keyExtractor={(_, idx) => `draft_${idx}`}
+          keyExtractor={item => item._id}
           contentContainerStyle={{paddingHorizontal: 14, paddingTop: 8}}
-          renderItem={({item, index}) => {
-            const d = item.draft;
-            const thumb = d.assets?.[0]?.uri;
+          renderItem={({item}) => {
+            const thumb = item.thumbnailUri || item.localUri;
             return (
-              <Pressable style={styles.card} onPress={() => resumeDraft(item)}>
+              <Pressable style={styles.card} onPress={() => resume(item)}>
                 {thumb ? (
                   <Image source={{uri: thumb}} style={styles.thumb} />
                 ) : (
@@ -191,19 +239,16 @@ export function DraftsScreen() {
                   </View>
                 )}
                 <View style={styles.cardBody}>
-                  <Text style={styles.cardMode}>{(d.mode || 'post').toUpperCase()}</Text>
+                  <Text style={styles.cardMode}>{item.type.toUpperCase()}</Text>
                   <Text style={styles.cardCaption} numberOfLines={2}>
-                    {d.caption || 'No caption'}
+                    {item.caption || 'No caption'}
                   </Text>
                   <View style={styles.cardMeta}>
                     <Clock size={12} color={palette.foregroundSubtle} />
-                    <Text style={styles.cardTime}>{timeAgo(item.savedAt)}</Text>
-                    {d.assets?.length > 0 && (
-                      <Text style={styles.cardAssets}>{d.assets.length} media</Text>
-                    )}
+                    <Text style={styles.cardTime}>{timeAgo(item.updatedAt)}</Text>
                   </View>
                 </View>
-                <Pressable style={styles.deleteBtn} onPress={() => deleteDraft(index)}>
+                <Pressable style={styles.deleteBtn} onPress={() => removeOne(item._id)}>
                   <Trash2 size={18} color={palette.destructive} />
                 </Pressable>
               </Pressable>
