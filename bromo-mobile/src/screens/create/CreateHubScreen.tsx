@@ -10,9 +10,11 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
-import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
+import {useFocusEffect, useIsFocused, useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
@@ -46,6 +48,8 @@ import {loadCameraSettings, type StoredCameraSettings} from '../../lib/cameraSet
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import type {ThemePalette} from '../../config/platform-theme';
 import {getPost} from '../../api/postsApi';
+import {Camera as VisionCamera} from 'react-native-vision-camera';
+import {useHubCameraCapture} from './useHubCameraCapture';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'CreateHub'>;
 type RouteProps = RouteProp<CreateStackParamList, 'CreateHub'>;
@@ -93,6 +97,7 @@ const MODES: {id: CreateMode; label: string}[] = [
 export function CreateHubScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProps>();
+  const isFocused = useIsFocused();
   const {palette} = useTheme();
   const styles = makeStyles(palette);
   const {draft, setMode, setAssets, reset, setLiveMeta, setSelectedAudio} = useCreateDraft();
@@ -185,10 +190,34 @@ export function CreateHubScreen() {
       navigation.navigate('LivePreview');
       return;
     }
-    // In-app camera (tap = photo, hold = record). Video-only for reel.
+    // Full-screen camera (e.g. post grid "camera" cell). Hub story/reel use inline preview.
     navigation.navigate('InAppCamera');
   }, [draft.mode, navigation]);
-  void frontCam;
+
+  const hubCameraActive =
+    isFocused &&
+    !previewUri &&
+    (draft.mode === 'reel' ||
+      draft.mode === 'story' ||
+      draft.mode === 'live' ||
+      draft.mode === 'post');
+
+  const onHubCaptured = useCallback(
+    (assets: MediaAsset[]) => {
+      setAssets(assets);
+      navigation.navigate('MediaEditor');
+    },
+    [navigation, setAssets],
+  );
+
+  const hubCam = useHubCameraCapture({
+    mode: draft.mode,
+    flashOn,
+    facing: frontCam ? 'front' : 'back',
+    isActive: hubCameraActive,
+    inlinePostCamera: draft.mode === 'post',
+    onCaptured: onHubCaptured,
+  });
 
   const openLibraryFull = useCallback(() => {
     launchImageLibrary(
@@ -345,9 +374,50 @@ export function CreateHubScreen() {
             {previewUri ? (
               <Image source={{uri: previewUri}} style={styles.hero} resizeMode="cover" />
             ) : (
-              <View style={[styles.hero, styles.heroPlaceholder]}>
-                <Camera size={36} color={palette.foregroundFaint} />
-                <Text style={styles.placeholderText}>Select a photo or video</Text>
+              <View style={[styles.hero, styles.postHeroSplit]}>
+                <View style={styles.postMiniCam}>
+                  <HubCameraPreviewBody
+                    hubCam={hubCam}
+                    isActive={hubCameraActive}
+                    palette={palette}
+                    styles={styles}
+                    containerStyle={StyleSheet.absoluteFillObject}
+                  />
+                  <Pressable
+                    style={StyleSheet.absoluteFillObject}
+                    onPressIn={hubCam.onShutterPressIn}
+                    onPressOut={hubCam.onShutterPressOut}
+                  />
+                  {hubCam.recording ? (
+                    <View style={styles.postMiniRecBadge}>
+                      <View style={styles.postMiniRecPill}>
+                        <View style={styles.hubRecDot} />
+                        <Text style={styles.hubRecText}>{(hubCam.recordMs / 1000).toFixed(1)}s</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  <Pressable
+                    style={styles.postMiniFlash}
+                    onPress={() => setFlashOn(f => !f)}
+                    hitSlop={8}>
+                    {flashOn ? (
+                      <Zap size={18} color={palette.foreground} />
+                    ) : (
+                      <ZapOff size={18} color={palette.foreground} />
+                    )}
+                  </Pressable>
+                  <Pressable
+                    style={styles.postMiniFlip}
+                    onPress={() => setFrontCam(f => !f)}
+                    hitSlop={8}>
+                    <Repeat2 size={18} color={palette.foreground} style={{transform: [{scaleX: -1}]}} />
+                  </Pressable>
+                </View>
+                <View style={[styles.postHeroHint, styles.heroPlaceholder]}>
+                  <Camera size={28} color={palette.foregroundFaint} />
+                  <Text style={styles.placeholderText}>Tap above for photo · hold for video</Text>
+                  <Text style={styles.postHeroSub}>Or pick from recents below · grid camera opens full screen</Text>
+                </View>
               </View>
             )}
           </View>
@@ -433,13 +503,22 @@ export function CreateHubScreen() {
             {previewUri ? (
               <Image source={{uri: previewUri}} style={styles.fullPreview} resizeMode="cover" />
             ) : (
-              <View style={[styles.fullPreview, styles.heroPlaceholder]}>
-                <Camera size={44} color={palette.foregroundFaint} />
-                <Text style={styles.placeholderText}>
-                  {draft.mode === 'live' ? 'Tap Go Live below' : 'Camera'}
-                </Text>
+              <View style={styles.fullPreview}>
+                <HubCameraPreviewBody
+                  hubCam={hubCam}
+                  isActive={hubCameraActive}
+                  palette={palette}
+                  styles={styles}
+                  containerStyle={StyleSheet.absoluteFillObject}
+                />
               </View>
             )}
+            {hubCam.recording && !previewUri ? (
+              <View style={styles.hubRecBadge}>
+                <View style={styles.hubRecDot} />
+                <Text style={styles.hubRecText}>{(hubCam.recordMs / 1000).toFixed(1)}s</Text>
+              </View>
+            ) : null}
             <Pressable style={[styles.flashBtn, {top: 48}]} onPress={() => setFlashOn(f => !f)}>
               {flashOn ? <Zap size={22} color={palette.foreground} /> : <ZapOff size={22} color={palette.foreground} />}
             </Pressable>
@@ -452,17 +531,28 @@ export function CreateHubScreen() {
                 <View style={[styles.smallPreviewImg, {backgroundColor: palette.surfaceHigh}]} />
               )}
             </Pressable>
-            <Pressable
-              style={[styles.shutter, draft.mode === 'live' && styles.shutterLive]}
-              onPress={openCamera}>
-              <View
+            {draft.mode === 'live' ? (
+              <Pressable style={[styles.shutter, styles.shutterLive]} onPress={openCamera}>
+                <View style={[styles.shutterInner, styles.shutterInnerLive]}>
+                  <Radio size={28} color={palette.foreground} />
+                </View>
+              </Pressable>
+            ) : (
+              <Pressable
                 style={[
-                  styles.shutterInner,
-                  draft.mode === 'live' && styles.shutterInnerLive,
-                ]}>
-                {draft.mode === 'live' && <Radio size={28} color={palette.foreground} />}
-              </View>
-            </Pressable>
+                  styles.shutter,
+                  hubCam.recording && {borderColor: palette.destructive},
+                ]}
+                onPressIn={hubCam.onShutterPressIn}
+                onPressOut={hubCam.onShutterPressOut}>
+                <View
+                  style={[
+                    styles.shutterInner,
+                    hubCam.recording && {backgroundColor: palette.destructive},
+                  ]}
+                />
+              </Pressable>
+            )}
             <Pressable style={styles.flipBtn} onPress={() => setFrontCam(f => !f)}>
               <Repeat2 size={24} color={palette.foreground} style={{transform: [{scaleX: -1}]}} />
             </Pressable>
@@ -497,6 +587,66 @@ export function CreateHubScreen() {
         </ScrollView>
       </View>
     </ThemedSafeScreen>
+  );
+}
+
+type HubCamApi = ReturnType<typeof useHubCameraCapture>;
+
+function HubCameraPreviewBody({
+  hubCam,
+  isActive,
+  palette,
+  styles,
+  containerStyle,
+}: {
+  hubCam: HubCamApi;
+  isActive: boolean;
+  palette: ThemePalette;
+  styles: ReturnType<typeof makeStyles>;
+  containerStyle: StyleProp<ViewStyle>;
+}) {
+  return (
+    <>
+      {hubCam.needsCamera && hubCam.permission === 'pending' ? (
+        <View style={[containerStyle, styles.heroPlaceholder]}>
+          <ActivityIndicator color={palette.foreground} />
+        </View>
+      ) : null}
+      {hubCam.needsCamera && hubCam.permission === 'denied' ? (
+        <View style={[containerStyle, styles.heroPlaceholder, {padding: 24}]}>
+          <Text style={[styles.placeholderText, {textAlign: 'center'}]}>
+            Camera and microphone access are needed to capture here.
+          </Text>
+          <Pressable
+            onPress={hubCam.openSettings}
+            style={{
+              marginTop: 12,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderRadius: 12,
+              backgroundColor: palette.accent,
+            }}>
+            <Text style={{color: palette.background, fontWeight: '700'}}>Open Settings</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {hubCam.showCamera && hubCam.device ? (
+        <VisionCamera
+          ref={hubCam.cameraRef}
+          style={containerStyle}
+          device={hubCam.device}
+          isActive={isActive}
+          photo
+          video
+          audio
+        />
+      ) : null}
+      {hubCam.needsCamera && hubCam.permission === 'granted' && hubCam.device == null ? (
+        <View style={[containerStyle, styles.heroPlaceholder]}>
+          <ActivityIndicator color={palette.foreground} />
+        </View>
+      ) : null}
+    </>
   );
 }
 
@@ -579,6 +729,53 @@ function makeStyles(p: ThemePalette) {
     },
     postTop: {paddingHorizontal: 1},
     hero: {width: '100%', aspectRatio: 1, backgroundColor: p.surface},
+    postHeroSplit: {flexDirection: 'column', overflow: 'hidden', padding: 0},
+    postMiniCam: {flex: 1, minHeight: 0, position: 'relative', backgroundColor: p.background},
+    postHeroHint: {flex: 1, minHeight: 0},
+    postHeroSub: {
+      color: p.foregroundMuted,
+      fontSize: 12,
+      textAlign: 'center',
+      paddingHorizontal: 12,
+      lineHeight: 16,
+    },
+    postMiniFlash: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      zIndex: 8,
+      padding: 6,
+      borderRadius: 20,
+      backgroundColor: p.glassMid,
+    },
+    postMiniFlip: {
+      position: 'absolute',
+      bottom: 8,
+      right: 8,
+      zIndex: 8,
+      padding: 6,
+      borderRadius: 20,
+      backgroundColor: p.glassMid,
+    },
+    postMiniRecBadge: {
+      position: 'absolute',
+      bottom: 8,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 8,
+    },
+    postMiniRecPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: p.overlay,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+    },
     heroPlaceholder: {alignItems: 'center', justifyContent: 'center', gap: 8},
     placeholderText: {color: p.foregroundSubtle, fontSize: 14},
     recentsRow: {
@@ -640,6 +837,26 @@ function makeStyles(p: ThemePalette) {
       padding: 8,
       zIndex: 6,
     },
+    hubRecBadge: {
+      position: 'absolute',
+      bottom: 12,
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      zIndex: 7,
+      backgroundColor: p.overlay,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+    },
+    hubRecDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: p.destructive,
+    },
+    hubRecText: {color: p.foreground, fontSize: 13, fontWeight: '800'},
     bottomCaptureRow: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -201,7 +201,7 @@ export async function getFeed(
   return res.json() as Promise<FeedResponse>;
 }
 
-export async function getTrendingReels(limit = 6): Promise<{posts: Post[]}> {
+export async function getTrendingReels(limit = 3): Promise<{posts: Post[]}> {
   const res = await authedFetch(`/posts/trending-reels?limit=${limit}`);
   if (!res.ok) throw new Error('Failed to fetch trending reels');
   return res.json() as Promise<{posts: Post[]}>;

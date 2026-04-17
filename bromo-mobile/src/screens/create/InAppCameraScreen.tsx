@@ -1,7 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Platform,
   Pressable,
@@ -42,6 +41,7 @@ export function InAppCameraScreen() {
   const [recordMs, setRecordMs] = useState(0);
 
   const cameraRef = useRef<Camera>(null);
+  const recordingRef = useRef(false);
   const recordStart = useRef<number>(0);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -97,7 +97,8 @@ export function InAppCameraScreen() {
 
   const startRecording = useCallback(() => {
     const cam = cameraRef.current;
-    if (!cam || recording) return;
+    if (!cam || recordingRef.current) return;
+    recordingRef.current = true;
     setRecording(true);
     setRecordMs(0);
     recordStart.current = Date.now();
@@ -114,9 +115,14 @@ export function InAppCameraScreen() {
           clearInterval(recordTimer.current);
           recordTimer.current = null;
         }
+        recordingRef.current = false;
         setRecording(false);
         const uri = Platform.OS === 'android' ? `file://${video.path}` : video.path;
-        setAssets([{uri, type: 'video', duration: (Date.now() - recordStart.current) / 1000}]);
+        const fileDur =
+          typeof (video as {duration?: number}).duration === 'number'
+            ? (video as {duration: number}).duration
+            : (Date.now() - recordStart.current) / 1000;
+        setAssets([{uri, type: 'video', duration: Math.max(0.1, fileDur)}]);
         navigation.navigate('MediaEditor');
       },
       onRecordingError: (err) => {
@@ -124,39 +130,39 @@ export function InAppCameraScreen() {
           clearInterval(recordTimer.current);
           recordTimer.current = null;
         }
+        recordingRef.current = false;
         setRecording(false);
         console.warn('[InAppCamera] record error', err);
       },
     });
-  }, [flashOn, navigation, recording, setAssets, stopRecording]);
+  }, [flashOn, navigation, setAssets, stopRecording]);
 
-  // Tap = photo, hold = record (like Instagram reels)
+  /** Reel: press in starts recording, release stops. Story: tap = photo, hold = video. */
   const onPressIn = useCallback(() => {
+    if (draft.mode === 'reel') {
+      startRecording();
+      return;
+    }
     if (pressTimer.current) clearTimeout(pressTimer.current);
     pressTimer.current = setTimeout(() => {
       pressTimer.current = null;
       startRecording();
     }, LONG_PRESS_MS);
-  }, [startRecording]);
+  }, [draft.mode, startRecording]);
 
   const onPressOut = useCallback(() => {
+    if (draft.mode === 'reel') {
+      if (recordingRef.current) void stopRecording();
+      return;
+    }
     if (pressTimer.current) {
-      // short tap — take photo
       clearTimeout(pressTimer.current);
       pressTimer.current = null;
-      if (draft.mode === 'reel') {
-        // Reel mode photo taken — brief recording? Or just photo fallback.
-        // Users asked: reel = video only. Skip photo on reel; show hint.
-        Alert.alert('Hold to record', 'For reels, press and hold the button to record video.');
-        return;
-      }
       void onPhoto();
       return;
     }
-    if (recording) {
-      void stopRecording();
-    }
-  }, [draft.mode, onPhoto, recording, stopRecording]);
+    if (recordingRef.current) void stopRecording();
+  }, [draft.mode, onPhoto, stopRecording]);
 
   const recordProgressPct = useMemo(
     () => Math.min(100, (recordMs / MAX_REEL_MS) * 100),
@@ -221,7 +227,7 @@ export function InAppCameraScreen() {
 
       <View style={[styles.bottomBar, {paddingBottom: Math.max(insets.bottom, 18)}]}>
         <Text style={styles.hint}>
-          {draft.mode === 'reel' ? 'Hold to record' : 'Tap for photo · Hold to record'}
+          {draft.mode === 'reel' ? 'Press and release to record' : 'Tap for photo · Hold to record'}
         </Text>
         <Pressable
           onPressIn={onPressIn}

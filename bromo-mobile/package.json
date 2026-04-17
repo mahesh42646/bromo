@@ -11,7 +11,8 @@
     "metro:sync-ip": "node scripts/sync-metro-host.cjs",
     "ios:device:sync": "npm run metro:sync-ip && npm run ios:device",
     "start": "node scripts/start-metro.cjs",
-    "test": "jest"
+    "test": "jest",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^3.0.2",
@@ -61,6 +62,7 @@
     "babel-plugin-module-resolver": "^5.0.3",
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
+    "patch-package": "^8.0.1",
     "prettier": "2.8.8",
     "react-test-renderer": "^19.2.3",
     "tailwindcss": "^3.4.19",

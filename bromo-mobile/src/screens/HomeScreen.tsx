@@ -888,7 +888,7 @@ export function HomeScreen() {
         reset ? getUserSuggestions(6) : Promise.resolve(null),
         reset ? fetchAds('feed', 5) : Promise.resolve(null),
         reset ? fetchAds('stories', 2) : Promise.resolve(null),
-        reset && isHome ? getTrendingReels(6).catch(() => ({posts: [] as Post[]})) : Promise.resolve(null),
+        reset && isHome ? getTrendingReels(3).catch(() => ({posts: [] as Post[]})) : Promise.resolve(null),
       ]);
 
       if (reset) {
@@ -1539,7 +1539,7 @@ export function HomeScreen() {
                       paddingBottom: 10,
                     }}>
                     <ThemedText variant="heading" style={{fontSize: 15, fontWeight: '800'}}>
-                      Trending Reels
+                      Top 3 trending reels
                     </ThemedText>
                     <Pressable onPress={() => parentNavigate(navigation, 'Reels')} hitSlop={8}>
                       <Text style={{color: palette.primary, fontWeight: '800', fontSize: 12}}>SEE MORE</Text>
