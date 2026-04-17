@@ -295,6 +295,8 @@ export async function createPost(data: {
   durationMs?: number;
   storyMeta?: StoryMeta;
   feedCategory?: string;
+  /** JSON string of edit metadata (filters, trim, overlays). */
+  clientEditMeta?: string;
 }): Promise<{post: Post}> {
   const res = await authedFetch('/posts', {
     method: 'POST',
@@ -518,6 +520,8 @@ export type UploadMediaAsyncMeta = {
   locationMeta?: PostLocationMeta | null;
   settings?: PostUploadSettings | null;
   durationMs?: number;
+  /** JSON string: filters, trim, overlays (see packEditMetaForUpload). */
+  clientEditMeta?: string;
 };
 
 function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
@@ -536,6 +540,9 @@ function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
   }
   if (typeof meta.durationMs === 'number' && !Number.isNaN(meta.durationMs)) {
     form.append('durationMs', String(Math.round(meta.durationMs)));
+  }
+  if (meta.clientEditMeta?.trim()) {
+    form.append('clientEditMeta', meta.clientEditMeta);
   }
 }
 

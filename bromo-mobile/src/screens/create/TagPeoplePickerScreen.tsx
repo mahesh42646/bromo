@@ -133,11 +133,11 @@ export function TagPeoplePickerScreen() {
       </View>
 
       <View style={[styles.searchBox, {backgroundColor: palette.card, borderColor: palette.border}]}>
-        <Search size={18} color={palette.foregroundMuted} />
+        <Search size={20} color={palette.foregroundMuted} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search users to tag"
+          placeholder="Search by name or @username"
           placeholderTextColor={palette.foregroundSubtle}
           style={[styles.input, {color: palette.foreground}]}
           autoCapitalize="none"
@@ -149,6 +149,9 @@ export function TagPeoplePickerScreen() {
           </Pressable>
         ) : null}
       </View>
+      <Text style={[styles.searchHint, {color: palette.foregroundMuted}]}>
+        Tap to tag · search to find anyone · Done saves your picks
+      </Text>
 
       {!query.trim() && (
         <>
@@ -218,16 +221,17 @@ const styles = StyleSheet.create({
   doneBtn: {fontSize: 14, fontWeight: '700'},
   searchBox: {
     marginHorizontal: 14,
-    marginBottom: 10,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-    gap: 8,
+    marginBottom: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    gap: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    height: 42,
+    minHeight: 48,
   },
-  input: {flex: 1, paddingVertical: 8, fontSize: 14},
+  input: {flex: 1, paddingVertical: 12, fontSize: 15},
+  searchHint: {paddingHorizontal: 18, marginBottom: 10, fontSize: 12, lineHeight: 17},
   sectionLabel: {paddingHorizontal: 14, paddingTop: 6, paddingBottom: 4, fontSize: 11, fontWeight: '800', letterSpacing: 0.6},
   pill: {
     flexDirection: 'row',

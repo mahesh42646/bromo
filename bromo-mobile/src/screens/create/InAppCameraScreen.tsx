@@ -28,6 +28,9 @@ type Nav = NativeStackNavigationProp<CreateStackParamList>;
 const MAX_REEL_MS = 90_000;
 const LONG_PRESS_MS = 220; // hold threshold before record starts
 
+/** See useHubCameraCapture — iOS mic+record often triggers -10868 and freezes preview. */
+const ENABLE_RECORD_AUDIO = Platform.OS !== 'ios';
+
 export function InAppCameraScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
@@ -39,6 +42,12 @@ export function InAppCameraScreen() {
   const [flashOn, setFlashOn] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordMs, setRecordMs] = useState(0);
+  const [cameraInstanceKey, setCameraInstanceKey] = useState(0);
+
+  const recoverCameraSession = useCallback((error?: unknown) => {
+    if (error) console.warn('[InAppCamera] recover session after error', error);
+    setCameraInstanceKey(k => k + 1);
+  }, []);
 
   const cameraRef = useRef<Camera>(null);
   const recordingRef = useRef(false);
@@ -51,16 +60,19 @@ export function InAppCameraScreen() {
   useEffect(() => {
     (async () => {
       const cam = await Camera.getCameraPermissionStatus();
-      const mic = await Camera.getMicrophonePermissionStatus();
       let camOk = cam === 'granted';
-      let micOk = mic === 'granted';
       if (!camOk) {
         const r = await Camera.requestCameraPermission();
         camOk = r === 'granted';
       }
-      if (!micOk) {
-        const r = await Camera.requestMicrophonePermission();
-        micOk = r === 'granted';
+      let micOk = true;
+      if (ENABLE_RECORD_AUDIO) {
+        const mic = await Camera.getMicrophonePermissionStatus();
+        micOk = mic === 'granted';
+        if (!micOk) {
+          const r = await Camera.requestMicrophonePermission();
+          micOk = r === 'granted';
+        }
       }
       setPermission(camOk && micOk ? 'granted' : 'denied');
     })();
@@ -75,7 +87,7 @@ export function InAppCameraScreen() {
     if (!cam) return;
     try {
       const photo: PhotoFile = await cam.takePhoto({
-        flash: flashOn ? 'on' : 'off',
+        flash: flashOn && position === 'back' ? 'on' : 'off',
       });
       const uri = Platform.OS === 'android' ? `file://${photo.path}` : photo.path;
       setAssets([{uri, type: 'image'}]);
@@ -83,7 +95,7 @@ export function InAppCameraScreen() {
     } catch (e) {
       console.warn('[InAppCamera] photo error', e);
     }
-  }, [flashOn, navigation, setAssets]);
+  }, [flashOn, navigation, position, setAssets]);
 
   const stopRecording = useCallback(async () => {
     const cam = cameraRef.current;
@@ -108,8 +120,16 @@ export function InAppCameraScreen() {
       if (elapsed >= MAX_REEL_MS) stopRecording();
     }, 100);
 
+    const torchWhileRecording =
+      flashOn && position === 'back' ? ('on' as const) : ('off' as const);
+    const iosRecording =
+      Platform.OS === 'ios'
+        ? {fileType: 'mov' as const, videoCodec: 'h264' as const}
+        : {};
+
     cam.startRecording({
-      flash: flashOn ? 'on' : 'off',
+      flash: torchWhileRecording,
+      ...iosRecording,
       onRecordingFinished: (video: VideoFile) => {
         if (recordTimer.current) {
           clearInterval(recordTimer.current);
@@ -133,9 +153,10 @@ export function InAppCameraScreen() {
         recordingRef.current = false;
         setRecording(false);
         console.warn('[InAppCamera] record error', err);
+        recoverCameraSession(err);
       },
     });
-  }, [flashOn, navigation, setAssets, stopRecording]);
+  }, [flashOn, navigation, position, recoverCameraSession, setAssets, stopRecording]);
 
   /** Reel: press in starts recording, release stops. Story: tap = photo, hold = video. */
   const onPressIn = useCallback(() => {
@@ -197,13 +218,15 @@ export function InAppCameraScreen() {
   return (
     <View style={[styles.root, {paddingTop: insets.top}]}>
       <Camera
+        key={`inapp-vc-${cameraInstanceKey}`}
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         device={device}
         isActive
         photo
         video
-        audio
+        audio={ENABLE_RECORD_AUDIO}
+        onError={recoverCameraSession}
       />
       <View style={styles.topBar}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.iconBtn}>

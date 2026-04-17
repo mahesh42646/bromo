@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -25,18 +25,32 @@ import {
   EyeOff,
   Award,
   Image as ImageIcon,
+  Search,
   ShoppingBag,
   UserPlus,
+  X,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import type {ThemePalette} from '../../config/platform-theme';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import {getUserSuggestions, type SuggestedUser} from '../../api/followApi';
+import {listProducts, type AffiliateProduct} from '../../api/productsApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'Composer'>;
 
 const {width: W} = Dimensions.get('window');
+const MAX_PRODUCTS = 6;
+
+function affiliateToAttachment(p: AffiliateProduct) {
+  return {
+    id: p._id,
+    name: p.title,
+    priceLabel: `${p.currency} ${p.price.toLocaleString()}`,
+    imageUri: p.imageUrl,
+    productUrl: p.productUrl,
+  };
+}
 
 const SUGGEST_TAGS = [
   '#fyp', '#reels', '#shopping', '#local', '#creator',
@@ -55,21 +69,87 @@ function makeStyles(p: ThemePalette) {
     },
     title: {color: p.foreground, fontWeight: '800', fontSize: 16},
     next: {fontSize: 16, fontWeight: '700'},
-    thumbRow: {
-      flexDirection: 'row',
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      gap: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: p.surfaceHigh,
-    },
     thumbImg: {width: 64, height: 64, borderRadius: 8},
+    captionBox: {
+      flexDirection: 'row',
+      marginHorizontal: 14,
+      marginTop: 10,
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: p.border,
+      backgroundColor: p.card,
+      gap: 12,
+      alignItems: 'flex-start',
+    },
     captionInline: {
       flex: 1,
       color: p.foreground,
       fontSize: 15,
       textAlignVertical: 'top',
       padding: 0,
+      minHeight: 72,
+    },
+    hashtagManualRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 14,
+      marginTop: 10,
+      gap: 8,
+    },
+    hashtagInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: p.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: p.foreground,
+      backgroundColor: p.input ?? p.card,
+      fontSize: 14,
+    },
+    hashtagAddBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: p.accent,
+    },
+    hashtagAddTxt: {color: p.accentForeground, fontWeight: '800', fontSize: 13},
+    productSearchBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 14,
+      marginTop: 8,
+      paddingHorizontal: 12,
+      height: 44,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: p.border,
+      backgroundColor: p.card,
+      gap: 8,
+    },
+    productSearchInput: {flex: 1, paddingVertical: 8, fontSize: 14, color: p.foreground},
+    productSlotRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, marginTop: 10},
+    productSlot: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: p.border,
+      backgroundColor: p.surface,
+      maxWidth: '48%',
+    },
+    productSlotTxt: {color: p.foreground, fontSize: 12, fontWeight: '700', flex: 1},
+    productHit: {
+      width: 100,
+      padding: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: p.border,
+      backgroundColor: p.card,
     },
     rowTitle: {flexDirection: 'row', alignItems: 'center', marginLeft: 14, marginTop: 18, marginRight: 14},
     labelInline: {color: p.foreground, fontWeight: '800', marginLeft: 8, fontSize: 14},
@@ -194,6 +274,7 @@ export function ComposerScreen() {
     setPoll,
     setAdvanced,
     addSticker,
+    setProducts,
   } = useCreateDraft();
 
   const {tagged, products, poll, location, advanced} = draft;
@@ -203,6 +284,11 @@ export function ComposerScreen() {
   const [pollB, setPollB] = useState(poll.optionB);
   const [friends, setFriends] = useState<SuggestedUser[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(true);
+  const [hashtagDraft, setHashtagDraft] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const [productHits, setProductHits] = useState<AffiliateProduct[]>([]);
+  const [productLoading, setProductLoading] = useState(false);
+  const productDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,6 +304,19 @@ export function ComposerScreen() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (productDebounceRef.current) clearTimeout(productDebounceRef.current);
+    productDebounceRef.current = setTimeout(async () => {
+      setProductLoading(true);
+      const {items} = await listProducts(productQuery.trim() || undefined, undefined, 12);
+      setProductHits(items);
+      setProductLoading(false);
+    }, 280);
+    return () => {
+      if (productDebounceRef.current) clearTimeout(productDebounceRef.current);
+    };
+  }, [productQuery]);
 
   const syncCaption = useCallback(() => {
     setCaption(captionLocal);
@@ -241,6 +340,33 @@ export function ComposerScreen() {
     });
   };
 
+  const appendManualHashtag = useCallback(() => {
+    let t = hashtagDraft.trim();
+    if (!t) return;
+    if (!t.startsWith('#')) t = `#${t.replace(/^#+/, '')}`;
+    const next =
+      captionLocal.endsWith(' ') || captionLocal.length === 0 ? `${captionLocal}${t}` : `${captionLocal} ${t}`;
+    setCaptionLocal(next);
+    setCaption(next);
+    setHashtags(next.match(/#[\w\u0900-\u0fff]+/g) ?? []);
+    setAdvanced({altText: next.trim()});
+    setHashtagDraft('');
+  }, [hashtagDraft, captionLocal, setCaption, setHashtags, setAdvanced]);
+
+  const addProductFromCatalog = useCallback(
+    (p: AffiliateProduct) => {
+      if (draft.products.some(x => x.id === p._id)) return;
+      if (draft.products.length >= MAX_PRODUCTS) return;
+      setProducts([...draft.products, affiliateToAttachment(p)]);
+    },
+    [draft.products, setProducts],
+  );
+
+  const removeTaggedProduct = useCallback(
+    (id: string) => setProducts(draft.products.filter(x => x.id !== id)),
+    [draft.products, setProducts],
+  );
+
   const goNext = () => {
     syncCaption();
     setPoll({optionA: pollA, optionB: pollB});
@@ -260,20 +386,20 @@ export function ComposerScreen() {
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled">
-        {draft.assets.length > 0 && (
-          <View style={s.thumbRow}>
+        <View style={draft.assets.length > 0 ? s.captionBox : [s.captionBox, {marginBottom: 4}]}>
+          {draft.assets.length > 0 ? (
             <Image source={{uri: draft.assets[0].uri}} style={s.thumbImg} />
-            <TextInput
-              value={captionLocal}
-              onChangeText={setCaptionLocal}
-              onBlur={syncCaption}
-              placeholder="Write a caption…"
-              placeholderTextColor={palette.placeholder}
-              multiline
-              style={s.captionInline}
-            />
-          </View>
-        )}
+          ) : null}
+          <TextInput
+            value={captionLocal}
+            onChangeText={setCaptionLocal}
+            onBlur={syncCaption}
+            placeholder="Write a caption…"
+            placeholderTextColor={palette.placeholder}
+            multiline
+            style={s.captionInline}
+          />
+        </View>
 
         <SectionHeader icon={<Hash size={16} color={palette.foreground} />} label="Hashtags" s={s} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tagRow}>
@@ -299,18 +425,45 @@ export function ComposerScreen() {
           })}
         </ScrollView>
 
-        <View style={s.rowTitle}>
-          <MapPin size={16} color={palette.foreground} />
-          <Pressable style={{flex: 1}} onPress={() => navigation.navigate('LocationPicker')}>
-            <Text style={s.labelInline}>{location ? location.name : 'Add location'}</Text>
+        <View style={s.hashtagManualRow}>
+          <TextInput
+            value={hashtagDraft}
+            onChangeText={setHashtagDraft}
+            onSubmitEditing={appendManualHashtag}
+            placeholder="Type a hashtag (or pick below)"
+            placeholderTextColor={palette.placeholder}
+            style={s.hashtagInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable onPress={appendManualHashtag} style={s.hashtagAddBtn}>
+            <Text style={s.hashtagAddTxt}>Add</Text>
+          </Pressable>
+        </View>
+
+        <View
+          style={[
+            s.linkRow,
+            {marginTop: 18, marginBottom: 4, borderColor: palette.border, backgroundColor: palette.card},
+          ]}>
+          <Pressable
+            onPress={() => navigation.navigate('LocationPicker')}
+            style={{flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10}}>
+            <MapPin size={18} color={palette.accent} />
+            <View style={{flex: 1}}>
+              <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800'}}>Location</Text>
+              <Text style={[s.linkRowTxt, {marginTop: 2}]} numberOfLines={2}>
+                {location ? location.name : 'Add location'}
+              </Text>
+            </View>
           </Pressable>
           {location ? (
-            <Pressable onPress={() => setLocation(null)}>
-              <Text style={s.removeLink}>Remove</Text>
+            <Pressable onPress={() => setLocation(null)} hitSlop={8}>
+              <Text style={s.removeLink}>Clear</Text>
             </Pressable>
           ) : (
-            <Pressable onPress={() => navigation.navigate('LocationPicker')}>
-              <ChevronRight size={16} color={palette.foregroundSubtle} />
+            <Pressable onPress={() => navigation.navigate('LocationPicker')} hitSlop={8}>
+              <ChevronRight size={18} color={palette.foregroundSubtle} />
             </Pressable>
           )}
         </View>
@@ -328,12 +481,19 @@ export function ComposerScreen() {
           </View>
         )}
 
-        <SectionHeader icon={<UserPlus size={16} color={palette.foreground} />} label="Tag people" s={s} />
+        <SectionHeader
+          icon={<UserPlus size={16} color={palette.foreground} />}
+          label="Tag people"
+          s={s}
+          right={
+            <Text style={{color: palette.foregroundMuted, fontSize: 11, fontWeight: '600'}}>Up to 3 suggested</Text>
+          }
+        />
         {friendsLoading ? (
           <ActivityIndicator color={palette.foreground} style={{marginVertical: 12}} />
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 12, gap: 8, paddingBottom: 8}}>
-            {friends.slice(0, 12).map(u => {
+            {friends.slice(0, 3).map(u => {
               const on = tagged.some(t => t.id === u._id);
               return (
                 <Pressable
@@ -350,35 +510,86 @@ export function ComposerScreen() {
           </ScrollView>
         )}
 
-        <Pressable onPress={() => navigation.navigate('ProductPicker')}>
-          <SectionHeader
-            icon={<ShoppingBag size={16} color={palette.foreground} />}
-            label={products.length ? `Products (${products.length}/6)` : 'Tag products'}
-            s={s}
-            right={<ChevronRight size={16} color={palette.foregroundSubtle} />}
-          />
-        </Pressable>
-        {products.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 12, gap: 10, paddingBottom: 8}}>
-            {products.map(p => (
+        <View style={s.rowTitle}>
+          <ShoppingBag size={16} color={palette.foreground} />
+          <Text style={s.labelInline}>Tag products</Text>
+          <Pressable onPress={() => navigation.navigate('ProductPicker')} style={{marginLeft: 'auto'}}>
+            <Text style={{color: palette.accent, fontWeight: '800', fontSize: 13}}>Browse all</Text>
+          </Pressable>
+        </View>
+        <Text style={{marginHorizontal: 14, marginTop: 4, color: palette.foregroundMuted, fontSize: 12}}>
+          Up to {MAX_PRODUCTS} — tap a result to tag; long-press a chip to drop a sticker on preview.
+        </Text>
+        <View style={s.productSlotRow}>
+          {products.slice(0, 3).map(p => (
+            <Pressable
+              key={p.id}
+              onPress={() => stickerFromProduct(p)}
+              onLongPress={() => stickerFromProduct(p)}
+              style={[s.productSlot, {borderColor: palette.accent + '55'}]}>
+              <Text style={s.productSlotTxt} numberOfLines={2}>
+                {p.name}
+              </Text>
               <Pressable
-                key={p.id}
-                onPress={() => stickerFromProduct(p)}
-                style={{
-                  width: 120,
-                  backgroundColor: palette.card,
-                  borderRadius: 14,
-                  padding: 8,
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                }}>
-                {p.imageUri ? <Image source={{uri: p.imageUri}} style={{width: '100%', height: 72, borderRadius: 10}} /> : null}
-                <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 11, marginTop: 6}} numberOfLines={2}>
-                  {p.name}
-                </Text>
-                <Text style={{color: palette.success, fontSize: 10, fontWeight: '700', marginTop: 2}}>{p.priceLabel}</Text>
+                onPress={() => removeTaggedProduct(p.id)}
+                hitSlop={10}
+                style={{padding: 4}}>
+                <X size={16} color={palette.foregroundMuted} />
               </Pressable>
-            ))}
+            </Pressable>
+          ))}
+          {products.length > 3
+            ? products.slice(3).map(p => (
+                <View key={p.id} style={[s.productSlot, {opacity: 0.85}]}>
+                  <Text style={s.productSlotTxt} numberOfLines={1}>
+                    + {p.name}
+                  </Text>
+                  <Pressable onPress={() => removeTaggedProduct(p.id)} hitSlop={10}>
+                    <X size={14} color={palette.foregroundMuted} />
+                  </Pressable>
+                </View>
+              ))
+            : null}
+        </View>
+        <View style={[s.productSearchBox, {borderColor: palette.border}]}>
+          <Search size={16} color={palette.foregroundMuted} />
+          <TextInput
+            value={productQuery}
+            onChangeText={setProductQuery}
+            placeholder="Search catalog…"
+            placeholderTextColor={palette.placeholder}
+            style={s.productSearchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+        {productLoading ? (
+          <ActivityIndicator color={palette.accent} style={{marginTop: 12}} />
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 14, gap: 10, paddingVertical: 12}}>
+            {productHits.map(hit => {
+              const on = products.some(x => x.id === hit._id);
+              return (
+                <Pressable
+                  key={hit._id}
+                  onPress={() => addProductFromCatalog(hit)}
+                  disabled={on || products.length >= MAX_PRODUCTS}
+                  style={[
+                    s.productHit,
+                    {
+                      borderColor: on ? palette.accent : palette.border,
+                      opacity: on || products.length >= MAX_PRODUCTS ? 0.45 : 1,
+                    },
+                  ]}>
+                  {hit.imageUrl ? (
+                    <Image source={{uri: hit.imageUrl}} style={{width: '100%', height: 64, borderRadius: 8}} />
+                  ) : null}
+                  <Text style={{color: palette.foreground, fontSize: 10, fontWeight: '800', marginTop: 6}} numberOfLines={2}>
+                    {hit.title}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </ScrollView>
         )}
 

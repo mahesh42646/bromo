@@ -37,6 +37,14 @@ export function useHubCameraCapture(opts: {
   const recordStart = useRef(0);
 
   const device = useCameraDevice(facing);
+  /** iOS: VisionCamera often hits kAudioUnitErr_FormatNotSupported (-10868) when recording with mic; preview then freezes. Video has no mic audio on iOS until upstream fixes. */
+  const enableRecordAudio = Platform.OS !== 'ios';
+  const [cameraInstanceKey, setCameraInstanceKey] = useState(0);
+
+  const recoverCameraSession = useCallback((error?: unknown) => {
+    if (error) console.warn('[HubCamera] recover session after error', error);
+    setCameraInstanceKey(k => k + 1);
+  }, []);
 
   useEffect(() => {
     if (!isActive || (mode === 'post' && !inlinePost)) return;
@@ -49,7 +57,8 @@ export function useHubCameraCapture(opts: {
         camOk = r === 'granted';
       }
       let micOk = true;
-      const needMic = mode === 'reel' || mode === 'story' || mode === 'live' || inlinePost;
+      const wantMic = mode === 'reel' || mode === 'story' || mode === 'live' || inlinePost;
+      const needMic = wantMic && enableRecordAudio;
       if (needMic) {
         const mic = await Camera.getMicrophonePermissionStatus();
         micOk = mic === 'granted';
@@ -65,7 +74,7 @@ export function useHubCameraCapture(opts: {
     return () => {
       cancelled = true;
     };
-  }, [isActive, inlinePost, mode]);
+  }, [enableRecordAudio, isActive, inlinePost, mode]);
 
   useEffect(() => {
     return () => {
@@ -97,8 +106,16 @@ export function useHubCameraCapture(opts: {
       if (elapsed >= MAX_REEL_MS) void stopRecording();
     }, 100);
 
+    const torchWhileRecording =
+      flashOn && facing === 'back' ? ('on' as const) : ('off' as const);
+    const iosRecording =
+      Platform.OS === 'ios'
+        ? {fileType: 'mov' as const, videoCodec: 'h264' as const}
+        : {};
+
     cam.startRecording({
-      flash: flashOn ? 'on' : 'off',
+      flash: torchWhileRecording,
+      ...iosRecording,
       onRecordingFinished: (video: VideoFile) => {
         if (recordTimer.current) {
           clearInterval(recordTimer.current);
@@ -121,23 +138,24 @@ export function useHubCameraCapture(opts: {
         recordingRef.current = false;
         setRecording(false);
         console.warn('[HubCamera] record error', err);
+        recoverCameraSession(err);
       },
     });
-  }, [flashOn, onCaptured, stopRecording]);
+  }, [facing, flashOn, onCaptured, recoverCameraSession, stopRecording]);
 
   const onPhoto = useCallback(async () => {
     const cam = cameraRef.current;
     if (!cam) return;
     try {
       const photo: PhotoFile = await cam.takePhoto({
-        flash: flashOn ? 'on' : 'off',
+        flash: flashOn && facing === 'back' ? 'on' : 'off',
       });
       const uri = Platform.OS === 'android' ? `file://${photo.path}` : photo.path;
       onCaptured([{uri, type: 'image'}]);
     } catch (e) {
       console.warn('[HubCamera] photo error', e);
     }
-  }, [flashOn, onCaptured]);
+  }, [facing, flashOn, onCaptured]);
 
   /** Reel: press starts recording immediately; release stops. Story / inline post: short tap = photo, hold = video. */
   const onShutterPressIn = useCallback(() => {
@@ -186,6 +204,9 @@ export function useHubCameraCapture(opts: {
     recordMs,
     showCamera,
     needsCamera,
+    cameraInstanceKey,
+    enableRecordAudio,
+    recoverCameraSession,
     onShutterPressIn,
     onShutterPressOut,
     openSettings: () => Linking.openSettings(),

@@ -1,11 +1,13 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
+  ActionSheetIOS,
   Alert,
   Animated,
   FlatList,
   Linking,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -25,10 +27,12 @@ import {
   Eye,
   Heart,
   MessageCircle,
+  MoreHorizontal,
   Radio,
   Send,
   Share2,
   ShoppingBag,
+  Smile,
   Users,
   X,
   Zap,
@@ -56,10 +60,12 @@ function LiveCameraFill({
   active,
   enableAudio,
   facing,
+  torchOn = false,
 }: {
   active: boolean;
   enableAudio: boolean;
   facing: 'front' | 'back';
+  torchOn?: boolean;
 }) {
   const {hasPermission: hasCam, requestPermission: requestCam} = useCameraPermission();
   const {hasPermission: hasMic, requestPermission: requestMic} = useMicrophonePermission();
@@ -100,6 +106,7 @@ function LiveCameraFill({
     );
   }
   const useAudio = Boolean(enableAudio && hasMic);
+  const torch = facing === 'back' && torchOn ? 'on' : 'off';
   return (
     <Camera
       style={StyleSheet.absoluteFill}
@@ -107,6 +114,7 @@ function LiveCameraFill({
       isActive={active}
       video
       audio={useAudio}
+      torch={torch}
     />
   );
 }
@@ -127,10 +135,17 @@ export function LivePreviewScreen() {
   const [streamInfo, setStreamInfo] = useState<LiveStreamInfo | null>(null);
   const [starting, setStarting] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
+  const [torchOn, setTorchOn] = useState(false);
+  const [commentsMuted, setCommentsMuted] = useState(false);
+
+  useEffect(() => {
+    commentsMutedRef.current = commentsMuted;
+  }, [commentsMuted]);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const commentsRef = useRef<FlatList>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const commentsMutedRef = useRef(false);
 
   // Pulse animation for LIVE badge
   useEffect(() => {
@@ -162,6 +177,7 @@ export function LivePreviewScreen() {
 
     const unsub = socketService.on('live:comment', data => {
       if (data.streamId !== streamInfo.streamId) return;
+      if (commentsMutedRef.current) return;
       setComments(prev => [
         ...prev,
         {id: `${Date.now()}`, username: String((data as {userId?: unknown}).userId ?? 'viewer'), text: data.text},
@@ -243,6 +259,66 @@ export function LivePreviewScreen() {
     return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
+  const openLiveMenu = useCallback(() => {
+    const shareLive = async () => {
+      const msg = streamInfo?.hlsUrl
+        ? `Watch my live: ${streamInfo.hlsUrl}`
+        : 'Join my live on Bromo.';
+      try {
+        await Share.share({message: msg, title: titleLocal || 'Live'});
+      } catch {
+        /* user dismissed */
+      }
+    };
+    const inviteFriends = () => void shareLive();
+    const participants = () =>
+      Alert.alert(
+        'Participants',
+        `${viewers} watching. Full participant list and moderation tools will appear here as the live stack matures.`,
+      );
+    const report = () =>
+      Alert.alert(
+        'Report',
+        'Thanks — reporting from live is not wired to moderation yet; use in-app support if you need help right now.',
+      );
+    const muteComments = () => setCommentsMuted(m => !m);
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [
+            'View participants',
+            'Invite friends',
+            'Share live link',
+            commentsMuted ? 'Show comments' : 'Mute comments (local)',
+            'Report a problem',
+            'Invite co-host',
+            'Cancel',
+          ],
+          cancelButtonIndex: 6,
+          destructiveButtonIndex: 4,
+        },
+        i => {
+          if (i === 0) participants();
+          if (i === 1) inviteFriends();
+          if (i === 2) void shareLive();
+          if (i === 3) muteComments();
+          if (i === 4) report();
+          if (i === 5) navigation.navigate('CollaborationInvite');
+        },
+      );
+    } else {
+      Alert.alert('Live', undefined, [
+        {text: 'Participants', onPress: participants},
+        {text: 'Invite friends', onPress: inviteFriends},
+        {text: 'Share link', onPress: () => void shareLive()},
+        {text: commentsMuted ? 'Show comments' : 'Mute comments', onPress: muteComments},
+        {text: 'Report', onPress: report, style: 'destructive'},
+        {text: 'Co-host invite', onPress: () => navigation.navigate('CollaborationInvite')},
+        {text: 'Close', style: 'cancel'},
+      ]);
+    }
+  }, [streamInfo, viewers, titleLocal, navigation, commentsMuted]);
+
   // Ended screen
   if (phase === 'ended') {
     return (
@@ -292,12 +368,20 @@ export function LivePreviewScreen() {
           </Pressable>
 
           <View style={styles.cameraPlaceholder}>
-            <LiveCameraFill active enableAudio={false} facing={cameraFacing} />
+            <LiveCameraFill active enableAudio={false} facing={cameraFacing} torchOn={torchOn} />
             <Pressable
               style={styles.flipCam}
-              onPress={() => setCameraFacing(f => (f === 'front' ? 'back' : 'front'))}>
+              onPress={() => {
+                setCameraFacing(f => (f === 'front' ? 'back' : 'front'));
+                setTorchOn(false);
+              }}>
               <Text style={{color: '#fff', fontWeight: '800', fontSize: 12}}>Flip</Text>
             </Pressable>
+            {cameraFacing === 'back' ? (
+              <Pressable style={styles.torchBtn} onPress={() => setTorchOn(t => !t)}>
+                <Zap size={18} color={torchOn ? palette.warning ?? '#fbbf24' : '#fff'} />
+              </Pressable>
+            ) : null}
           </View>
 
           <View style={styles.previewForm}>
@@ -342,7 +426,7 @@ export function LivePreviewScreen() {
       <View style={styles.liveContainer}>
         {/* Camera background (requires react-native-rtmp-publisher native module) */}
         <View style={styles.liveCameraBg}>
-          <LiveCameraFill active enableAudio facing={cameraFacing} />
+          <LiveCameraFill active enableAudio facing={cameraFacing} torchOn={torchOn} />
           <View style={styles.liveOverlay} pointerEvents="none">
             <Text style={styles.liveCameraText}>LIVE</Text>
             {streamInfo ? (
@@ -351,11 +435,24 @@ export function LivePreviewScreen() {
               </Text>
             ) : null}
           </View>
-          <Pressable
-            style={styles.flipCamLive}
-            onPress={() => setCameraFacing(f => (f === 'front' ? 'back' : 'front'))}>
-            <Text style={{color: '#fff', fontWeight: '800', fontSize: 12}}>Flip</Text>
-          </Pressable>
+          <View style={styles.liveCamControls}>
+            <Pressable
+              style={styles.flipCamLive}
+              onPress={() => {
+                setCameraFacing(f => (f === 'front' ? 'back' : 'front'));
+                setTorchOn(false);
+              }}>
+              <Text style={{color: '#fff', fontWeight: '800', fontSize: 12}}>Flip</Text>
+            </Pressable>
+            {cameraFacing === 'back' ? (
+              <Pressable style={styles.torchBtnLive} onPress={() => setTorchOn(t => !t)}>
+                <Zap size={18} color={torchOn ? palette.warning ?? '#fbbf24' : '#fff'} />
+              </Pressable>
+            ) : null}
+            <Pressable style={styles.moreBtnLive} onPress={openLiveMenu}>
+              <MoreHorizontal size={20} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
         {/* Top bar */}
@@ -415,20 +512,57 @@ export function LivePreviewScreen() {
             </Pressable>
           </View>
           <View style={styles.liveActions}>
-            <Pressable style={styles.liveActionBtn} onPress={() => {
-              setLikes(l => l + 1);
-              if (streamInfo) socketService.sendLiveLike(streamInfo.streamId);
-            }}>
+            <Pressable
+              style={styles.liveActionBtn}
+              onPress={() => {
+                setLikes(l => l + 1);
+                if (streamInfo) socketService.sendLiveLike(streamInfo.streamId);
+              }}>
               <Heart size={22} color={palette.destructive} fill={likes > 0 ? palette.destructive : 'transparent'} />
             </Pressable>
-            <Pressable style={styles.liveActionBtn}>
+            <Pressable style={styles.liveActionBtn} onPress={() => navigation.navigate('ProductPicker')}>
               <ShoppingBag size={22} color={palette.foreground} />
             </Pressable>
-            <Pressable style={styles.liveActionBtn}>
-              <Zap size={22} color={palette.warning ?? '#f59e0b'} />
+            <Pressable
+              style={styles.liveActionBtn}
+              onPress={() =>
+                Alert.alert(
+                  'Stickers',
+                  'Tag products from the bag for shoppable stickers. Decorative sticker packs will layer on stream in a future update.',
+                )
+              }>
+              <Smile size={22} color={palette.foreground} />
             </Pressable>
-            <Pressable style={styles.liveActionBtn}>
+            <Pressable style={styles.liveActionBtn} onPress={() => navigation.navigate('FilterEffects')}>
+              <Eye size={22} color={palette.foreground} />
+            </Pressable>
+            <Pressable
+              style={styles.liveActionBtn}
+              onPress={() => {
+                if (cameraFacing !== 'back') {
+                  Alert.alert('Torch', 'Switch to the back camera to use the flash.');
+                  return;
+                }
+                setTorchOn(t => !t);
+              }}>
+              <Zap size={22} color={torchOn ? palette.warning ?? '#f59e0b' : palette.foreground} />
+            </Pressable>
+            <Pressable
+              style={styles.liveActionBtn}
+              onPress={async () => {
+                try {
+                  await Share.share({
+                    message: streamInfo?.hlsUrl ? `Watch live: ${streamInfo.hlsUrl}` : 'Join my live on Bromo',
+                    title: draft.liveTitle || 'Live',
+                  });
+                } catch {
+                  /* dismissed */
+                }
+              }}>
               <Share2 size={22} color={palette.foreground} />
+            </Pressable>
+            <Pressable style={styles.liveActionBtn} onPress={openLiveMenu}>
+              <MoreHorizontal size={22} color={palette.foreground} />
             </Pressable>
           </View>
         </View>
@@ -453,6 +587,18 @@ function makeStyles(p: ThemePalette) {
       borderRadius: 999,
       backgroundColor: 'rgba(0,0,0,0.45)',
     },
+    torchBtn: {
+      position: 'absolute',
+      left: 16,
+      bottom: 24,
+      zIndex: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     cameraText: {color: p.foreground, fontSize: 18, fontWeight: '700'},
     cameraSubtext: {fontSize: 12, textAlign: 'center', lineHeight: 18},
     previewForm: {padding: 20, gap: 14},
@@ -470,15 +616,35 @@ function makeStyles(p: ThemePalette) {
       gap: 8,
       paddingHorizontal: 16,
     },
-    flipCamLive: {
+    liveCamControls: {
       position: 'absolute',
-      right: 16,
-      top: 56,
+      right: 12,
+      top: 52,
       zIndex: 20,
+      gap: 10,
+      alignItems: 'flex-end',
+    },
+    flipCamLive: {
       paddingHorizontal: 14,
       paddingVertical: 10,
       borderRadius: 999,
       backgroundColor: 'rgba(0,0,0,0.45)',
+    },
+    torchBtnLive: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    moreBtnLive: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     liveCameraText: {color: p.foreground, fontSize: 22, fontWeight: '900'},
     liveCameraSubText: {fontSize: 10, textAlign: 'center', paddingHorizontal: 20},
@@ -500,7 +666,7 @@ function makeStyles(p: ThemePalette) {
     commentInputRow: {flexDirection: 'row', alignItems: 'center', backgroundColor: p.borderFaint, borderRadius: 999, paddingHorizontal: 14, gap: 8},
     commentInput: {flex: 1, color: p.foreground, paddingVertical: 10},
     sendBtn: {padding: 6},
-    liveActions: {flexDirection: 'row', justifyContent: 'space-around', marginTop: 10},
+    liveActions: {flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 10},
     liveActionBtn: {width: 44, height: 44, borderRadius: 22, backgroundColor: p.glassMid, alignItems: 'center', justifyContent: 'center'},
     endedContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 8},
     endedTitle: {color: p.foreground, fontSize: 24, fontWeight: '900', marginTop: 12},

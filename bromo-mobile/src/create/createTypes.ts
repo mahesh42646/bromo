@@ -70,7 +70,7 @@ export const DEFAULT_ADJUSTMENTS: AdjustmentState = {
   fade: 0,
 };
 
-export type CropAspect = 'original' | '1:1' | '4:5' | '16:9';
+export type CropAspect = 'original' | '1:1' | '4:5' | '16:9' | '9:16';
 
 export type LocationTag = {
   id: string;

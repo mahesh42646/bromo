@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -110,7 +111,21 @@ export function CreateHubScreen() {
   const [multiSelect, setMultiSelect] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [preparingEditor, setPreparingEditor] = useState(false);
   const lastBootstrapTs = useRef<number | undefined>(undefined);
+
+  const goToEditorWithAssets = useCallback(
+    (list: MediaAsset[]) => {
+      if (!list.length) return;
+      setPreparingEditor(true);
+      setAssets(list);
+      setTimeout(() => {
+        navigation.navigate('MediaEditor');
+        setTimeout(() => setPreparingEditor(false), 420);
+      }, 80);
+    },
+    [navigation, setAssets],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -204,10 +219,9 @@ export function CreateHubScreen() {
 
   const onHubCaptured = useCallback(
     (assets: MediaAsset[]) => {
-      setAssets(assets);
-      navigation.navigate('MediaEditor');
+      goToEditorWithAssets(assets);
     },
-    [navigation, setAssets],
+    [goToEditorWithAssets],
   );
 
   const hubCam = useHubCameraCapture({
@@ -229,13 +243,10 @@ export function CreateHubScreen() {
       res => {
         if (res.didCancel || res.errorCode) return;
         const list = (res.assets ?? []).map(mapAsset).filter(Boolean) as MediaAsset[];
-        if (list.length) {
-          setAssets(list);
-          navigation.navigate('MediaEditor');
-        }
+        if (list.length) goToEditorWithAssets(list);
       },
     );
-  }, [draft.mode, multiSelect, navigation, setAssets]);
+  }, [draft.mode, multiSelect, goToEditorWithAssets]);
 
   const onPickThumb = useCallback(
     (uri: string, type: 'image' | 'video') => {
@@ -257,17 +268,13 @@ export function CreateHubScreen() {
           const a = res.assets?.[0];
           if (!a) return;
           const m = mapAsset(a);
-          if (m) {
-            setAssets([m]);
-            navigation.navigate('MediaEditor');
-          }
+          if (m) goToEditorWithAssets([m]);
         });
         return;
       }
-      setAssets([{uri, type}]);
-      navigation.navigate('MediaEditor');
+      goToEditorWithAssets([{uri, type}]);
     },
-    [draft.mode, multiSelect, navigation, setAssets],
+    [draft.mode, multiSelect, goToEditorWithAssets],
   );
 
   const gridData = useMemo<GridItem[]>(
@@ -280,9 +287,8 @@ export function CreateHubScreen() {
     const assets: MediaAsset[] = roll
       .filter(r => picked.has(r.uri))
       .map(r => ({uri: r.uri, type: r.type}));
-    setAssets(assets);
-    navigation.navigate('MediaEditor');
-  }, [picked, roll, navigation, setAssets]);
+    goToEditorWithAssets(assets);
+  }, [picked, roll, goToEditorWithAssets]);
 
   const headerTitle =
     draft.mode === 'post'
@@ -383,41 +389,61 @@ export function CreateHubScreen() {
                     styles={styles}
                     containerStyle={StyleSheet.absoluteFillObject}
                   />
-                  <Pressable
-                    style={StyleSheet.absoluteFillObject}
-                    onPressIn={hubCam.onShutterPressIn}
-                    onPressOut={hubCam.onShutterPressOut}
-                  />
                   {hubCam.recording ? (
-                    <View style={styles.postMiniRecBadge}>
+                    <View style={styles.postMiniRecBadge} pointerEvents="none">
                       <View style={styles.postMiniRecPill}>
                         <View style={styles.hubRecDot} />
-                        <Text style={styles.hubRecText}>{(hubCam.recordMs / 1000).toFixed(1)}s</Text>
+                        <Text style={[styles.hubRecText, styles.postMiniRecText]}>
+                          {(hubCam.recordMs / 1000).toFixed(1)}s
+                        </Text>
                       </View>
                     </View>
                   ) : null}
-                  <Pressable
-                    style={styles.postMiniFlash}
-                    onPress={() => setFlashOn(f => !f)}
-                    hitSlop={8}>
-                    {flashOn ? (
-                      <Zap size={18} color={palette.foreground} />
-                    ) : (
-                      <ZapOff size={18} color={palette.foreground} />
-                    )}
-                  </Pressable>
-                  <Pressable
-                    style={styles.postMiniFlip}
-                    onPress={() => setFrontCam(f => !f)}
-                    hitSlop={8}>
-                    <Repeat2 size={18} color={palette.foreground} style={{transform: [{scaleX: -1}]}} />
-                  </Pressable>
+                  <View style={styles.postMiniBottomBar} pointerEvents="box-none">
+                    <View style={[styles.postMiniBarSide, styles.postMiniBarSideLeft]}>
+                      <Pressable
+                        style={styles.postMiniBarIconBtn}
+                        onPress={() => setFlashOn(f => !f)}
+                        hitSlop={8}
+                        accessibilityLabel="Flash">
+                        {flashOn ? (
+                          <Zap size={22} color="#fff" />
+                        ) : (
+                          <ZapOff size={22} color="#fff" />
+                        )}
+                      </Pressable>
+                    </View>
+                    <Pressable
+                      style={[
+                        styles.postMiniShutterRing,
+                        hubCam.recording && {borderColor: palette.destructive},
+                      ]}
+                      onPressIn={hubCam.onShutterPressIn}
+                      onPressOut={hubCam.onShutterPressOut}
+                      accessibilityLabel="Capture photo or hold for video">
+                      <View
+                        style={[
+                          styles.postMiniShutterInner,
+                          hubCam.recording && {backgroundColor: palette.destructive},
+                        ]}
+                      />
+                    </Pressable>
+                    <View style={[styles.postMiniBarSide, styles.postMiniBarSideRight]}>
+                      <Pressable
+                        style={styles.postMiniBarIconBtn}
+                        onPress={() => setFrontCam(f => !f)}
+                        hitSlop={8}
+                        accessibilityLabel="Flip camera">
+                        <Repeat2 size={22} color="#fff" style={{transform: [{scaleX: -1}]}} />
+                      </Pressable>
+                    </View>
+                  </View>
                 </View>
-                <View style={[styles.postHeroHint, styles.heroPlaceholder]}>
+                {/* <View style={[styles.postHeroHint, styles.heroPlaceholder]}>
                   <Camera size={28} color={palette.foregroundFaint} />
                   <Text style={styles.placeholderText}>Tap above for photo · hold for video</Text>
                   <Text style={styles.postHeroSub}>Or pick from recents below · grid camera opens full screen</Text>
-                </View>
+                </View> */}
               </View>
             )}
           </View>
@@ -586,6 +612,25 @@ export function CreateHubScreen() {
           })}
         </ScrollView>
       </View>
+
+      <Modal visible={preparingEditor} transparent animationType="fade" statusBarTranslucent>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.72)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={{color: '#fff', marginTop: 18, fontWeight: '800', fontSize: 16, textAlign: 'center'}}>
+            Loading editor…
+          </Text>
+          <Text style={{color: 'rgba(255,255,255,0.75)', marginTop: 8, fontSize: 13, textAlign: 'center'}}>
+            Applying your selection
+          </Text>
+        </View>
+      </Modal>
     </ThemedSafeScreen>
   );
 }
@@ -632,13 +677,15 @@ function HubCameraPreviewBody({
       ) : null}
       {hubCam.showCamera && hubCam.device ? (
         <VisionCamera
+          key={`hub-vc-${hubCam.cameraInstanceKey}`}
           ref={hubCam.cameraRef}
           style={containerStyle}
           device={hubCam.device}
           isActive={isActive}
           photo
           video
-          audio
+          audio={hubCam.enableRecordAudio}
+          onError={hubCam.recoverCameraSession}
         />
       ) : null}
       {hubCam.needsCamera && hubCam.permission === 'granted' && hubCam.device == null ? (
@@ -739,33 +786,63 @@ function makeStyles(p: ThemePalette) {
       paddingHorizontal: 12,
       lineHeight: 16,
     },
-    postMiniFlash: {
+    postMiniBottomBar: {
       position: 'absolute',
-      top: 8,
-      right: 8,
-      zIndex: 8,
-      padding: 6,
-      borderRadius: 20,
-      backgroundColor: p.glassMid,
+      bottom: 0,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      backgroundColor: 'rgba(0,0,0,0.78)',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: 'rgba(255,255,255,0.2)',
+      zIndex: 40,
     },
-    postMiniFlip: {
-      position: 'absolute',
-      bottom: 8,
-      right: 8,
-      zIndex: 8,
-      padding: 6,
-      borderRadius: 20,
-      backgroundColor: p.glassMid,
+    postMiniBarSide: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    postMiniBarSideLeft: {justifyContent: 'flex-start'},
+    postMiniBarSideRight: {justifyContent: 'flex-end'},
+    postMiniBarIconBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.18)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.45)',
+    },
+    postMiniShutterRing: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      borderWidth: 3,
+      borderColor: '#fff',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'transparent',
+    },
+    postMiniShutterInner: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: '#fff',
     },
     postMiniRecBadge: {
       position: 'absolute',
-      bottom: 8,
+      bottom: 96,
       left: 0,
       right: 0,
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      zIndex: 8,
+      zIndex: 35,
     },
     postMiniRecPill: {
       flexDirection: 'row',
@@ -776,6 +853,7 @@ function makeStyles(p: ThemePalette) {
       paddingVertical: 4,
       borderRadius: 999,
     },
+    postMiniRecText: {color: '#fff'},
     heroPlaceholder: {alignItems: 'center', justifyContent: 'center', gap: 8},
     placeholderText: {color: p.foregroundSubtle, fontSize: 14},
     recentsRow: {

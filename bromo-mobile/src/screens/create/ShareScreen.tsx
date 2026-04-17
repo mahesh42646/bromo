@@ -38,7 +38,9 @@ import {
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {useCreateDraft} from '../../create/CreateDraftContext';
-import {packClientSnapshot} from '../../create/draftSnapshot';
+import {packClientSnapshot, packEditMetaForUpload} from '../../create/draftSnapshot';
+import type {CreateDraftState} from '../../create/CreateDraftContext';
+import type {MediaAsset} from '../../create/createTypes';
 import type {FeedCategoryPreset, Visibility} from '../../create/createTypes';
 import {FILTER_LAYERS} from '../../create/filterStyles';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
@@ -73,6 +75,17 @@ function slugFeedCategory(manual: string, preset: string): string {
     .replace(/[^a-z0-9-]/g, '')
     .slice(0, 48);
   return t || preset;
+}
+
+function effectiveTrimmedDurationMs(draft: CreateDraftState, asset: MediaAsset): number | undefined {
+  if (asset.type !== 'video' || typeof asset.duration !== 'number' || !(asset.duration > 0)) {
+    return undefined;
+  }
+  const i = draft.activeAssetIndex;
+  const ts = draft.trimStartByAsset[i] ?? 0;
+  const te = draft.trimEndByAsset[i] ?? 1;
+  const span = (Math.min(1, te) - Math.max(0, ts)) * asset.duration;
+  return Math.round(Math.max(0.05, span) * 1000);
 }
 
 function buildCaptionWithProducts(caption: string, hashtags: string[], products: {productUrl?: string}[]): string {
@@ -150,10 +163,7 @@ export function ShareScreen() {
           allowRemix: true,
           closeFriendsOnly: draft.visibility === 'close_friends',
         },
-        durationMs:
-          asset.type === 'video' && typeof asset.duration === 'number'
-            ? Math.round(asset.duration * 1000)
-            : undefined,
+        durationMs: effectiveTrimmedDurationMs(draft, asset),
       });
       toastOk('Draft saved');
       Alert.alert('Saved', 'Continue editing anytime from Drafts.', [{text: 'OK', onPress: closeAll}]);
@@ -227,10 +237,8 @@ export function ShareScreen() {
 
       const taggedUserIds = draft.tagged.map(t => t.id).filter(Boolean);
       const productIds = draft.products.map(p => p.id).filter(Boolean);
-      const durationMs =
-        asset.type === 'video' && typeof asset.duration === 'number'
-          ? Math.round(asset.duration * 1000)
-          : undefined;
+      const durationMs = effectiveTrimmedDurationMs(draft, asset);
+      const clientEditMeta = packEditMetaForUpload(draft);
 
       // Use async pipeline for video reels/stories/posts — server does HLS transcode in background
       const useAsync = asset.type === 'video' && (draft.mode === 'reel' || draft.mode === 'story' || draft.mode === 'post');
@@ -252,6 +260,7 @@ export function ShareScreen() {
             locationMeta: locationMeta ?? null,
             settings,
             durationMs,
+            clientEditMeta,
           },
           pct => setUploadProgress(pct),
         );
@@ -280,6 +289,7 @@ export function ShareScreen() {
           productIds,
           settings,
           durationMs,
+          clientEditMeta: packEditMetaForUpload(draft),
           ...(postType !== 'story' && feedCategory ? {feedCategory} : {}),
         });
         toastOk('Posted');

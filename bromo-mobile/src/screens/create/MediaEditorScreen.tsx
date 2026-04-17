@@ -32,6 +32,7 @@ import {
   CircleOff,
   Type,
   Minus,
+  Play,
   X,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
@@ -63,6 +64,7 @@ const AUDIO_CATALOG = [
 
 const CROP_OPTIONS: {id: CropAspect; label: string}[] = [
   {id: 'original', label: 'Original'},
+  {id: '9:16', label: '9:16'},
   {id: '1:1', label: '1:1'},
   {id: '4:5', label: '4:5'},
   {id: '16:9', label: '16:9'},
@@ -81,10 +83,50 @@ const ADJUST_KEYS = [
 ] as const;
 
 function adjustOverlayStyle(adjustments: AdjustmentState): ViewStyle {
+  const b = adjustments.brightness;
+  const c = adjustments.contrast;
+  const fade = adjustments.fade;
+  const warm = adjustments.warmth;
+  const bright =
+    b >= 0
+      ? `rgba(255,255,255,${Math.min(0.52, b * 0.45)})`
+      : `rgba(0,0,0,${Math.min(0.52, -b * 0.45)})`;
+  const warmTint =
+    Math.abs(warm) < 0.03
+      ? 'transparent'
+      : warm > 0
+        ? `rgba(255,200,120,${Math.min(0.35, warm * 0.22)})`
+        : `rgba(120,170,255,${Math.min(0.35, -warm * 0.22)})`;
   return {
-    opacity: 1 + adjustments.brightness * 0.3 + adjustments.fade * 0.15,
-    backgroundColor: `rgba(${adjustments.warmth > 0 ? '255,200,100' : '100,150,255'},${Math.abs(adjustments.warmth) * 0.08})`,
+    backgroundColor: bright,
+    opacity: Math.max(0.22, Math.min(1, 0.75 + c * 0.2 - fade * 0.1)),
   };
+}
+
+function warmthOverlayStyle(adjustments: AdjustmentState): ViewStyle | null {
+  const warm = adjustments.warmth;
+  if (Math.abs(warm) < 0.03) return null;
+  return {
+    backgroundColor:
+      warm > 0
+        ? `rgba(255,200,120,${Math.min(0.4, warm * 0.25)})`
+        : `rgba(120,170,255,${Math.min(0.4, -warm * 0.25)})`,
+  };
+}
+
+function saturationOverlayStyle(adjustments: AdjustmentState): ViewStyle | null {
+  const s = adjustments.saturation;
+  if (Math.abs(s) < 0.03) return null;
+  return {
+    backgroundColor: s > 0 ? 'rgba(255,60,140,0.14)' : 'rgba(60,140,255,0.12)',
+    opacity: Math.min(1, 0.55 + Math.abs(s) * 0.35),
+  };
+}
+
+function vignetteOverlayStyle(adjustments: AdjustmentState): ViewStyle | null {
+  const v = adjustments.vignette;
+  if (v < 0.04) return null;
+  return {backgroundColor: `rgba(0,0,0,${Math.min(0.58, v * 0.42)})`};
 }
 
 function TrimmingVideo({
@@ -210,10 +252,23 @@ export function MediaEditorScreen() {
   const layer = FILTER_LAYERS[filter];
 
   const aspectRatio =
-    crop === '1:1' ? 1 : crop === '4:5' ? 4 / 5 : crop === '16:9' ? 16 / 9 : draft.mode === 'reel' ? 9 / 16 : 1;
+    crop === '1:1'
+      ? 1
+      : crop === '4:5'
+        ? 4 / 5
+        : crop === '16:9'
+          ? 16 / 9
+          : crop === '9:16'
+            ? 9 / 16
+            : draft.mode === 'reel'
+              ? 9 / 16
+              : 1;
   const previewHeight = W / aspectRatio;
 
   const adjustOverlay = adjustOverlayStyle(adjustments);
+  const warmOv = warmthOverlayStyle(adjustments);
+  const satOv = saturationOverlayStyle(adjustments);
+  const vigOv = vignetteOverlayStyle(adjustments);
 
   const onTrimChange = useCallback(
     (range: [number, number]) => {
@@ -276,6 +331,9 @@ export function MediaEditorScreen() {
                 const ts = draft.trimStartByAsset[index] ?? 0;
                 const te = draft.trimEndByAsset[index] ?? 1;
                 const ao = adjustOverlayStyle(adj);
+                const wO = warmthOverlayStyle(adj);
+                const sO = saturationOverlayStyle(adj);
+                const vO = vignetteOverlayStyle(adj);
                 return (
                   <View style={{width: W, height: previewHeight, backgroundColor: palette.background}}>
                     <View style={[styles.media, {transform: [{rotate: `${r}deg`}]}]}>
@@ -297,6 +355,25 @@ export function MediaEditorScreen() {
                         />
                       ) : null}
                       <View pointerEvents="none" style={[StyleSheet.absoluteFill, ao]} />
+                      {wO ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, wO]} /> : null}
+                      {sO ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, sO]} /> : null}
+                      {vO ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, vO]} /> : null}
+                      {draft.textOverlays.map(o => (
+                        <View key={o.id} style={[styles.overlayText, {left: o.x, top: o.y}]}>
+                          <Text
+                            style={{
+                              color: o.color,
+                              fontSize: o.fontSize,
+                              fontWeight: o.fontStyle === 'bold' ? '900' : '400',
+                              fontStyle: o.fontStyle === 'italic' ? 'italic' : 'normal',
+                            }}>
+                            {o.text}
+                          </Text>
+                          <Pressable style={styles.removeOverlay} onPress={() => removeTextOverlay(o.id)}>
+                            <X size={12} color={palette.foreground} />
+                          </Pressable>
+                        </View>
+                      ))}
                     </View>
                   </View>
                 );
@@ -331,6 +408,9 @@ export function MediaEditorScreen() {
                 />
               ) : null}
               <View pointerEvents="none" style={[StyleSheet.absoluteFill, adjustOverlay]} />
+              {warmOv ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, warmOv]} /> : null}
+              {satOv ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, satOv]} /> : null}
+              {vigOv ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, vigOv]} /> : null}
               {draft.textOverlays.map(o => (
                 <View key={o.id} style={[styles.overlayText, {left: o.x, top: o.y}]}>
                   <Text
@@ -374,7 +454,17 @@ export function MediaEditorScreen() {
                 onPress={() => setFilterForActive(fid as FilterId)}
                 style={[styles.filterChip, filter === fid && {borderColor: palette.accent}]}>
                 <View style={styles.filterThumb}>
-                  <Image source={{uri: cur.uri}} style={styles.filterImg} />
+                  {cur.type === 'video' ? (
+                    <View
+                      style={[
+                        StyleSheet.absoluteFill,
+                        {backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center'},
+                      ]}>
+                      <Play size={20} color="#fff" />
+                    </View>
+                  ) : (
+                    <Image source={{uri: cur.uri}} style={styles.filterImg} />
+                  )}
                   <View
                     style={[
                       StyleSheet.absoluteFill,
@@ -403,6 +493,7 @@ export function MediaEditorScreen() {
                 <Slider
                   minimumValue={-1}
                   maximumValue={1}
+                  step={0.01}
                   value={adjustments[key as keyof typeof adjustments]}
                   onValueChange={v => setAdjustForActive({[key]: v})}
                   minimumTrackTintColor={palette.accent}
@@ -417,15 +508,20 @@ export function MediaEditorScreen() {
 
         {/* Crop tab */}
         {tab === 'crop' && (
-          <View style={styles.cropRow}>
-            {CROP_OPTIONS.map(c => (
-              <Pressable
-                key={c.id}
-                onPress={() => setCropForActive(c.id)}
-                style={[styles.cropChip, crop === c.id && {backgroundColor: palette.accent}]}>
-                <Text style={[styles.cropLabel, crop === c.id && {color: palette.accentForeground}]}>{c.label}</Text>
-              </Pressable>
-            ))}
+          <View style={{gap: 10}}>
+            <Text style={[styles.hint, {paddingHorizontal: 14}]}>
+              Pick a frame shape. Preview updates above; pinch-drag crop handles will ship in a later build.
+            </Text>
+            <View style={styles.cropRow}>
+              {CROP_OPTIONS.map(c => (
+                <Pressable
+                  key={c.id}
+                  onPress={() => setCropForActive(c.id)}
+                  style={[styles.cropChip, crop === c.id && {backgroundColor: palette.accent}]}>
+                  <Text style={[styles.cropLabel, crop === c.id && {color: palette.accentForeground}]}>{c.label}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
         )}
 
@@ -512,19 +608,36 @@ export function MediaEditorScreen() {
                 ? `Start ${(trimStart * videoDurationSec).toFixed(1)}s · End ${(trimEnd * videoDurationSec).toFixed(1)}s (${videoDurationSec.toFixed(1)}s total)`
                 : `Start ${(trimStart * 100).toFixed(0)}% · End ${(trimEnd * 100).toFixed(0)}%`}
             </Text>
+            <Text style={[styles.hint, {paddingHorizontal: 14, marginBottom: 6}]}>Start handle (top) · End handle (bottom)</Text>
+            <View style={styles.trimTrack}>
+              <View
+                style={[
+                  styles.trimTrackActive,
+                  {
+                    left: `${trimStart * 100}%`,
+                    width: `${Math.max(4, (trimEnd - trimStart) * 100)}%`,
+                    backgroundColor: palette.accent + '99',
+                  },
+                ]}
+              />
+            </View>
             <View style={styles.trimSliders}>
+              <Text style={[styles.trimSliderLabel, {color: palette.foregroundSubtle}]}>Start</Text>
               <Slider
                 minimumValue={0}
                 maximumValue={0.95}
+                step={0.005}
                 value={trimStart}
                 onValueChange={v => onTrimChange([v, Math.max(v + 0.05, trimEnd)])}
                 minimumTrackTintColor={palette.accent}
                 maximumTrackTintColor={palette.foregroundFaint}
                 thumbTintColor={palette.foreground}
               />
+              <Text style={[styles.trimSliderLabel, {color: palette.foregroundSubtle}]}>End</Text>
               <Slider
                 minimumValue={0.05}
                 maximumValue={1}
+                step={0.005}
                 value={trimEnd}
                 onValueChange={v => onTrimChange([Math.min(trimStart, v - 0.05), v])}
                 minimumTrackTintColor={palette.accent}
@@ -660,7 +773,23 @@ function makeStyles(p: ThemePalette) {
     textInput: {flex: 1, paddingVertical: 12},
     colorRow: {paddingHorizontal: 12, gap: 10, marginTop: 8},
     colorDot: {width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: p.surfaceHigh},
-    trimSliders: {paddingHorizontal: 14},
+    trimSliders: {paddingHorizontal: 14, gap: 4},
+    trimTrack: {
+      marginHorizontal: 14,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: p.surfaceHigh,
+      marginBottom: 10,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    trimTrackActive: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      borderRadius: 4,
+    },
+    trimSliderLabel: {fontSize: 11, fontWeight: '800', marginBottom: -4},
     speedRow: {flexDirection: 'row', gap: 8, marginHorizontal: 14, marginTop: 8, flexWrap: 'wrap'},
     speedChip: {
       paddingHorizontal: 14,
