@@ -432,7 +432,7 @@ function ReelMoreSheet({
   );
 }
 
-function ReelItem({
+const ReelItem = React.memo(function ReelItem({
   item,
   isActive,
   reelHeight,
@@ -796,7 +796,7 @@ function ReelItem({
       />
     </View>
   );
-}
+});
 
 const VIEWABILITY_CONFIG: ViewabilityConfig = {
   itemVisiblePercentThreshold: 60,

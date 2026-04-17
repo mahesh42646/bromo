@@ -148,18 +148,25 @@ async function runPrefetch(
     await ReactNativeBlobUtil.fs.mkdir(dir).catch(() => null);
   }
 
-  for (const segUrl of toFetch) {
-    const segName = segUrl.split('/').pop()?.split('?')[0] ?? 'seg';
-    const segPath = `${dir}/${segName}`;
-    if (await ReactNativeBlobUtil.fs.exists(segPath)) continue;
-    try {
-      await ReactNativeBlobUtil.config({path: segPath, timeout: 10000})
-        .fetch('GET', segUrl, {'User-Agent': 'BromoMobile/1 (hls-prefetch)'})
-        .catch(() => null);
-    } catch {
-      // Non-fatal: skip this segment
+  const CONCURRENCY = 4;
+  let cursor = 0;
+  const workers = Array.from({length: Math.min(CONCURRENCY, toFetch.length)}, async () => {
+    while (cursor < toFetch.length) {
+      const idx = cursor++;
+      const segUrl = toFetch[idx];
+      const segName = segUrl.split('/').pop()?.split('?')[0] ?? 'seg';
+      const segPath = `${dir}/${segName}`;
+      if (await ReactNativeBlobUtil.fs.exists(segPath)) continue;
+      try {
+        await ReactNativeBlobUtil.config({path: segPath, timeout: 10000})
+          .fetch('GET', segUrl, {'User-Agent': 'BromoMobile/1 (hls-prefetch)'})
+          .catch(() => null);
+      } catch {
+        // Non-fatal: skip this segment
+      }
     }
-  }
+  });
+  await Promise.all(workers);
 
   // LRU eviction if over limit
   await evictIfOverLimit();

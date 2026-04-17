@@ -299,8 +299,10 @@ followRouter.delete(
       await follow.deleteOne();
 
       if (wasAccepted) {
-        await User.findByIdAndUpdate(follower._id, { $inc: { followingCount: -1 } });
-        await User.findByIdAndUpdate(targetId, { $inc: { followersCount: -1 } });
+        await Promise.all([
+          User.findByIdAndUpdate(follower._id, { $inc: { followingCount: -1 } }),
+          User.findByIdAndUpdate(targetId, { $inc: { followersCount: -1 } }),
+        ]);
       }
 
       return res.json({ unfollowed: true });

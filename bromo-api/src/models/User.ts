@@ -106,4 +106,6 @@ const userSchema = new Schema<UserDoc>(
   { timestamps: true },
 );
 
+userSchema.index({ followersCount: -1 });
+
 export const User = mongoose.model<UserDoc>("User", userSchema);

@@ -32,6 +32,7 @@ function contentTypeForUpload(absPath: string): string {
 import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import { authRouter } from "./routes/auth.js";
 import { settingsRouter } from "./routes/settings.js";
@@ -76,9 +77,10 @@ export function createApp() {
       credentials: true,
     }),
   );
+  app.use(compression());
   app.use(express.json({ limit: "10mb" }));
   app.use(cookieParser());
-  app.use(morgan("dev"));
+  app.use(morgan(process.env.NODE_ENV === "production" ? "tiny" : "dev"));
   app.use("/uploads", (req, res, next) => {
     const started = Date.now();
     res.on("finish", () => {

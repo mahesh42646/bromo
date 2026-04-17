@@ -151,7 +151,7 @@ type PostCardProps = {
   isFeedItemVisible?: boolean;
 };
 
-function PostCard({
+const PostCard = React.memo(function PostCard({
   post,
   onLikeToggle,
   onHide,
@@ -700,7 +700,7 @@ function PostCard({
       </View>
     </View>
   );
-}
+});
 
 type SuggestionCardProps = {
   user: SuggestedUser;
@@ -1409,6 +1409,10 @@ export function HomeScreen() {
           }
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.4}
+          initialNumToRender={4}
+          maxToRenderPerBatch={6}
+          windowSize={7}
+          removeClippedSubviews
           viewabilityConfig={feedViewabilityConfig}
           onViewableItemsChanged={onFeedViewableItemsChanged}
           ListEmptyComponent={

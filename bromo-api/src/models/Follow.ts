@@ -20,5 +20,7 @@ const followSchema = new Schema<FollowDoc>(
 followSchema.index({ followerId: 1, followingId: 1 }, { unique: true });
 followSchema.index({ followingId: 1, status: 1 });
 followSchema.index({ followerId: 1, status: 1 });
+followSchema.index({ followerId: 1, status: 1, createdAt: -1 });
+followSchema.index({ followingId: 1, status: 1, createdAt: -1 });
 
 export const Follow = mongoose.model<FollowDoc>("Follow", followSchema);

@@ -36,6 +36,7 @@ import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 import { normalizeFeedCategory } from "../utils/feedCategory.js";
 import { PromotionCampaign } from "../models/PromotionCampaign.js";
 import { ContentDeliveryLog } from "../models/ContentDeliveryLog.js";
+import { LRUCache } from "lru-cache";
 
 export const postsRouter = Router();
 
@@ -75,42 +76,56 @@ function normalizeCategory(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+const interestScoreCache = new LRUCache<string, Map<string, number>>({
+  max: 500,
+  ttl: 5 * 60 * 1000,
+});
+
 async function getViewerInterestScores(viewerId: mongoose.Types.ObjectId): Promise<Map<string, number>> {
+  const key = String(viewerId);
+  const cached = interestScoreCache.get(key);
+  if (cached) return cached;
+
   const scores = new Map<string, number>();
   const add = (category: string, weight: number) => {
     if (!category) return;
     scores.set(category, (scores.get(category) ?? 0) + weight);
   };
 
-  const likes = await Like.find({ userId: viewerId, targetType: "post" })
-    .sort({ createdAt: -1 })
-    .limit(120)
-    .select("targetId")
-    .lean();
-  if (likes.length) {
-    const likedPosts = await Post.find({ _id: { $in: likes.map((l) => l.targetId) } })
-      .select("feedCategory")
-      .lean();
-    likedPosts.forEach((p) => add(normalizeCategory((p as { feedCategory?: unknown }).feedCategory), 4));
-  }
+  const [likedPosts, followedPosts] = await Promise.all([
+    (async () => {
+      const likes = await Like.find({ userId: viewerId, targetType: "post" })
+        .sort({ createdAt: -1 })
+        .limit(120)
+        .select("targetId")
+        .lean();
+      if (!likes.length) return [];
+      return Post.find({ _id: { $in: likes.map((l) => l.targetId) } })
+        .select("feedCategory")
+        .lean();
+    })(),
+    (async () => {
+      const follows = await Follow.find({ followerId: viewerId, status: "accepted" })
+        .sort({ createdAt: -1 })
+        .limit(160)
+        .select("followingId")
+        .lean();
+      if (!follows.length) return [];
+      return Post.find({
+        authorId: { $in: follows.map((f) => f.followingId) },
+        ...VISIBLE_POST,
+      })
+        .sort({ createdAt: -1 })
+        .limit(160)
+        .select("feedCategory")
+        .lean();
+    })(),
+  ]);
 
-  const follows = await Follow.find({ followerId: viewerId, status: "accepted" })
-    .sort({ createdAt: -1 })
-    .limit(160)
-    .select("followingId")
-    .lean();
-  if (follows.length) {
-    const followedPosts = await Post.find({
-      authorId: { $in: follows.map((f) => f.followingId) },
-      ...VISIBLE_POST,
-    })
-      .sort({ createdAt: -1 })
-      .limit(160)
-      .select("feedCategory")
-      .lean();
-    followedPosts.forEach((p) => add(normalizeCategory((p as { feedCategory?: unknown }).feedCategory), 2));
-  }
+  likedPosts.forEach((p) => add(normalizeCategory((p as { feedCategory?: unknown }).feedCategory), 4));
+  followedPosts.forEach((p) => add(normalizeCategory((p as { feedCategory?: unknown }).feedCategory), 2));
 
+  interestScoreCache.set(key, scores);
   return scores;
 }
 
@@ -273,16 +288,21 @@ async function getPromotedStoryTrayGroups(
   );
 
   const out: Array<{ author: unknown; stories: unknown[]; isPromoted: boolean; promotionId: string }> = [];
-  for (const c of campaigns) {
-    if (blockedPromotionIds.has(String(c._id))) continue;
-    const s = await Post.findOne({
-      _id: c.contentId,
-      type: "story",
-      ...VISIBLE_POST,
-      expiresAt: { $gt: now },
-    })
-      .populate("authorId", AUTHOR_SELECT)
-      .lean();
+  const eligibleCampaigns = campaigns.filter((c) => !blockedPromotionIds.has(String(c._id)));
+  const storyIds = eligibleCampaigns.map((c) => c.contentId).filter(Boolean);
+  const storyDocs = storyIds.length
+    ? await Post.find({
+        _id: { $in: storyIds },
+        type: "story",
+        ...VISIBLE_POST,
+        expiresAt: { $gt: now },
+      })
+        .populate("authorId", AUTHOR_SELECT)
+        .lean()
+    : [];
+  const storyById = new Map(storyDocs.map((d) => [String(d._id), d]));
+  for (const c of eligibleCampaigns) {
+    const s = storyById.get(String(c.contentId));
     if (!s) continue;
     const storyCategory = normalizeCategory((s as { feedCategory?: unknown }).feedCategory);
     if (interestScores.size > 0 && (interestScores.get(storyCategory) ?? 0) <= 0) continue;
@@ -544,15 +564,15 @@ postsRouter.get(
         tab = "for-you";
       }
 
-      const follows = dbUser
-        ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
-        : [];
+      const [follows, likes] = dbUser
+        ? await Promise.all([
+            Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
+            Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean(),
+          ])
+        : [[] as Array<{ followingId: mongoose.Types.ObjectId }>, [] as Array<{ targetId: mongoose.Types.ObjectId }>];
       const followingIds = follows.map((f) => f.followingId);
       const hasFollows = followingIds.length > 0;
 
-      const likes = dbUser
-        ? await Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean()
-        : [];
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
       const followingSet = new Set(followingIds.map(String));
 
@@ -904,17 +924,22 @@ postsRouter.get(
           }
         : { type: { $in: ["post", "reel"] }, ...VISIBLE_POST, ...DISCOVER_PUBLIC_POST };
 
-      const [posts, likes] = await Promise.all([
-        Post.find(query)
-          .sort({ viewsCount: -1, createdAt: -1 })
-          .skip(skip)
-          .limit(PAGE_SIZE)
-          .populate("authorId", AUTHOR_SELECT)
-          .lean(),
-        dbUser
-          ? Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean()
-          : Promise.resolve([]),
-      ]);
+      const posts = await Post.find(query)
+        .sort({ viewsCount: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(PAGE_SIZE)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean();
+
+      const likes = dbUser
+        ? await Like.find({
+            userId: dbUser._id,
+            targetType: "post",
+            targetId: { $in: posts.map((p) => p._id) },
+          })
+            .select("targetId")
+            .lean()
+        : [];
 
       const followingSet = new Set(followingIds.map(String));
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
@@ -964,11 +989,6 @@ postsRouter.get(
       const followingIds = follows.map((f) => f.followingId);
       const followingSet = new Set(followingIds.map(String));
 
-      const likeRows = dbUser
-        ? await Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean()
-        : [];
-      const likedSet = new Set(likeRows.map((l) => String(l.targetId)));
-
       const posts = await Post.find({
         type: "reel" as const,
         ...VISIBLE_POST,
@@ -978,6 +998,17 @@ postsRouter.get(
         .limit(limit)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
+
+      const likeRows = dbUser
+        ? await Like.find({
+            userId: dbUser._id,
+            targetType: "post",
+            targetId: { $in: posts.map((p) => p._id) },
+          })
+            .select("targetId")
+            .lean()
+        : [];
+      const likedSet = new Set(likeRows.map((l) => String(l.targetId)));
 
       let result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
@@ -1031,17 +1062,21 @@ postsRouter.get(
       const authorIds = [dbUser._id, ...followingIds];
 
       // Heal story docs missing expiresAt (older async uploads) so they match the tray query.
-      await Post.collection.updateMany(
-        {
-          type: "story",
-          authorId: { $in: authorIds },
-          isActive: true,
-          isDeleted: { $ne: true },
-          processingStatus: { $nin: ["pending", "processing", "failed"] },
-          $or: [{ expiresAt: { $exists: false } }, { expiresAt: null }],
-        },
-        [{ $set: { expiresAt: { $add: ["$createdAt", 86400000] } } }],
-      );
+      // Fire-and-forget — doesn't block tray response. Runs once per request but legacy docs get
+      // healed over time and subsequent writes become no-ops.
+      Post.collection
+        .updateMany(
+          {
+            type: "story",
+            authorId: { $in: authorIds },
+            isActive: true,
+            isDeleted: { $ne: true },
+            processingStatus: { $nin: ["pending", "processing", "failed"] },
+            $or: [{ expiresAt: { $exists: false } }, { expiresAt: null }],
+          },
+          [{ $set: { expiresAt: { $add: ["$createdAt", 86400000] } } }],
+        )
+        .catch(() => null);
 
       const match = {
         type: "story" as const,
@@ -1439,21 +1474,21 @@ postsRouter.get(
       /** Posts grid = feed posts only; Reels tab sends type=reel (separate tab in the app). */
       const typeFilter = type === "reel" ? { type: "reel" as const } : { type: "post" as const };
 
-      const posts = await Post.find({
-        authorId: authorIdFilter,
-        ...typeFilter,
-        ...listVisibility,
-      })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(PAGE_SIZE)
-        .populate("authorId", AUTHOR_SELECT)
-        .lean();
-
-      const follows =
+      const [posts, follows] = await Promise.all([
+        Post.find({
+          authorId: authorIdFilter,
+          ...typeFilter,
+          ...listVisibility,
+        })
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(PAGE_SIZE)
+          .populate("authorId", AUTHOR_SELECT)
+          .lean(),
         dbUser != null
-          ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
-          : [];
+          ? Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
+          : Promise.resolve([] as Array<{ followingId: mongoose.Types.ObjectId }>),
+      ]);
       const followingSet = new Set(follows.map((f) => String(f.followingId)));
 
       const likedSet = new Set<string>();
@@ -1701,8 +1736,10 @@ postsRouter.post(
       const user = req.dbUser!;
       const postId = String(req.params.id);
 
-      const existing = await Like.findOne({ targetId: postId, userId: user._id, targetType: "post" });
-      const targetPost = await Post.findById(postId).select("authorId isDeleted isActive");
+      const [existing, targetPost] = await Promise.all([
+        Like.findOne({ targetId: postId, userId: user._id, targetType: "post" }),
+        Post.findById(postId).select("authorId isDeleted isActive"),
+      ]);
       if (!targetPost?.isActive || targetPost.isDeleted) {
         if (!existing) return res.status(404).json({ message: "Post not found" });
       }
@@ -1920,57 +1957,58 @@ postsRouter.get(
         });
       }
 
-      const result: Record<string, unknown>[] = [];
-      for (const raw of rootComments) {
-        const root = raw as unknown as Record<string, unknown>;
-        const rootOid = root._id as mongoose.Types.ObjectId;
-        const tr =
-          (root.threadRootId as mongoose.Types.ObjectId | undefined) ?? (root._id as mongoose.Types.ObjectId);
+      const result = await Promise.all(
+        rootComments.map(async (raw) => {
+          const root = raw as unknown as Record<string, unknown>;
+          const rootOid = root._id as mongoose.Types.ObjectId;
+          const tr =
+            (root.threadRootId as mongoose.Types.ObjectId | undefined) ?? (root._id as mongoose.Types.ObjectId);
 
-        const replyFilter: Record<string, unknown> = {
-          postId: req.params.id,
-          isActive: true,
-          threadRootId: tr,
-          _id: { $ne: rootOid },
-        };
-
-        let total = await Comment.countDocuments(replyFilter);
-        let previewDocs: Array<Record<string, unknown>> = [];
-
-        if (total > 0) {
-          const batch = await Comment.find(replyFilter)
-            .sort({ createdAt: 1, _id: 1 })
-            .limit(COMMENT_THREAD_PREVIEW)
-            .populate("authorId", AUTHOR_SELECT)
-            .lean();
-          previewDocs = batch as unknown as Array<Record<string, unknown>>;
-        } else {
-          const hasLegacy = await Comment.exists({
+          const replyFilter: Record<string, unknown> = {
             postId: req.params.id,
-            parentId: rootOid,
             isActive: true,
-          });
-          if (hasLegacy) {
-            const legacy = await legacyThreadDescendants(postIdObj, rootOid, COMMENT_LEGACY_THREAD_CAP);
-            total = legacy.length;
-            const slice = legacy.slice(0, COMMENT_THREAD_PREVIEW);
-            previewDocs = await populateLeanCommentAuthors(slice);
-          }
-        }
+            threadRootId: tr,
+            _id: { $ne: rootOid },
+          };
 
-        const previewFormatted = await attachReplyingTo(previewDocs);
-        result.push({
-          ...root,
-          author: root.authorId,
-          authorId: undefined,
-          threadRootId: String(tr),
-          replies: previewFormatted,
-          threadReplyCount: total,
-          hasMoreThreadReplies: total > previewFormatted.length,
-          repliesCount: total,
-          hasMoreReplies: total > previewFormatted.length,
-        });
-      }
+          let total = await Comment.countDocuments(replyFilter);
+          let previewDocs: Array<Record<string, unknown>> = [];
+
+          if (total > 0) {
+            const batch = await Comment.find(replyFilter)
+              .sort({ createdAt: 1, _id: 1 })
+              .limit(COMMENT_THREAD_PREVIEW)
+              .populate("authorId", AUTHOR_SELECT)
+              .lean();
+            previewDocs = batch as unknown as Array<Record<string, unknown>>;
+          } else {
+            const hasLegacy = await Comment.exists({
+              postId: req.params.id,
+              parentId: rootOid,
+              isActive: true,
+            });
+            if (hasLegacy) {
+              const legacy = await legacyThreadDescendants(postIdObj, rootOid, COMMENT_LEGACY_THREAD_CAP);
+              total = legacy.length;
+              const slice = legacy.slice(0, COMMENT_THREAD_PREVIEW);
+              previewDocs = await populateLeanCommentAuthors(slice);
+            }
+          }
+
+          const previewFormatted = await attachReplyingTo(previewDocs);
+          return {
+            ...root,
+            author: root.authorId,
+            authorId: undefined,
+            threadRootId: String(tr),
+            replies: previewFormatted,
+            threadReplyCount: total,
+            hasMoreThreadReplies: total > previewFormatted.length,
+            repliesCount: total,
+            hasMoreReplies: total > previewFormatted.length,
+          } as Record<string, unknown>;
+        }),
+      );
 
       return res.json({
         comments: result,
