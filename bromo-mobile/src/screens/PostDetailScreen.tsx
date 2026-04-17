@@ -20,8 +20,9 @@ import {useAuth} from '../context/AuthContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {getPost, toggleLike, type Post} from '../api/postsApi';
-import {NetworkVideo} from '../components/media/NetworkVideo';
+import {getPost, resolveVideoUrl, toggleLike, type Post} from '../api/postsApi';
+import {EditMetaLayers} from '../components/media/EditMetaLayers';
+import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 
@@ -123,6 +124,9 @@ export function PostDetailScreen() {
 
   const avatarUri = post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`;
   const radius = borderRadiusScale === 'bold' ? 12 : 8;
+  const rawVideo = resolveVideoUrl(post, false);
+  const playUriDetail = resolveMediaUrl(rawVideo) ?? '';
+  const isHlsDetail = rawVideo.endsWith('.m3u8');
 
   return (
     <ThemedSafeScreen>
@@ -199,9 +203,11 @@ export function PostDetailScreen() {
 
         {/* Media */}
         {post.mediaType === 'video' ? (
-          <NetworkVideo
-            context="post-detail"
-            uri={resolveMediaUrl(post.mediaUrl)}
+          <PostVideoWithClientMeta
+            post={post}
+            context={isHlsDetail ? 'feed-hls' : 'feed'}
+            uri={playUriDetail}
+            fallbackUri={isHlsDetail ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
             posterUri={postThumbnailUri(post) || undefined}
             style={{width: '100%', aspectRatio: 1}}
             repeat
@@ -210,11 +216,14 @@ export function PostDetailScreen() {
             posterOverlayUntilReady
           />
         ) : (
-          <Image
-            source={{uri: resolveMediaUrl(post.mediaUrl)}}
-            style={{width: '100%', aspectRatio: 1}}
-            resizeMode="cover"
-          />
+          <View style={{width: '100%', aspectRatio: 1, position: 'relative'}}>
+            <Image
+              source={{uri: resolveMediaUrl(post.mediaUrl)}}
+              style={{width: '100%', height: '100%'}}
+              resizeMode="cover"
+            />
+            <EditMetaLayers clientEditMeta={post.clientEditMeta} />
+          </View>
         )}
 
         {isOwnPost ? (

@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {NetworkVideo} from '../components/media/NetworkVideo';
+import {EditMetaLayers} from '../components/media/EditMetaLayers';
+import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {
   ActivityIndicator,
   Alert,
@@ -555,8 +556,9 @@ const ReelItem = React.memo(function ReelItem({
   return (
     <View style={{width: reelWidth, height: reelHeight, position: 'relative', backgroundColor: '#000'}}>
       {item.mediaType === 'video' ? (
-        <NetworkVideo
+        <PostVideoWithClientMeta
           key={item._id}
+          post={item}
           context={isHls ? 'reel-hls' : 'reel'}
           uri={playUri}
           fallbackUri={isHls ? resolveMediaUrl(item.mediaUrl) ?? undefined : undefined}
@@ -604,11 +606,14 @@ const ReelItem = React.memo(function ReelItem({
           }}
         />
       ) : (
-        <Image
-          source={{uri: thumbUri}}
-          style={{width: '100%', height: '100%', position: 'absolute'}}
-          resizeMode="cover"
-        />
+        <>
+          <Image
+            source={{uri: thumbUri}}
+            style={{width: '100%', height: '100%', position: 'absolute'}}
+            resizeMode="cover"
+          />
+          <EditMetaLayers clientEditMeta={item.clientEditMeta} />
+        </>
       )}
 
       {/* First-frame / buffer cover (do not tie to isActive-only — that caused endless spinner after swipe back) */}

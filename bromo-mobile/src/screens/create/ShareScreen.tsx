@@ -19,7 +19,7 @@ import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import Video from 'react-native-video';
+import Video, {ViewType} from 'react-native-video';
 import {
   Check,
   Download,
@@ -41,8 +41,8 @@ import {useCreateDraft} from '../../create/CreateDraftContext';
 import {packClientSnapshot, packEditMetaForUpload} from '../../create/draftSnapshot';
 import type {CreateDraftState} from '../../create/CreateDraftContext';
 import type {MediaAsset} from '../../create/createTypes';
-import type {FeedCategoryPreset, Visibility} from '../../create/createTypes';
-import {FILTER_LAYERS} from '../../create/filterStyles';
+import type {FeedCategoryPreset, FilterId, Visibility} from '../../create/createTypes';
+import {FILTER_LAYER_STACKS} from '../../create/filterStyles';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import {
   uploadMedia,
@@ -122,8 +122,8 @@ export function ShareScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const asset = draft.assets[draft.activeAssetIndex] ?? draft.assets[0];
-  const filter = draft.filterByAsset[draft.activeAssetIndex] ?? 'normal';
-  const layer = FILTER_LAYERS[filter];
+  const filter = (draft.filterByAsset[draft.activeAssetIndex] ?? 'normal') as FilterId;
+  const filterStacks = FILTER_LAYER_STACKS[filter];
   const rotation = draft.rotationByAsset[draft.activeAssetIndex] ?? 0;
 
   const closeAll = useCallback(() => {
@@ -501,16 +501,25 @@ export function ShareScreen() {
         {/* Preview */}
         <ViewShot ref={previewShotRef} style={[styles.preview, {height: W * 1.05, backgroundColor: palette.surface}]} options={{format: 'jpg', quality: 0.92}}>
           {asset?.type === 'video' ? (
-            <Video source={{uri: asset.uri}} style={styles.media} resizeMode="cover" repeat muted />
+            <Video
+              source={{uri: asset.uri}}
+              style={styles.media}
+              resizeMode="cover"
+              repeat
+              muted
+              viewType={Platform.OS === 'android' ? ViewType.TEXTURE : undefined}
+              shutterColor="transparent"
+            />
           ) : asset ? (
             <Image source={{uri: asset.uri}} style={[styles.media, {transform: [{rotate: `${rotation}deg`}]}]} resizeMode="cover" />
           ) : null}
-          {layer.backgroundColor ? (
+          {filterStacks.map((layer, idx) => (
             <View
+              key={`fs_${idx}`}
               pointerEvents="none"
-              style={[StyleSheet.absoluteFill, {backgroundColor: layer.backgroundColor, opacity: layer.opacity ?? 0.85}]}
+              style={[StyleSheet.absoluteFill, {backgroundColor: layer.backgroundColor, opacity: layer.opacity}]}
             />
-          ) : null}
+          ))}
           {draft.textOverlays.map(o => (
             <View key={o.id} style={[styles.txt, {left: o.x, top: o.y}]}>
               <Text style={{color: o.color, fontWeight: '900', fontSize: o.fontSize}}>{o.text}</Text>

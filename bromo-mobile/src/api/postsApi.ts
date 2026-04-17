@@ -96,6 +96,8 @@ export type Post = {
   storyMeta?: StoryMeta;
   /** Story tray: whether the current user has finished this segment (server). */
   seenByMe?: boolean;
+  /** v2 packed edit intent: filters, trim, speed, overlays, products, etc. (see `packEditMetaForUpload`). */
+  clientEditMeta?: Record<string, unknown>;
   /** Injected sponsored post from PromotionCampaign (API). */
   isPromoted?: boolean;
   promotionId?: string;

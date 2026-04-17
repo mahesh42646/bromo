@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -126,6 +126,10 @@ export type NetworkVideoProps = {
   onEnd?: () => void;
 };
 
+export type NetworkVideoHandle = {
+  seek: (seconds: number) => void;
+};
+
 /**
  * Remote (or file://) video with correct Android rendering (TextureView, not SurfaceView)
  * and explicit error reporting. Omits `source.type` so the native stack infers format.
@@ -137,30 +141,39 @@ function uriLooksLikeHls(u: string): boolean {
   return /\.m3u8(\?|$)/i.test(u);
 }
 
-export function NetworkVideo({
-  uri,
-  fallbackUri,
-  posterUri,
-  style,
-  muted = false,
-  paused = false,
-  repeat = false,
-  resizeMode = 'cover',
-  context = 'video',
-  bufferConfig,
-  ignoreSilentSwitch = 'ignore',
-  rate,
-  preventsDisplaySleepDuringVideoPlayback,
-  posterOverlayUntilReady = true,
-  maxBitRate,
-  onDecoderReady,
-  onPlaybackError,
-  onLoad: onLoadProp,
-  onProgress: onProgressProp,
-  onEnd,
-}: NetworkVideoProps) {
+export const NetworkVideo = forwardRef<NetworkVideoHandle, NetworkVideoProps>(function NetworkVideo(
+  {
+    uri,
+    fallbackUri,
+    posterUri,
+    style,
+    muted = false,
+    paused = false,
+    repeat = false,
+    resizeMode = 'cover',
+    context = 'video',
+    bufferConfig,
+    ignoreSilentSwitch = 'ignore',
+    rate,
+    preventsDisplaySleepDuringVideoPlayback,
+    posterOverlayUntilReady = true,
+    maxBitRate,
+    onDecoderReady,
+    onPlaybackError,
+    onLoad: onLoadProp,
+    onProgress: onProgressProp,
+    onEnd,
+  },
+  ref,
+) {
   const [playbackUri, setPlaybackUri] = useState(uri);
   const fallbackTried = useRef(false);
+  const videoRef = useRef<React.ElementRef<typeof Video>>(null);
+  useImperativeHandle(ref, () => ({
+    seek: (seconds: number) => {
+      videoRef.current?.seek(seconds);
+    },
+  }));
 
   useEffect(() => {
     setPlaybackUri(uri);
@@ -305,6 +318,7 @@ export function NetworkVideo({
   return (
     <View style={[styles.wrap, style]}>
       <Video
+        ref={videoRef}
         source={{
           uri: playbackUri,
           headers: {
@@ -350,7 +364,7 @@ export function NetworkVideo({
       ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {

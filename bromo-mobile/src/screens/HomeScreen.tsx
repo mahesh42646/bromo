@@ -16,7 +16,8 @@ import {
   type ViewabilityConfig,
   type ViewToken,
 } from 'react-native';
-import {NetworkVideo} from '../components/media/NetworkVideo';
+import {EditMetaLayers} from '../components/media/EditMetaLayers';
+import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {
@@ -425,8 +426,9 @@ const PostCard = React.memo(function PostCard({
         <Pressable onPress={openReelsAtThisPost}>
           {post.mediaType === 'video' ? (
             <View style={{position: 'relative'}}>
-              <NetworkVideo
+              <PostVideoWithClientMeta
                 key={`${post._id}-${replayKey}`}
+                post={post}
                 context={isHls ? 'feed-hls' : 'feed'}
                 uri={playUri}
                 fallbackUri={isHls ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
@@ -498,18 +500,22 @@ const PostCard = React.memo(function PostCard({
               ) : null}
             </View>
           ) : (
-            <Image
-              source={{uri: resolveMediaUrl(post.mediaUrl)}}
-              style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
-            />
+            <View style={{width: '100%', aspectRatio: 1, position: 'relative'}}>
+              <Image
+                source={{uri: resolveMediaUrl(post.mediaUrl)}}
+                style={{width: '100%', height: '100%', resizeMode: 'cover'}}
+              />
+              <EditMetaLayers clientEditMeta={post.clientEditMeta} />
+            </View>
           )}
         </Pressable>
       ) : (
         <View>
           {post.mediaType === 'video' ? (
             <View style={{position: 'relative'}}>
-              <NetworkVideo
+              <PostVideoWithClientMeta
                 key={`${post._id}-${replayKey}`}
+                post={post}
                 context={isHls ? 'feed-hls' : 'feed'}
                 uri={playUri}
                 fallbackUri={isHls ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
@@ -574,10 +580,13 @@ const PostCard = React.memo(function PostCard({
               ) : null}
             </View>
           ) : (
-            <Image
-              source={{uri: resolveMediaUrl(post.mediaUrl)}}
-              style={{width: '100%', aspectRatio: 1, resizeMode: 'cover'}}
-            />
+            <View style={{width: '100%', aspectRatio: 1, position: 'relative'}}>
+              <Image
+                source={{uri: resolveMediaUrl(post.mediaUrl)}}
+                style={{width: '100%', height: '100%', resizeMode: 'cover'}}
+              />
+              <EditMetaLayers clientEditMeta={post.clientEditMeta} />
+            </View>
           )}
         </View>
       )}

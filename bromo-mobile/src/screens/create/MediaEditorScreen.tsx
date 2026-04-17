@@ -4,6 +4,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,11 +17,12 @@ import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import Slider from '@react-native-community/slider';
-import Video from 'react-native-video';
+import Video, {ViewType} from 'react-native-video';
 import {
   ChevronLeft,
   Crop,
   Music2,
+  Pause,
   Plus,
   RotateCw,
   SlidersHorizontal,
@@ -45,9 +47,16 @@ import {
   type FilterId,
 } from '../../create/createTypes';
 import {DEFAULT_ADJUSTMENTS} from '../../create/createTypes';
-import {FILTER_LABELS, FILTER_LAYERS} from '../../create/filterStyles';
+import {
+  adjustOverlayStyle,
+  saturationOverlayStyle,
+  vignetteOverlayStyle,
+  warmthOverlayStyle,
+} from '../../create/editAdjustUtils';
+import {FILTER_LABELS, FILTER_LAYER_STACKS} from '../../create/filterStyles';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import type {ThemePalette} from '../../config/platform-theme';
+import {EditorTimeline} from './EditorTimeline';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'MediaEditor'>;
 
@@ -82,51 +91,15 @@ const ADJUST_KEYS = [
   {key: 'fade', label: 'Fade', Icon: Minus},
 ] as const;
 
-function adjustOverlayStyle(adjustments: AdjustmentState): ViewStyle {
-  const b = adjustments.brightness;
-  const c = adjustments.contrast;
-  const fade = adjustments.fade;
-  const warm = adjustments.warmth;
-  const bright =
-    b >= 0
-      ? `rgba(255,255,255,${Math.min(0.52, b * 0.45)})`
-      : `rgba(0,0,0,${Math.min(0.52, -b * 0.45)})`;
-  const warmTint =
-    Math.abs(warm) < 0.03
-      ? 'transparent'
-      : warm > 0
-        ? `rgba(255,200,120,${Math.min(0.35, warm * 0.22)})`
-        : `rgba(120,170,255,${Math.min(0.35, -warm * 0.22)})`;
-  return {
-    backgroundColor: bright,
-    opacity: Math.max(0.22, Math.min(1, 0.75 + c * 0.2 - fade * 0.1)),
-  };
-}
-
-function warmthOverlayStyle(adjustments: AdjustmentState): ViewStyle | null {
-  const warm = adjustments.warmth;
-  if (Math.abs(warm) < 0.03) return null;
-  return {
-    backgroundColor:
-      warm > 0
-        ? `rgba(255,200,120,${Math.min(0.4, warm * 0.25)})`
-        : `rgba(120,170,255,${Math.min(0.4, -warm * 0.25)})`,
-  };
-}
-
-function saturationOverlayStyle(adjustments: AdjustmentState): ViewStyle | null {
-  const s = adjustments.saturation;
-  if (Math.abs(s) < 0.03) return null;
-  return {
-    backgroundColor: s > 0 ? 'rgba(255,60,140,0.14)' : 'rgba(60,140,255,0.12)',
-    opacity: Math.min(1, 0.55 + Math.abs(s) * 0.35),
-  };
-}
-
-function vignetteOverlayStyle(adjustments: AdjustmentState): ViewStyle | null {
-  const v = adjustments.vignette;
-  if (v < 0.04) return null;
-  return {backgroundColor: `rgba(0,0,0,${Math.min(0.58, v * 0.42)})`};
+function renderFilterStacks(filterId: FilterId) {
+  const stacks = FILTER_LAYER_STACKS[filterId];
+  return stacks.map((layer, idx) => (
+    <View
+      key={`${filterId}_${idx}`}
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, {backgroundColor: layer.backgroundColor, opacity: layer.opacity}]}
+    />
+  ));
 }
 
 function TrimmingVideo({
@@ -134,13 +107,17 @@ function TrimmingVideo({
   trimStart,
   trimEnd,
   playbackSpeed,
+  paused,
   onDuration,
+  onTimeUpdate,
 }: {
   uri: string;
   trimStart: number;
   trimEnd: number;
   playbackSpeed: number;
+  paused?: boolean;
   onDuration?: (seconds: number) => void;
+  onTimeUpdate?: (seconds: number) => void;
 }) {
   const videoRef = useRef<React.ElementRef<typeof Video>>(null);
   const [dur, setDur] = useState(0);
@@ -173,8 +150,11 @@ function TrimmingVideo({
         resizeMode="cover"
         repeat={false}
         muted
+        paused={paused}
         rate={playbackSpeed}
         playInBackground={false}
+        viewType={Platform.OS === 'android' ? ViewType.TEXTURE : undefined}
+        shutterColor="transparent"
         bufferConfig={{
           minBufferMs: 250,
           maxBufferMs: 8000,
@@ -192,6 +172,7 @@ function TrimmingVideo({
         onReadyForDisplay={() => setReady(true)}
         progressUpdateInterval={120}
         onProgress={p => {
+          onTimeUpdate?.(p.currentTime);
           if (dur <= 0 || tEnd <= tStart) return;
           if (p.currentTime >= tEnd - 0.06) {
             videoRef.current?.seek(tStart);
@@ -238,6 +219,9 @@ export function MediaEditorScreen() {
   const [videoDurationSec, setVideoDurationSec] = useState(
     () => (cur?.type === 'video' && typeof cur.duration === 'number' ? cur.duration : 0),
   );
+  const [timelineZoom, setTimelineZoom] = useState(1);
+  const [previewPaused, setPreviewPaused] = useState(false);
+  const [previewTimeSec, setPreviewTimeSec] = useState(0);
 
   const carouselRef = useRef<FlatList>(null);
 
@@ -248,8 +232,6 @@ export function MediaEditorScreen() {
       setVideoDurationSec(0);
     }
   }, [cur?.uri, cur?.type, cur?.duration]);
-
-  const layer = FILTER_LAYERS[filter];
 
   const aspectRatio =
     crop === '1:1'
@@ -324,8 +306,7 @@ export function MediaEditorScreen() {
                 setActiveAssetIndex(idx);
               }}
               renderItem={({item, index}) => {
-                const f = draft.filterByAsset[index] ?? 'normal';
-                const fl = FILTER_LAYERS[f];
+                const f = (draft.filterByAsset[index] ?? 'normal') as FilterId;
                 const r = draft.rotationByAsset[index] ?? 0;
                 const adj = draft.adjustByAsset[index] ?? {...DEFAULT_ADJUSTMENTS};
                 const ts = draft.trimStartByAsset[index] ?? 0;
@@ -335,7 +316,14 @@ export function MediaEditorScreen() {
                 const sO = saturationOverlayStyle(adj);
                 const vO = vignetteOverlayStyle(adj);
                 return (
-                  <View style={{width: W, height: previewHeight, backgroundColor: palette.background}}>
+                  <View
+                    style={{
+                      width: W,
+                      height: previewHeight,
+                      backgroundColor: palette.background,
+                      borderRadius: 16,
+                      overflow: 'hidden',
+                    }}>
                     <View style={[styles.media, {transform: [{rotate: `${r}deg`}]}]}>
                       {item.type === 'video' ? (
                         <TrimmingVideo
@@ -343,17 +331,14 @@ export function MediaEditorScreen() {
                           trimStart={ts}
                           trimEnd={te}
                           playbackSpeed={draft.playbackSpeed}
+                          paused={index === i ? previewPaused : true}
                           onDuration={index === i ? setVideoDurationSec : undefined}
+                          onTimeUpdate={index === i ? setPreviewTimeSec : undefined}
                         />
                       ) : (
                         <Image source={{uri: item.uri}} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
                       )}
-                      {fl.backgroundColor ? (
-                        <View
-                          pointerEvents="none"
-                          style={[StyleSheet.absoluteFill, {backgroundColor: fl.backgroundColor, opacity: fl.opacity ?? 0.85}]}
-                        />
-                      ) : null}
+                      {renderFilterStacks(f)}
                       <View pointerEvents="none" style={[StyleSheet.absoluteFill, ao]} />
                       {wO ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, wO]} /> : null}
                       {sO ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, sO]} /> : null}
@@ -396,17 +381,14 @@ export function MediaEditorScreen() {
                   trimStart={trimStart}
                   trimEnd={trimEnd}
                   playbackSpeed={draft.playbackSpeed}
+                  paused={previewPaused}
                   onDuration={setVideoDurationSec}
+                  onTimeUpdate={setPreviewTimeSec}
                 />
               ) : (
                 <Image source={{uri: cur.uri}} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
               )}
-              {layer.backgroundColor ? (
-                <View
-                  pointerEvents="none"
-                  style={[StyleSheet.absoluteFill, {backgroundColor: layer.backgroundColor, opacity: layer.opacity ?? 0.85}]}
-                />
-              ) : null}
+              {renderFilterStacks(filter)}
               <View pointerEvents="none" style={[StyleSheet.absoluteFill, adjustOverlay]} />
               {warmOv ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, warmOv]} /> : null}
               {satOv ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, satOv]} /> : null}
@@ -430,6 +412,49 @@ export function MediaEditorScreen() {
             </View>
           </View>
         )}
+
+        {cur.type === 'video' && videoDurationSec > 0 ? (
+          <>
+            <View style={styles.playbackRow}>
+              <Pressable
+                onPress={() => setPreviewPaused(p => !p)}
+                style={[styles.playBtn, {backgroundColor: palette.surfaceHigh}]}>
+                {previewPaused ? <Play size={22} color={palette.foreground} /> : <Pause size={22} color={palette.foreground} />}
+              </Pressable>
+              <Text style={[styles.playbackTime, {color: palette.foreground}]}>
+                {Math.floor(previewTimeSec / 60)}:{Math.floor(previewTimeSec % 60)
+                  .toString()
+                  .padStart(2, '0')}{' '}
+                / {Math.floor(videoDurationSec / 60)}:
+                {Math.floor(videoDurationSec % 60)
+                  .toString()
+                  .padStart(2, '0')}
+              </Text>
+              <View style={{flex: 1}} />
+              <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '700'}}>Undo</Text>
+              <Text style={{color: palette.foregroundSubtle, fontSize: 11, fontWeight: '700', marginLeft: 12}}>Redo</Text>
+            </View>
+            <EditorTimeline
+              palette={palette}
+              durationSec={videoDurationSec}
+              trimStart={trimStart}
+              trimEnd={trimEnd}
+              onTrimChange={onTrimChange}
+              zoom={timelineZoom}
+              onZoomChange={setTimelineZoom}
+            />
+            <View style={styles.subTrackHint}>
+              <View style={[styles.subTrackRow, {borderColor: palette.border, backgroundColor: palette.card}]}>
+                <Music2 size={16} color={palette.foregroundMuted} />
+                <Text style={[styles.subTrackTxt, {color: palette.foregroundMuted}]}>Audio · pick a track below</Text>
+              </View>
+              <View style={[styles.subTrackRow, {borderColor: palette.border, backgroundColor: palette.card}]}>
+                <Type size={16} color={palette.foregroundMuted} />
+                <Text style={[styles.subTrackTxt, {color: palette.foregroundMuted}]}>Text · use Text tool</Text>
+              </View>
+            </View>
+          </>
+        ) : null}
 
         {/* Tab bar: Filters | Adjust | Crop */}
         <View style={styles.tabBar}>
@@ -465,12 +490,7 @@ export function MediaEditorScreen() {
                   ) : (
                     <Image source={{uri: cur.uri}} style={styles.filterImg} />
                   )}
-                  <View
-                    style={[
-                      StyleSheet.absoluteFill,
-                      {backgroundColor: FILTER_LAYERS[fid].backgroundColor, opacity: FILTER_LAYERS[fid].opacity ?? 0},
-                    ]}
-                  />
+                  {renderFilterStacks(fid as FilterId)}
                 </View>
                 <Text style={styles.filterName}>{FILTER_LABELS[fid]}</Text>
               </Pressable>
@@ -602,49 +622,6 @@ export function MediaEditorScreen() {
         {/* Video-specific controls */}
         {cur.type === 'video' && (
           <>
-            <Text style={styles.sectionLabel}>Trim</Text>
-            <Text style={styles.hint}>
-              {videoDurationSec > 0
-                ? `Start ${(trimStart * videoDurationSec).toFixed(1)}s · End ${(trimEnd * videoDurationSec).toFixed(1)}s (${videoDurationSec.toFixed(1)}s total)`
-                : `Start ${(trimStart * 100).toFixed(0)}% · End ${(trimEnd * 100).toFixed(0)}%`}
-            </Text>
-            <Text style={[styles.hint, {paddingHorizontal: 14, marginBottom: 6}]}>Start handle (top) · End handle (bottom)</Text>
-            <View style={styles.trimTrack}>
-              <View
-                style={[
-                  styles.trimTrackActive,
-                  {
-                    left: `${trimStart * 100}%`,
-                    width: `${Math.max(4, (trimEnd - trimStart) * 100)}%`,
-                    backgroundColor: palette.accent + '99',
-                  },
-                ]}
-              />
-            </View>
-            <View style={styles.trimSliders}>
-              <Text style={[styles.trimSliderLabel, {color: palette.foregroundSubtle}]}>Start</Text>
-              <Slider
-                minimumValue={0}
-                maximumValue={0.95}
-                step={0.005}
-                value={trimStart}
-                onValueChange={v => onTrimChange([v, Math.max(v + 0.05, trimEnd)])}
-                minimumTrackTintColor={palette.accent}
-                maximumTrackTintColor={palette.foregroundFaint}
-                thumbTintColor={palette.foreground}
-              />
-              <Text style={[styles.trimSliderLabel, {color: palette.foregroundSubtle}]}>End</Text>
-              <Slider
-                minimumValue={0.05}
-                maximumValue={1}
-                step={0.005}
-                value={trimEnd}
-                onValueChange={v => onTrimChange([Math.min(trimStart, v - 0.05), v])}
-                minimumTrackTintColor={palette.accent}
-                maximumTrackTintColor={palette.foregroundFaint}
-                thumbTintColor={palette.foreground}
-              />
-            </View>
             <Text style={styles.sectionLabel}>Speed</Text>
             <View style={styles.speedRow}>
               {[0.25, 0.5, 1, 1.5, 2, 3].map(s => (
@@ -707,7 +684,27 @@ function makeStyles(p: ThemePalette) {
     dots: {flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 8},
     dot: {width: 6, height: 6, borderRadius: 3, backgroundColor: p.borderMid},
     dotOn: {backgroundColor: p.foreground, width: 14},
-    previewWrap: {width: '100%', backgroundColor: p.background},
+    previewWrap: {width: '100%', backgroundColor: p.background, borderRadius: 16, overflow: 'hidden'},
+    playbackRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      gap: 12,
+    },
+    playBtn: {width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center'},
+    playbackTime: {fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums']},
+    subTrackHint: {paddingHorizontal: 14, gap: 8, marginBottom: 8},
+    subTrackRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    subTrackTxt: {fontSize: 12, fontWeight: '600', flex: 1},
     media: {flex: 1, overflow: 'hidden'},
     overlayText: {position: 'absolute', flexDirection: 'row', alignItems: 'center'},
     removeOverlay: {
@@ -773,23 +770,6 @@ function makeStyles(p: ThemePalette) {
     textInput: {flex: 1, paddingVertical: 12},
     colorRow: {paddingHorizontal: 12, gap: 10, marginTop: 8},
     colorDot: {width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: p.surfaceHigh},
-    trimSliders: {paddingHorizontal: 14, gap: 4},
-    trimTrack: {
-      marginHorizontal: 14,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: p.surfaceHigh,
-      marginBottom: 10,
-      overflow: 'hidden',
-      position: 'relative',
-    },
-    trimTrackActive: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      borderRadius: 4,
-    },
-    trimSliderLabel: {fontSize: 11, fontWeight: '800', marginBottom: -4},
     speedRow: {flexDirection: 'row', gap: 8, marginHorizontal: 14, marginTop: 8, flexWrap: 'wrap'},
     speedChip: {
       paddingHorizontal: 14,
