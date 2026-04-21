@@ -25,7 +25,7 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
-import {ChevronLeft, CheckCircle2, Eye, EyeOff, Mail, XCircle} from 'lucide-react-native';
+import {ChevronLeft, CheckCircle2, Eye, EyeOff, Mail, XCircle, AlignCenter} from 'lucide-react-native';
 import {useAuth} from '../../../context/AuthContext';
 import {useTheme} from '../../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
@@ -93,12 +93,14 @@ function GradCTA({
   loading,
   disabled,
   style,
+  fullWidth = true,
 }: {
   label: string;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
+  fullWidth?: boolean;
 }) {
   const {palette} = useTheme();
   const isDisabled = !!disabled || !!loading;
@@ -108,7 +110,7 @@ function GradCTA({
       disabled={isDisabled}
       style={({pressed}) => [
         {
-          width: '100%',
+          ...(fullWidth ? {width: '100%' as const} : {alignSelf: 'center' as const}),
           height: 52,
           borderRadius: 12,
           backgroundColor: isDisabled ? palette.glassMid : palette.accent,
@@ -207,7 +209,7 @@ function GoogleCTA({
         borderWidth: 1,
         borderColor: isDark ? '#333333' : '#CCCCCC',
         borderRadius: 999,
-        padding: 20,
+        padding: 12,
         // No size or margin change ensures button stays same size
         alignSelf: 'center',
       }}
@@ -380,9 +382,9 @@ function OrDivider() {
       <View style={{flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.borderFaint}} />
       <Text
         style={{
-          color: palette.foregroundFaint,
+          color: palette.primary,
           paddingHorizontal: 16,
-          fontSize: 12,
+          fontSize: 14,
           fontWeight: '500',
           letterSpacing: 1,
         }}>
@@ -607,9 +609,31 @@ export function LoginScreen() {
             Forgot password?
           </Text>
         </Pressable>
-        <View style={{paddingTop: 14}}>
-          <GradCTA label="Log in" onPress={handleLogin} loading={loading} disabled={loading || gLoading} />
+        <View
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.accent,
+            backgroundColor: palette.accent,
+            borderRadius: 100,
+            width: '50%',
+            marginTop: 20
+          }}
+        >
+          <GradCTA
+            label="Log in"
+            onPress={handleLogin}
+            loading={loading}
+            disabled={loading || gLoading}
+            fullWidth={false}
+            
+          />
         </View>
+  
         <OrDivider />
         <GoogleCTA onPress={handleGoogle} loading={gLoading} disabled={loading || gLoading} />
       </View>
@@ -810,8 +834,8 @@ export function RegisterScreen() {
           {helperText ? (
             <Text style={{
               color: available === true ? palette.success : palette.placeholder,
-              fontSize: 12,
-              marginTop: -8,
+              fontSize: 14,
+              marginTop: 0,
               marginBottom: 12,
               fontWeight: '500',
             }}>
@@ -849,12 +873,40 @@ export function RegisterScreen() {
               </View>
             </View>
           )}
-          <GradCTA
+        
+        <View
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.accent,
+            backgroundColor: palette.accent,
+            borderRadius: 100,
+            width: '50%',
+            marginTop: 20
+          }}
+        >  <GradCTA
             label="Continue"
             onPress={() => setStep(2)}
             disabled={!canProceed}
-            style={{marginTop: 8}}
+            style={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              alignSelf: 'center',
+              paddingTop: 12,
+              paddingBottom: 12,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: palette.accent,
+              backgroundColor: palette.accent,
+              borderRadius: 100,
+              width: '50%',
+              marginTop: 20
+            }}
           />
+          </View>
         </View>
 
         <View style={{paddingBottom: 24, marginTop: 24}}>
@@ -952,16 +1004,31 @@ export function RegisterScreen() {
           onSubmitEditing={handleRegister}
         />
 
-        <View style={{marginTop: 6, marginBottom: 8}}>
+<View
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.accent,
+            backgroundColor: palette.accent,
+            borderRadius: 100,
+            width: '50%',
+            marginTop: 20
+          }}
+        >
           <GradCTA
             label="Create account"
             onPress={handleRegister}
             loading={loading}
             disabled={loading || gLoading}
           />
-          <OrDivider />
-          <GoogleCTA onPress={handleGoogle} loading={gLoading} disabled={loading || gLoading} />
+         
         </View>
+        <OrDivider />
+        <GoogleCTA onPress={handleGoogle} loading={gLoading} disabled={loading || gLoading} />
       </View>
 
       <View style={{paddingBottom: 24, marginTop: 24}}>
@@ -1123,14 +1190,14 @@ export function ForgotPasswordScreen() {
             width: 96,
             height: 96,
             borderRadius: 32,
-            backgroundColor: `${palette.success}18`,
+            // backgroundColor: `${palette.success}18`,
             borderWidth: 1,
-            borderColor: `${palette.success}30`,
+            // borderColor: `${palette.success}30`,
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: 22,
           }}>
-            <CheckCircle2 size={42} color={palette.success} />
+            <CheckCircle2 size={102} color={palette.success} />
           </View>
           <Text style={{color: palette.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.6, marginBottom: 10}}>
             Check your inbox
@@ -1140,11 +1207,27 @@ export function ForgotPasswordScreen() {
             <Text style={{color: palette.foregroundMuted, fontWeight: '700'}}>{email.trim()}</Text>
             {', you\'ll receive a reset link.'}
           </Text>
+          <View
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.accent,
+            backgroundColor: palette.accent,
+            borderRadius: 100,
+            width: '50%',
+            marginTop: 20
+          }}
+        >
           <GradCTA
             label="Back to Login"
             onPress={() => navigation.navigate('Login')}
             style={{width: 260}}
           />
+          </View>
         </View>
       </Chrome>
     );
@@ -1171,7 +1254,22 @@ export function ForgotPasswordScreen() {
       </View>
 
       {/* Sticky CTA — always visible above keyboard */}
-      <View style={{paddingHorizontal: 24, paddingTop: 16}}>
+      <View
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.accent,
+            backgroundColor: palette.accent,
+            borderRadius: 100,
+            width: '50%',
+            marginTop: 20
+          }}
+        >
+
         <GradCTA label="Send Reset Link" onPress={handleReset} loading={loading} disabled={loading} />
       </View>
     </Chrome>

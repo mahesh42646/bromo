@@ -69,7 +69,8 @@ import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
 import {hashString, pickAdSlots} from '../lib/adSlots';
 import {AdCard} from '../components/AdCard';
 import {AdStoryViewer} from '../components/AdStoryViewer';
-import {clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped} from '../lib/storiesFeedCache';
+import {clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
+import {peekHomeFeedCache, saveHomeFeedCache} from '../lib/homeFeedCache';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getUnreadCount} from '../api/notificationsApi';
 import {getConversations} from '../api/chatApi';
@@ -828,7 +829,6 @@ export function HomeScreen() {
   const topicPageRef = useRef(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const initialLoadDone = useRef(false);
   const forYouPhaseRef = useRef<'friends' | 'general'>('friends');
   const cfRef = useRef<string | null>(null);
   const cgRef = useRef<string | null>(null);
@@ -882,54 +882,46 @@ export function HomeScreen() {
   }).current;
 
   const loadData = useCallback(async (reset = false, retry = 0) => {
-    try {
-      const cat = activeCategory;
-      const isHome = cat === 'home';
+    const cat = activeCategory;
+    const isHome = cat === 'home';
 
-      if (reset && isHome) {
-        forYouPhaseRef.current = 'friends';
-        cfRef.current = null;
-        cgRef.current = null;
-      }
+    if (reset && isHome) {
+      forYouPhaseRef.current = 'friends';
+      cfRef.current = null;
+      cgRef.current = null;
+    }
 
-      const [storiesRes, suggestionsRes, adsRes, storyAdsRes, trendingRes] = await Promise.all([
-        reset ? loadStoriesFeedDeduped() : Promise.resolve(null),
-        reset ? getUserSuggestions(6) : Promise.resolve(null),
-        reset ? fetchAds('feed', 5) : Promise.resolve(null),
-        reset ? fetchAds('stories', 2) : Promise.resolve(null),
-        reset && isHome ? getTrendingReels(3).catch(() => ({posts: [] as Post[]})) : Promise.resolve(null),
-      ]);
-
-      if (reset) {
-        if (storiesRes) setStoryGroups(storiesRes);
-        if (suggestionsRes) setSuggestions(suggestionsRes.users);
-        if (adsRes) setFeedAds(adsRes);
-        if (storyAdsRes) setStoryAds(storyAdsRes);
-        if (isHome) {
-          if (
-            trendingRes != null &&
-            typeof trendingRes === 'object' &&
-            Array.isArray((trendingRes as {posts?: Post[]}).posts)
-          ) {
-            setTrendingReels((trendingRes as {posts: Post[]}).posts);
-          } else {
-            setTrendingReels([]);
-          }
-        } else {
-          setTrendingReels([]);
-        }
-      }
-
+    // Fire auxiliary fetches independently — feed never waits on them.
+    if (reset) {
+      loadStoriesFeedDeduped()
+        .then(s => setStoryGroups(s))
+        .catch(() => null);
+      getUserSuggestions(6)
+        .then(r => setSuggestions(r.users))
+        .catch(() => null);
+      fetchAds('feed', 5)
+        .then(a => setFeedAds(a))
+        .catch(() => null);
+      fetchAds('stories', 2)
+        .then(a => setStoryAds(a))
+        .catch(() => null);
       if (isHome) {
-        let res = await getFeed({
+        getTrendingReels(3)
+          .then(r => setTrendingReels(r?.posts ?? []))
+          .catch(() => setTrendingReels([]));
+      } else {
+        setTrendingReels([]);
+      }
+    }
+
+    try {
+      if (isHome) {
+        const res = await getFeed({
           tab: 'for-you',
           fyPhase: forYouPhaseRef.current,
           cf: forYouPhaseRef.current === 'friends' ? cfRef.current : undefined,
           cg: forYouPhaseRef.current === 'general' ? cgRef.current : undefined,
         });
-
-        // Never chain-fetch "general" discover into the same home list when friends runs out — that
-        // surfaced every stranger's post. Explore/topic tabs use separate feed requests.
 
         if (res.forYouPhase === 'friends') {
           forYouPhaseRef.current = 'friends';
@@ -942,6 +934,8 @@ export function HomeScreen() {
         const mergedPosts = dedupePostsById(res.posts);
         if (reset) {
           setPosts(mergedPosts);
+          // Only cache the default home tab — other tabs shouldn't leak into cold start.
+          void saveHomeFeedCache('home', mergedPosts);
         } else {
           setPosts(prev => dedupePostsById([...prev, ...mergedPosts]));
         }
@@ -978,21 +972,34 @@ export function HomeScreen() {
     }
   }, [activeCategory]);
 
-  // Wait for Firebase auth to restore session before hitting the API.
+  // Paint cached stories + posts immediately so the tray (profile avatar + rings)
+  // and the first few feed items appear before any network call completes.
+  useEffect(() => {
+    peekStoriesFromCache()
+      .then(cached => {
+        if (cached && cached.length > 0) {
+          setStoryGroups(prev => (prev.length > 0 ? prev : cached));
+        }
+      })
+      .catch(() => null);
+    peekHomeFeedCache()
+      .then(b => {
+        if (b && b.category === 'home' && b.posts.length > 0) {
+          setPosts(prev => (prev.length > 0 ? prev : b.posts));
+          setLoading(false);
+        }
+      })
+      .catch(() => null);
+  }, []);
+
+  // Single initial-load path: fire once auth is ready OR whenever the category
+  // tab changes. No duplicate fetches, no full-screen gate after cache paint.
   useEffect(() => {
     if (!authReady) return;
-    if (initialLoadDone.current) return;
-    initialLoadDone.current = true;
-    setLoading(true);
+    if (posts.length === 0) setLoading(true);
     loadData(true).finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authReady]);
-
-  useEffect(() => {
-    if (!authReady) return;
-    setLoading(true);
-    loadData(true).finally(() => setLoading(false));
-  }, [activeCategory, authReady, loadData]);
+  }, [activeCategory, authReady]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1376,11 +1383,7 @@ export function HomeScreen() {
         })}
       </ScrollView>
 
-      {loading ? (
-        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
-          <ActivityIndicator color={palette.primary} size="large" />
-        </View>
-      ) : (
+      <View style={{flex: 1}}>
         <FlatList
           data={feedItems}
           keyExtractor={item => item.key}
@@ -1396,9 +1399,9 @@ export function HomeScreen() {
           }
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.4}
-          initialNumToRender={4}
-          maxToRenderPerBatch={6}
-          windowSize={7}
+          initialNumToRender={3}
+          maxToRenderPerBatch={4}
+          windowSize={5}
           removeClippedSubviews
           viewabilityConfig={feedViewabilityConfig}
           onViewableItemsChanged={onFeedViewableItemsChanged}
@@ -1658,7 +1661,20 @@ export function HomeScreen() {
             return null;
           }}
         />
-      )}
+        {loading && posts.length === 0 ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 80,
+              alignItems: 'center',
+            }}>
+            <ActivityIndicator color={palette.primary} size="small" />
+          </View>
+        ) : null}
+      </View>
 
       {/* Story ad full-screen viewer */}
       {activeStoryAd && (

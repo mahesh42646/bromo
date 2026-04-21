@@ -227,6 +227,18 @@ mediaRouter.post(
       ? Number(body.durationMs)
       : undefined;
 
+    let clientEditMeta: Record<string, unknown> | undefined;
+    if (body.clientEditMeta && typeof body.clientEditMeta === "string") {
+      try {
+        const parsed = JSON.parse(body.clientEditMeta) as unknown;
+        if (parsed && typeof parsed === "object") {
+          clientEditMeta = parsed as Record<string, unknown>;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
     // Thumbnail for immediate preview (sync, lightweight)
     let thumbnailUrl = "";
     if (mediaType === "video") {
@@ -263,6 +275,7 @@ mediaRouter.post(
       ...(safeProductIds.length ? { productIds: safeProductIds } : {}),
       ...(settings ? { settings } : {}),
       ...(typeof durationMs === "number" ? { durationMs } : {}),
+      ...(clientEditMeta ? { clientEditMeta } : {}),
       feedCategory,
       expiresAt: storyExpiresAt,
       processingStatus: "pending",

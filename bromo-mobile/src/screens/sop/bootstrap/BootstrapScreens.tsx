@@ -3,9 +3,11 @@ import {
   ActivityIndicator,
   Animated,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
@@ -14,137 +16,118 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Svg, {
   Circle,
   Defs,
+  Ellipse,
   LinearGradient,
   Path,
   RadialGradient,
   Rect,
   Stop,
 } from 'react-native-svg';
+import type {ThemePalette} from '../../../config/platform-theme';
 import {useAuth} from '../../../context/AuthContext';
 import {useTheme} from '../../../context/ThemeContext';
 import type {BootstrapParamList} from '../../../navigation/bootstrapParamList';
 
 type BootNav = NativeStackNavigationProp<BootstrapParamList>;
 
-// ── SVG Illustrations ─────────────────────────────────────────────
+// ── SVG Illustrations (theme-driven “3D” stacks) ─────────────────
 
-function IlloDiscover({c}: {c: string}) {
-  return (
-    <Svg width={156} height={156} viewBox="0 0 156 156">
-      <Circle cx={78} cy={72} r={66} fill="none" stroke={c} strokeWidth={0.8} opacity={0.15} />
-      <Circle cx={78} cy={72} r={48} fill="none" stroke={c} strokeWidth={1} opacity={0.28} />
-      <Circle cx={78} cy={72} r={30} fill="none" stroke={c} strokeWidth={1.5} opacity={0.48} />
-      <Circle cx={78} cy={72} r={10} fill={c} opacity={0.95} />
-      <Path d="M72 82 L66 112" stroke={c} strokeWidth={4} strokeLinecap="round" opacity={0.65} />
-      <Path d="M84 82 L90 112" stroke={c} strokeWidth={4} strokeLinecap="round" opacity={0.65} />
-      <Path d="M66 112 L90 112" stroke={c} strokeWidth={4} strokeLinecap="round" opacity={0.65} />
-    </Svg>
-  );
-}
+type IlloColors = {main: string; depth: string; highlight: string};
 
-function IlloReels({c}: {c: string}) {
+function IlloSocial({main, depth, highlight}: IlloColors) {
   return (
-    <Svg width={156} height={156} viewBox="0 0 156 156">
-      <Circle cx={78} cy={78} r={66} fill={c} opacity={0.06} />
-      <Circle cx={78} cy={78} r={66} fill="none" stroke={c} strokeWidth={1} opacity={0.2} />
-      <Path d="M58 46 L58 110 L118 78 Z" fill={c} opacity={0.92} />
-      <Path d="M126 54 L144 54" stroke={c} strokeWidth={3.5} strokeLinecap="round" opacity={0.4} />
-      <Path d="M128 78 L150 78" stroke={c} strokeWidth={3.5} strokeLinecap="round" opacity={0.28} />
-      <Path d="M126 102 L144 102" stroke={c} strokeWidth={3.5} strokeLinecap="round" opacity={0.18} />
-      <Path d="M8 54 L26 54" stroke={c} strokeWidth={3.5} strokeLinecap="round" opacity={0.18} />
-      <Path d="M6 78 L28 78" stroke={c} strokeWidth={3.5} strokeLinecap="round" opacity={0.12} />
-    </Svg>
-  );
-}
-
-function IlloStore({c}: {c: string}) {
-  return (
-    <Svg width={156} height={156} viewBox="0 0 156 156">
-      <Rect x={22} y={22} width={50} height={50} rx={12} fill={c} opacity={0.88} />
-      <Rect x={84} y={22} width={50} height={50} rx={12} fill={c} opacity={0.44} />
-      <Rect x={22} y={84} width={50} height={50} rx={12} fill={c} opacity={0.44} />
-      <Rect x={84} y={84} width={22} height={22} rx={6} fill={c} opacity={0.88} />
-      <Rect x={112} y={84} width={22} height={22} rx={6} fill={c} opacity={0.32} />
-      <Rect x={84} y={112} width={22} height={22} rx={6} fill={c} opacity={0.32} />
-      <Rect x={112} y={112} width={22} height={22} rx={6} fill={c} opacity={0.88} />
-    </Svg>
-  );
-}
-
-function IlloWallet({c}: {c: string}) {
-  return (
-    <Svg width={156} height={156} viewBox="0 0 156 156">
-      <Circle cx={78} cy={78} r={55} fill="none" stroke={c} strokeWidth={5} opacity={0.8} />
-      <Circle cx={78} cy={78} r={38} fill={c} opacity={0.1} />
+    <Svg width={176} height={176} viewBox="0 0 176 176">
+      <Ellipse cx={88} cy={128} rx={56} ry={14} fill={depth} opacity={0.35} />
+      <Path d="M38 118 L138 118 L128 88 L48 88 Z" fill={main} opacity={0.55} />
+      <Path d="M48 88 L128 88 L118 58 L58 58 Z" fill={main} opacity={0.75} />
+      <Path d="M58 58 L118 58 L108 38 L68 38 Z" fill={main} opacity={0.95} />
+      <Circle cx={88} cy={44} r={22} fill={highlight} opacity={0.9} />
+      <Path d="M82 38 L82 52 L94 46 Z" fill={depth} opacity={0.95} />
+      <Circle cx={44} cy={96} r={5} fill={highlight} opacity={0.5} />
+      <Circle cx={132} cy={102} r={4} fill={depth} opacity={0.65} />
       <Path
-        d="M61 50 L95 50 M61 64 L95 64 M61 50 C61 50 95 50 95 64 C95 78 61 78 61 78 L95 106"
-        stroke={c}
-        strokeWidth={5.5}
+        d="M124 44 Q138 36 146 48"
+        stroke={main}
+        strokeWidth={3}
         strokeLinecap="round"
-        strokeLinejoin="round"
         fill="none"
-        opacity={0.9}
+        opacity={0.45}
       />
-      <Circle cx={18} cy={20} r={5} fill={c} opacity={0.45} />
-      <Circle cx={138} cy={24} r={3.5} fill={c} opacity={0.3} />
-      <Circle cx={134} cy={136} r={4.5} fill={c} opacity={0.4} />
-      <Circle cx={22} cy={133} r={3} fill={c} opacity={0.25} />
     </Svg>
   );
 }
 
-// ── Slide data (uses palette tokens) ──────────────────────────────
-
-import type {ThemePalette} from '../../../config/platform-theme';
-
-function makeSlides(p: ThemePalette) {
-  return [
-    {Illo: IlloDiscover, accent: p.accent,    accentFg: p.accentForeground,  title: 'Hyperlocal,\nbuilt for India',      body: 'Discover food, stores & creators within 3KM — with offers you can actually redeem.'},
-    {Illo: IlloReels,    accent: p.muted,     accentFg: p.mutedForeground,   title: 'Reels that\nactually reward',        body: 'Watch & earn points. Reuse trending audio — originals stay credited.'},
-    {Illo: IlloStore,    accent: p.success,   accentFg: p.successForeground, title: 'Stores +\nQR checkout',              body: 'Subscribe as a merchant, publish offers, settle with QR + OTP at checkout.'},
-    {Illo: IlloWallet,   accent: p.warning,   accentFg: p.warningForeground, title: 'One wallet,\nendless loop',          body: 'Points, coins & ad credits — earn by watching, spend at local stores.'},
-  ];
+function IlloEarn({main, depth, highlight}: IlloColors) {
+  return (
+    <Svg width={176} height={176} viewBox="0 0 176 176">
+      <Ellipse cx={88} cy={132} rx={44} ry={12} fill={depth} opacity={0.4} />
+      <Path d="M64 124 L112 124 L104 84 L72 84 Z" fill={main} opacity={0.5} />
+      <Ellipse cx={88} cy={84} rx={34} ry={10} fill={main} opacity={0.85} />
+      <Circle cx={88} cy={62} r={26} fill={highlight} opacity={0.95} />
+      <Circle cx={88} cy={62} r={20} fill="none" stroke={main} strokeWidth={2.2} opacity={0.35} />
+      <Rect x={100} y={34} width={34} height={22} rx={5} fill={highlight} opacity={0.75} />
+      <Path
+        d="M40 52 L52 46 L64 52 L76 44 L88 50"
+        stroke={main}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        fill="none"
+        opacity={0.55}
+      />
+    </Svg>
+  );
 }
 
-// ── Gradient button (no LinearGradient package needed) ─────────────
-
-function GlowBtn({
-  label,
-  onPress,
-  accent,
-  accentFg,
-}: {
-  label: string;
-  onPress: () => void;
-  accent: string;
-  accentFg: string;
-}) {
+function IlloShop({main, depth, highlight}: IlloColors) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({pressed}) => ({
-        height: 54,
-        borderRadius: 27,
-        overflow: 'hidden',
-        opacity: pressed ? 0.82 : 1,
-        transform: [{scale: pressed ? 0.975 : 1}],
-      })}>
-      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
-        <Defs>
-          <LinearGradient id="gb" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={accent} stopOpacity="1" />
-            <Stop offset="1" stopColor={accent} stopOpacity="0.7" />
-          </LinearGradient>
-        </Defs>
-        <Rect width="100%" height="100%" fill="url(#gb)" />
-      </Svg>
-      <View style={[StyleSheet.absoluteFill, ss.center]}>
-        <Text style={{color: accentFg, fontWeight: '800', fontSize: 15, letterSpacing: 0.3}}>
-          {label}
-        </Text>
-      </View>
-    </Pressable>
+    <Svg width={176} height={176} viewBox="0 0 176 176">
+      <Ellipse cx={88} cy={138} rx={52} ry={13} fill={depth} opacity={0.35} />
+      <Rect x={40} y={72} width={96} height={62} rx={14} fill={main} opacity={0.35} />
+      <Rect x={48} y={56} width={80} height={28} rx={10} fill={main} opacity={0.72} />
+      <Path d="M48 56 L88 36 L128 56 Z" fill={main} opacity={0.9} />
+      <Rect x={118} y={40} width={32} height={46} rx={8} fill={highlight} opacity={0.85} />
+      <Rect x={32} y={92} width={22} height={22} rx={6} fill={main} opacity={0.55} />
+      <Rect x={58} y={98} width={22} height={22} rx={6} fill={depth} opacity={0.65} />
+      <Rect x={96} y={96} width={22} height={22} rx={6} fill={main} opacity={0.45} />
+      <Rect x={122} y={102} width={22} height={22} rx={6} fill={highlight} opacity={0.4} />
+      <Path d="M52 40 L124 40" stroke={main} strokeWidth={2} strokeLinecap="round" opacity={0.35} />
+    </Svg>
   );
+}
+
+// ── Slides ──────────────────────────────────────────────────────
+
+type OnboardingSlide = {
+  Illo: React.ComponentType<IlloColors>;
+  colors: IlloColors;
+  title: string;
+  body: string;
+};
+
+function makeSlides(p: ThemePalette): OnboardingSlide[] {
+  return [
+    {
+      Illo: IlloSocial,
+      colors: {main: p.accent, depth: p.muted, highlight: p.warning},
+      title: 'Social & fun\nbuilt in',
+      body:
+        'Scroll reels, react with friends, and jump into trends — Bromo keeps the feed lively without losing the local vibe.',
+    },
+    {
+      Illo: IlloEarn,
+      colors: {main: p.success, depth: p.muted, highlight: p.warning},
+      title: 'Earning models\nthat add up',
+      body:
+        'Watch, engage, and stack points, coins, and offers. Redeem where it matters — at stores and creators near you.',
+    },
+    {
+      Illo: IlloShop,
+      colors: {main: p.accent, depth: p.ring, highlight: p.warning},
+      title: 'Stores & shopping\nin one loop',
+      body:
+        'Browse merchants, grab QR-first checkout, and turn promos into real-world savings — hyperlocal, end to end.',
+    },
+  ];
 }
 
 const ss = StyleSheet.create({
@@ -159,7 +142,7 @@ export function SplashScreen() {
   const navigation = useNavigation<BootNav>();
   const {ready, onboardingDone, firebaseUser, dbUser, needsEmailVerification, needsUsername} =
     useAuth();
-  const {contract, palette} = useTheme();
+  const {contract, palette, isDark} = useTheme();
 
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.82)).current;
@@ -189,9 +172,8 @@ export function SplashScreen() {
 
   return (
     <View style={[ss.fill, ss.center, {backgroundColor: palette.background}]}>
-      <StatusBar barStyle="light-content" backgroundColor={palette.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={palette.background} />
 
-      {/* Radial glow */}
       <View style={ss.fill} pointerEvents="none">
         <Svg style={ss.fill}>
           <Defs>
@@ -204,7 +186,6 @@ export function SplashScreen() {
         </Svg>
       </View>
 
-      {/* Logo */}
       <Animated.View style={{alignItems: 'center', opacity: logoOpacity, transform: [{scale: logoScale}]}}>
         <Text
           style={{
@@ -222,7 +203,6 @@ export function SplashScreen() {
         </Text>
       </Animated.View>
 
-      {/* Tagline */}
       <Animated.View style={{marginTop: 14, opacity: tagOpacity}}>
         <View style={[ss.row, {alignItems: 'center', gap: 10}]}>
           <View style={{width: 20, height: 1, backgroundColor: palette.borderMid}} />
@@ -239,7 +219,6 @@ export function SplashScreen() {
         </View>
       </Animated.View>
 
-      {/* Bottom loader */}
       <View style={{position: 'absolute', bottom: 60}}>
         <ActivityIndicator size="small" color={palette.borderHeavy} />
       </View>
@@ -252,15 +231,27 @@ export function SplashScreen() {
 export function OnboardingScreen() {
   const navigation = useNavigation<BootNav>();
   const {completeOnboarding} = useAuth();
-  const {palette} = useTheme();
+  const {palette, contract, isDark} = useTheme();
   const SLIDES = makeSlides(palette);
   const insets = useSafeAreaInsets();
+  const {height: windowH} = useWindowDimensions();
   const [idx, setIdx] = useState(0);
+
+  /** Cap art so title + full-width Continue + Skip stay on screen (reference layout). */
+  const illoOuter = Math.min(236, Math.max(168, windowH * 0.34));
+  const illoMid = illoOuter * 0.82;
 
   const illoOpacity = useRef(new Animated.Value(1)).current;
   const illoScale = useRef(new Animated.Value(1)).current;
   const contentOpacity = useRef(new Animated.Value(1)).current;
   const contentY = useRef(new Animated.Value(0)).current;
+
+  /** Same semantic text colors as the rest of the app (ThemedScreen / Home). */
+  const heroFg = palette.foreground;
+  const heroBody = palette.foregroundMuted;
+
+  const {borderRadiusScale} = contract.brandGuidelines;
+  const outlineBtnRadius = borderRadiusScale === 'bold' ? 999 : borderRadiusScale === 'soft' ? 20 : 28;
 
   const transition = (cb: () => void) => {
     Animated.parallel([
@@ -270,8 +261,8 @@ export function OnboardingScreen() {
       Animated.timing(contentY, {toValue: -18, duration: 160, useNativeDriver: true}),
     ]).start(() => {
       cb();
-      illoScale.setValue(1.1);
-      contentY.setValue(26);
+      illoScale.setValue(1.08);
+      contentY.setValue(22);
       Animated.parallel([
         Animated.timing(illoOpacity, {toValue: 1, duration: 320, useNativeDriver: true}),
         Animated.spring(illoScale, {toValue: 1, friction: 6, useNativeDriver: true}),
@@ -290,122 +281,168 @@ export function OnboardingScreen() {
     }
   };
 
-  const skip = async () => {
+  const goAuth = async () => {
     await completeOnboarding();
     navigation.replace('Auth');
   };
 
   const slide = SLIDES[idx];
   const {Illo} = slide;
+  const isLast = idx === SLIDES.length - 1;
 
   return (
-    <View style={[ss.fill, {backgroundColor: palette.background}]}>
-      <StatusBar barStyle="light-content" backgroundColor={palette.background} />
+    <View style={{flex: 1, backgroundColor: palette.background}}>
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={palette.accent}
+      />
 
-      {/* Ambient glow — re-renders when accent changes */}
       <View style={ss.fill} pointerEvents="none">
         <Svg style={ss.fill}>
           <Defs>
-            <RadialGradient id="ob_g" cx="50%" cy="38%" rx="52%" ry="42%">
-              <Stop offset="0%" stopColor={slide.accent} stopOpacity="0.1" />
-              <Stop offset="100%" stopColor={palette.background} stopOpacity="0" />
-            </RadialGradient>
+            <LinearGradient id="ob_hero" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor={palette.accent} stopOpacity="1" />
+              <Stop offset="45%" stopColor={palette.muted} stopOpacity="1" />
+              <Stop offset="100%" stopColor={palette.ring} stopOpacity="1" />
+            </LinearGradient>
           </Defs>
-          <Rect width="100%" height="100%" fill="url(#ob_g)" />
+          <Rect width="100%" height="100%" fill="url(#ob_hero)" />
         </Svg>
       </View>
 
-      {/* Illustration */}
-      <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: insets.top + 8}}>
-        <Animated.View style={{alignItems: 'center', opacity: illoOpacity, transform: [{scale: illoScale}]}}>
-          {/* Layered rings */}
-          <View style={{
-            width: 228,
-            height: 228,
-            borderRadius: 72,
-            backgroundColor: `${slide.accent}08`,
-            borderWidth: 1,
-            borderColor: `${slide.accent}18`,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <View style={{
-              width: 172,
-              height: 172,
-              borderRadius: 54,
-              backgroundColor: `${slide.accent}12`,
-              borderWidth: 1,
-              borderColor: `${slide.accent}28`,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Illo c={slide.accent} />
-            </View>
+      <ScrollView
+        style={{flex: 1}}
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingTop: insets.top + 14,
+          paddingBottom: Math.max(insets.bottom, 20) + 12,
+        }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}>
+        <View style={[ss.row, {alignItems: 'center', paddingHorizontal: 24, marginBottom: 20}]}>
+          <View style={[ss.row, {flex: 1, gap: 8}]}>
+            {SLIDES.map((_s, i) => (
+              <View
+                key={i}
+                style={{
+                  flex: 1,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: heroFg,
+                  opacity: i === idx ? 1 : i < idx ? 0.55 : 0.22,
+                }}
+              />
+            ))}
           </View>
-        </Animated.View>
-      </View>
-
-      {/* Content */}
-      <Animated.View style={{
-        paddingHorizontal: 28,
-        paddingBottom: Math.max(insets.bottom, 20) + 4,
-        opacity: contentOpacity,
-        transform: [{translateY: contentY}],
-      }}>
-        {/* Progress bars */}
-        <View style={[ss.row, {gap: 5, marginBottom: 26}]}>
-          {SLIDES.map((_s, i) => (
-            <View
-              key={i}
-              style={{
-                flex: 1,
-                height: 2.5,
-                borderRadius: 2,
-                backgroundColor:
-                  i < idx
-                    ? `${slide.accent}40`
-                    : i === idx
-                    ? slide.accent
-                    : palette.borderFaint,
-              }}
-            />
-          ))}
         </View>
 
-        <Text
-          style={{
-            color: palette.foreground,
-            fontSize: 30,
-            fontWeight: '800',
-            letterSpacing: -1,
-            lineHeight: 36,
-            marginBottom: 10,
-          }}>
-          {slide.title}
-        </Text>
-        <Text
-          style={{
-            color: palette.foregroundSubtle,
-            fontSize: 15,
-            lineHeight: 22,
-            marginBottom: 32,
-          }}>
-          {slide.body}
-        </Text>
+        <View style={{alignItems: 'center', paddingHorizontal: 24, paddingBottom: 8}}>
+          <Animated.View style={{alignItems: 'center', opacity: illoOpacity, transform: [{scale: illoScale}]}}>
+            <View
+              style={{
+                width: illoOuter,
+                height: illoOuter,
+                borderRadius: illoOuter / 2,
+                backgroundColor: palette.glassMid,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: palette.borderFaint,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+              <View
+                style={{
+                  width: illoMid,
+                  height: illoMid,
+                  borderRadius: illoMid / 2,
+                  backgroundColor: palette.glass,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: palette.borderMid,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                <Illo {...slide.colors} />
+              </View>
+            </View>
+          </Animated.View>
+        </View>
 
-        <GlowBtn
-          label={idx < SLIDES.length - 1 ? 'Continue' : 'Get started →'}
-          onPress={goNext}
-          accent={slide.accent}
-          accentFg={slide.accentFg}
-        />
-
-        <Pressable onPress={skip} style={{paddingVertical: 14, alignItems: 'center'}}>
-          <Text style={{color: palette.foregroundSubtle, fontWeight: '600', fontSize: 13}}>
-            Skip
+        <Animated.View
+          style={{
+            flexGrow: 1,
+            justifyContent: 'flex-end',
+            paddingHorizontal: 24,
+            opacity: contentOpacity,
+            transform: [{translateY: contentY}],
+          }}>
+          <Text
+            style={{
+              color: heroFg,
+              fontSize: 30,
+              fontWeight: '800',
+              letterSpacing: -0.6,
+              lineHeight: 36,
+              marginBottom: 14,
+              textAlign: 'center',
+            }}>
+            {slide.title}
           </Text>
-        </Pressable>
-      </Animated.View>
+          <Text
+            style={{
+              color: heroBody,
+              fontSize: 16,
+              lineHeight: 24,
+              marginBottom: 28,
+              textAlign: 'center',
+            }}>
+            {slide.body}
+          </Text>
+
+          <View style={[ss.row, {justifyContent: 'space-between', alignItems: 'center', gap: 12}]}>
+            <Pressable
+              onPress={goAuth}
+              style={({pressed}) => ({
+                flex: 1,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: palette.borderHeavy,
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                borderRadius: outlineBtnRadius,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: pressed ? palette.glassMid : 'transparent',
+              })}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={isLast ? 'Log in' : 'Skip onboarding'}>
+              <Text style={{color: palette.foreground, fontWeight: '600', fontSize: 16}}>
+                {isLast ? 'Log in' : 'Skip'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={goNext}
+              style={({pressed}) => ({
+                flex: 1,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: palette.primary,
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                borderRadius: outlineBtnRadius,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: pressed ? palette.glassMid : 'transparent',
+              })}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={isLast ? 'Sign up' : 'Continue onboarding'}>
+              <Text style={{color: palette.primary, fontWeight: '600', fontSize: 16}}>
+                {isLast ? 'Sign up' : 'Continue'}
+              </Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </ScrollView>
     </View>
   );
 }

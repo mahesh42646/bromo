@@ -67,6 +67,12 @@ export interface PostDoc extends Document {
   /** Soft-removed from feeds; files may remain on disk until hard delete. */
   isDeleted: boolean;
   deletedAt?: Date;
+  /**
+   * Client edit metadata (v2 JSON from `packEditMetaForUpload`): filters, adjust, trim, speed,
+   * text/sticker positions (%), products, audio, layoutRef. Persisted through async transcode `$set`;
+   * mobile replays overlays + trim/speed on top of decoded video (pixels are not server-baked yet).
+   */
+  clientEditMeta?: Record<string, unknown>;
   /** Story-only: background color + draggable overlays */
   storyMeta?: StoryMeta;
   /** HLS master playlist URL (served from /uploads/hls/<jobId>/master.m3u8). Preferred over mediaUrl for video. */
@@ -122,6 +128,7 @@ const postSchema = new Schema<PostDoc>(
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date },
+    clientEditMeta: { type: Schema.Types.Mixed, default: undefined },
     storyMeta: { type: Schema.Types.Mixed, default: undefined },
     hlsMasterUrl: { type: String },
     processingStatus: {

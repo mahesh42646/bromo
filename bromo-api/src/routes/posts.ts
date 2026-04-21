@@ -339,6 +339,22 @@ async function getPromotedStoryTrayGroups(
   return out;
 }
 
+/** Home strip: rank by raw engagement (likes, comments, views, shares) — simple, no decay. */
+function simpleReelEngagementScore(p: {
+  likesCount?: unknown;
+  commentsCount?: unknown;
+  viewsCount?: unknown;
+  sharesCount?: unknown;
+  trendingScore?: unknown;
+}): number {
+  return (
+    Number(p.likesCount) * 1 +
+    Number(p.commentsCount) * 2 +
+    Number(p.viewsCount) * 0.01 +
+    Number(p.sharesCount) * 3
+  );
+}
+
 /** Recompute trendingScore for a post (fire-and-forget — never throws). */
 function recomputeTrending(postId: string): void {
   Post.findById(postId)
@@ -980,8 +996,10 @@ postsRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const dbUser = req.dbUser;
-      const limit = Math.min(20, Math.max(1, parseInt(req.query.limit as string) || 6));
+      const limit = Math.min(20, Math.max(1, parseInt(req.query.limit as string) || 3));
       const since = new Date(Date.now() - TRENDING_WINDOW_MS);
+      /** Pull a pool by decaying score, then re-rank by simple engagement for the final strip. */
+      const candidateCap = Math.min(120, Math.max(limit * 30, 60));
 
       const follows = dbUser
         ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
@@ -989,15 +1007,22 @@ postsRouter.get(
       const followingIds = follows.map((f) => f.followingId);
       const followingSet = new Set(followingIds.map(String));
 
-      const posts = await Post.find({
+      const candidates = await Post.find({
         type: "reel" as const,
         ...VISIBLE_POST,
         createdAt: { $gte: since },
       })
         .sort({ trendingScore: -1, _id: -1 })
-        .limit(limit)
+        .limit(candidateCap)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
+
+      const ranked = [...candidates].sort((a, b) => {
+        const s = simpleReelEngagementScore(b) - simpleReelEngagementScore(a);
+        if (s !== 0) return s;
+        return Number(b.trendingScore) - Number(a.trendingScore);
+      });
+      const posts = ranked.slice(0, limit);
 
       const likeRows = dbUser
         ? await Like.find({
@@ -1057,13 +1082,11 @@ postsRouter.get(
       const follows = await Follow.find({
         followerId: dbUser._id,
         status: "accepted",
-      }).select("followingId");
+      }).select("followingId").lean();
       const followingIds = follows.map((f) => f.followingId);
       const authorIds = [dbUser._id, ...followingIds];
 
-      // Heal story docs missing expiresAt (older async uploads) so they match the tray query.
-      // Fire-and-forget — doesn't block tray response. Runs once per request but legacy docs get
-      // healed over time and subsequent writes become no-ops.
+      // Heal legacy story docs missing expiresAt — fire-and-forget.
       Post.collection
         .updateMany(
           {
@@ -1085,17 +1108,14 @@ postsRouter.get(
         expiresAt: { $gt: new Date() },
       };
 
-      const slim = await Post.find(match)
-        .select({ _id: 1, updatedAt: 1 })
-        .sort({ createdAt: -1 })
-        .lean();
-
-      const slimIds = slim.map((s) => s._id);
-      const [seenForEtag, promoEtagRows] = await Promise.all([
-        StorySeen.find({
-          viewerId: dbUser._id,
-          storyPostId: { $in: slimIds },
-        })
+      // Single query with full populate — derive ETag from these results (no second round-trip).
+      // Parallelize with StorySeen lookup and promoted story fetch.
+      const [stories, seenRows, promoEtagRows] = await Promise.all([
+        Post.find(match)
+          .sort({ createdAt: -1 })
+          .populate("authorId", AUTHOR_SELECT)
+          .lean(),
+        StorySeen.find({ viewerId: dbUser._id })
           .select({ storyPostId: 1 })
           .lean(),
         PromotionCampaign.find({
@@ -1107,9 +1127,13 @@ postsRouter.get(
           .limit(40)
           .lean(),
       ]);
-      const seenSortedIds = seenForEtag.map((r) => String(r.storyPostId)).sort().join("|");
-      const promoSig = promoEtagRows.map((r) => String(r._id)).sort().join(",");
 
+      const seenSet = new Set(seenRows.map((r) => String(r.storyPostId)));
+
+      // Compute ETag from the full result set.
+      const slim = stories.map((s) => ({ _id: s._id as mongoose.Types.ObjectId, updatedAt: s.updatedAt as Date }));
+      const seenSortedIds = [...seenSet].sort().join("|");
+      const promoSig = promoEtagRows.map((r) => String(r._id)).sort().join(",");
       const etag = storiesTrayEtag(slim, `${seenSortedIds}|${promoSig}`);
       const inm = normalizeIfNoneMatch(req.get("if-none-match"));
       if (inm && inm === etag) {
@@ -1118,19 +1142,8 @@ postsRouter.get(
         return res.status(304).end();
       }
 
-      const stories = await Post.find(match)
-        .sort({ createdAt: -1 })
-        .populate("authorId", AUTHOR_SELECT)
-        .lean();
-
-      const allIds = stories.map((s) => s._id);
-      const seenRows = await StorySeen.find({
-        viewerId: dbUser._id,
-        storyPostId: { $in: allIds },
-      })
-        .select({ storyPostId: 1 })
-        .lean();
-      const seenSet = new Set(seenRows.map((r) => String(r.storyPostId)));
+      // Promoted stories run in parallel with the grouping logic above.
+      const promotedStoryGroupsP = getPromotedStoryTrayGroups(dbUser._id, followingIds, seenSet);
 
       const grouped: Record<string, { author: unknown; stories: unknown[] }> = {};
       for (const s of stories) {
@@ -1164,7 +1177,7 @@ postsRouter.get(
         return maxB - maxA;
       });
 
-      const promotedStoryGroups = await getPromotedStoryTrayGroups(dbUser._id, followingIds, seenSet);
+      const promotedStoryGroups = await promotedStoryGroupsP;
       const mergedStories = [...promotedStoryGroups, ...groupsArr];
 
       res.setHeader("ETag", etag);
@@ -1623,6 +1636,7 @@ postsRouter.post(
         durationMs,
         storyMeta,
         feedCategory: feedCategoryRaw,
+        clientEditMeta: clientEditMetaRaw,
       } = req.body as {
         type: "post" | "reel" | "story";
         mediaUrl: string;
@@ -1639,7 +1653,21 @@ postsRouter.post(
         durationMs?: number;
         storyMeta?: { bgColor?: string; overlays?: unknown[] };
         feedCategory?: string;
+        clientEditMeta?: string | Record<string, unknown>;
       };
+
+      let clientEditMeta: Record<string, unknown> | undefined;
+      if (clientEditMetaRaw != null) {
+        try {
+          const parsed =
+            typeof clientEditMetaRaw === "string" ? JSON.parse(clientEditMetaRaw) : clientEditMetaRaw;
+          if (parsed && typeof parsed === "object") {
+            clientEditMeta = parsed as Record<string, unknown>;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
 
       // For color-background stories, mediaUrl may be the sentinel "color-bg"
       const isColorBgStory = type === "story" && storyMeta?.bgColor && (!mediaUrl || mediaUrl === "color-bg");
@@ -1689,6 +1717,7 @@ postsRouter.post(
         ...(safeProductIds.length ? { productIds: safeProductIds } : {}),
         ...(settings ? { settings } : {}),
         ...(typeof durationMs === "number" ? { durationMs } : {}),
+        ...(clientEditMeta ? { clientEditMeta } : {}),
         expiresAt,
         isDeleted: false,
         feedCategory,

@@ -71,6 +71,7 @@ import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
 import {prefetchHlsSegments} from '../lib/hlsPrefetch';
+import {peekReelFeedCache, saveReelFeedCache} from '../lib/reelFeedCache';
 import type {ThemePalette} from '../config/platform-theme';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
 
@@ -931,6 +932,7 @@ export function ReelsScreen() {
       ]);
       if (reset) {
         setReels(res.posts);
+        void saveReelFeedCache(res.posts);
         if (adsRes) setReelAds(adsRes);
         pageRef.current = 2;
         setPage(2);
@@ -958,14 +960,24 @@ export function ReelsScreen() {
     }
   }, []);
 
-  // Wait for Firebase auth to restore session before hitting the API.
-  // Without this guard, the first call fires before auth().currentUser is set
-  // → "Not authenticated" error → empty reel list forever (no retry).
+  // Paint cached reels instantly before auth round-trip.
+  useEffect(() => {
+    peekReelFeedCache()
+      .then(b => {
+        if (b && b.posts.length > 0) {
+          setReels(prev => (prev.length > 0 ? prev : b.posts));
+          setLoading(false);
+        }
+      })
+      .catch(() => null);
+  }, []);
+
   useEffect(() => {
     if (!authReady) return;
-    setLoading(true);
+    if (reels.length === 0) setLoading(true);
     loadReels(true).finally(() => setLoading(false));
-  }, [authReady, loadReels]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady]);
 
   // Real-time: new reels & like updates via socket
   useEffect(() => {

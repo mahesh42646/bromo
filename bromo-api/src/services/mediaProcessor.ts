@@ -75,16 +75,18 @@ export async function transcodeToHls(videoFilename: string): Promise<HlsResult> 
     transcodeVariant(videoPath, hlsFolder, "1080p", 5000, 1080),
   ]);
 
-  // Write master playlist
+  // List highest quality first — AVPlayer/ExoPlayer pick the first variant they can sustain,
+  // so starting with 1080p means WiFi users get full resolution on the very first segment.
   const masterContent = [
     "#EXTM3U",
     "#EXT-X-VERSION:3",
-    `#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360`,
-    `360p.m3u8`,
-    `#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720`,
-    `720p.m3u8`,
-    `#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080`,
+    "#EXT-X-INDEPENDENT-SEGMENTS",
+    `#EXT-X-STREAM-INF:BANDWIDTH=5000000,AVERAGE-BANDWIDTH=4500000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2"`,
     `1080p.m3u8`,
+    `#EXT-X-STREAM-INF:BANDWIDTH=2500000,AVERAGE-BANDWIDTH=2200000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2"`,
+    `720p.m3u8`,
+    `#EXT-X-STREAM-INF:BANDWIDTH=800000,AVERAGE-BANDWIDTH=700000,RESOLUTION=640x360,CODECS="avc1.42001e,mp4a.40.2"`,
+    `360p.m3u8`,
   ].join("\n");
 
   const masterPath = path.join(hlsFolder, "master.m3u8");
@@ -110,7 +112,7 @@ function transcodeVariant(
         `-b:v ${bitrate}k`,
         `-maxrate ${Math.round(bitrate * 1.5)}k`,
         `-bufsize ${bitrate * 2}k`,
-        `-hls_time 6`,
+        `-hls_time 2`,
         `-hls_list_size 0`,
         `-hls_segment_filename ${path.join(outputFolder, `${label}_%03d.ts`)}`,
         `-preset veryfast`,
