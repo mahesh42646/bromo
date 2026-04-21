@@ -563,7 +563,6 @@ const ReelItem = React.memo(function ReelItem({
           context={isHls ? 'reel-hls' : 'reel'}
           uri={playUri}
           fallbackUri={isHls ? resolveMediaUrl(item.mediaUrl) ?? undefined : undefined}
-          posterUri={item.thumbnailUrl ? thumbUri : undefined}
           maxBitRate={isHls ? maxBitRate : undefined}
           style={{width: '100%', height: '100%', position: 'absolute'}}
           resizeMode="cover"
@@ -572,7 +571,7 @@ const ReelItem = React.memo(function ReelItem({
           muted={reelsMuted}
           ignoreSilentSwitch="ignore"
           preventsDisplaySleepDuringVideoPlayback
-          posterOverlayUntilReady
+          posterOverlayUntilReady={false}
           onDecoderReady={hideCoverSpinner}
           onPlaybackError={hideCoverSpinner}
           onLoad={d => {

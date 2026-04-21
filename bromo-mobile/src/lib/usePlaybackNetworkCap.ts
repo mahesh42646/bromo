@@ -19,7 +19,8 @@ const DEFAULT_CAP: PlaybackNetworkCap = {
   maxBitRate: null,
 };
 
-const CELLULAR_CAP_BPS = 3_000_000; // 3 Mbps ≈ top of 720p rung
+const CELLULAR_CAP_BPS = 1_500_000; // 1.5 Mbps — cellular safe floor
+const WIFI_CAP_BPS = 2_500_000;    // 2.5 Mbps — 720p ceiling, prevents server uplink overload
 
 /** Lazy require — avoids crash when RNCNetInfo native module is not linked yet. */
 function tryGetNetInfo(): null | {
@@ -51,9 +52,9 @@ function deriveCapFromState(state: unknown): PlaybackNetworkCap {
   const capped = isCellular || (!isWifi && isExpensive);
 
   return {
-    maxHeight: capped ? 720 : 1080,
+    maxHeight: 720,
     isCellular: capped,
-    maxBitRate: capped ? CELLULAR_CAP_BPS : null,
+    maxBitRate: capped ? CELLULAR_CAP_BPS : WIFI_CAP_BPS,
   };
 }
 

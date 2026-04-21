@@ -35,22 +35,21 @@ type BufferConfig = {
   backBufferDurationMs?: number;
 };
 
-/** Fast-start presets — Instagram-like: start after ~1 s of buffered data. */
+/** Fast-start presets — start on first 1-2 segments (~200-400ms), let ABR handle quality. */
 const BUFFER_PRESETS: Record<string, BufferConfig> = {
   reel: {
-    minBufferMs: 2000,
-    maxBufferMs: 15000,
-    bufferForPlaybackMs: 800,       // start playing after 0.8 s buffered (vs default 2.5 s)
-    bufferForPlaybackAfterRebufferMs: 1500,
-    backBufferDurationMs: 0,        // don't keep back-buffer; save memory
+    minBufferMs: 1000,
+    maxBufferMs: 10000,
+    bufferForPlaybackMs: 200,       // start after ~1 segment buffered
+    bufferForPlaybackAfterRebufferMs: 600,
+    backBufferDurationMs: 0,
   },
   'reel-hls': {
-    minBufferMs: 4000,
-    maxBufferMs: 25000,
-    bufferForPlaybackMs: 1200,
-    bufferForPlaybackAfterRebufferMs: 2500,
-    /** Small back-buffer reduces black flashes when the player repositions / switches variants. */
-    backBufferDurationMs: 4000,
+    minBufferMs: 2000,
+    maxBufferMs: 15000,
+    bufferForPlaybackMs: 300,       // ~2 segments (2s segments × 300ms threshold)
+    bufferForPlaybackAfterRebufferMs: 800,
+    backBufferDurationMs: 2000,
   },
   feed: {
     minBufferMs: 3000,
@@ -85,7 +84,8 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
 /** Safety-net delay per context: time before we force-unblock the poster if native callbacks stall. */
 const SAFETY_MS: Record<string, number> = {
   story: 3500,
-  reel:  2000,
+  reel:  10000,  // extended — reel has no poster overlay, only fires onDecoderReady
+  'reel-hls': 10000,
   feed:  1500,
   'feed-hls': 2000,
 };

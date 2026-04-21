@@ -1,53 +1,28 @@
 /**
- * HLS segment prefetch — downloads upcoming segments to disk cache
- * so playback starts instantly without buffering.
+ * HLS segment prefetch — warms iOS NSURLCache / Android HTTP cache by issuing
+ * standard fetch() calls so AVPlayer / ExoPlayer get cache hits on playback.
  *
- * Strategy:
- *  - For the "next" reel: prefetch full variant playlist (all segments).
- *  - For lookahead items (next+2, +3): prefetch first 6 segments only.
- *  - Cellular: always prefer the lowest-bitrate variant to save data.
- *  - Disk cap: LRU eviction when cache exceeds MAX_CACHE_BYTES.
- *
- * Uses react-native-blob-util for chunked fetch + disk write.
+ * Previous approach (ReactNativeBlobUtil → custom disk dir) was ineffective:
+ * AVPlayer reads from NSURLCache, not arbitrary file paths.
  */
 
-import ReactNativeBlobUtil from 'react-native-blob-util';
+const LOOKAHEAD_SEGMENTS = 3; // 3 × 2s segments = 6 s lead — enough for instant start
 
-const SUBDIR = 'bromo-hls-cache';
-const MAX_CACHE_BYTES = 300 * 1024 * 1024; // 300 MB hard cap
-const LOOKAHEAD_SEGMENTS = 6;
+const prefetchInProgress = new Set<string>();
 
-function cacheRoot(): string {
-  return `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${SUBDIR}`;
-}
-
-async function ensureCacheDir(): Promise<void> {
-  const root = cacheRoot();
-  if (!(await ReactNativeBlobUtil.fs.exists(root))) {
-    await ReactNativeBlobUtil.fs.mkdir(root).catch(() => null);
-  }
-}
-
-/** Sanitize a string for use as a file/directory name. */
-function safeKey(s: string): string {
-  return s.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
-}
-
-/** Parse an m3u8 playlist text to extract absolute segment URLs. */
 function parseSegmentUrls(playlistText: string, baseUrl: string): string[] {
   const baseDir = baseUrl.substring(0, baseUrl.lastIndexOf('/') + 1);
   return playlistText
     .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0 && !l.startsWith('#'))
-    .map((l) => (l.startsWith('http') ? l : `${baseDir}${l}`));
+    .map(l => l.trim())
+    .filter(l => l.length > 0 && !l.startsWith('#'))
+    .map(l => (l.startsWith('http') ? l : `${baseDir}${l}`));
 }
 
-/** Parse master playlist to get all variant stream URLs. */
 function parseVariantUrls(masterText: string, masterUrl: string): Array<{bandwidth: number; url: string}> {
   const baseDir = masterUrl.substring(0, masterUrl.lastIndexOf('/') + 1);
   const variants: Array<{bandwidth: number; url: string}> = [];
-  const lines = masterText.split('\n').map((l) => l.trim());
+  const lines = masterText.split('\n').map(l => l.trim());
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -65,26 +40,26 @@ function parseVariantUrls(masterText: string, masterUrl: string): Array<{bandwid
   return variants;
 }
 
-/** Choose the best variant URL given isCellular flag. */
 function selectVariant(variants: Array<{bandwidth: number; url: string}>, isCellular: boolean): string | null {
-  if (variants.length === 0) return null;
+  if (!variants.length) return null;
   const sorted = [...variants].sort((a, b) => a.bandwidth - b.bandwidth);
-  if (isCellular) {
-    // Pick lowest bitrate on cellular
-    return sorted[0].url;
-  }
-  // WiFi: pick highest bitrate
-  return sorted[sorted.length - 1].url;
+  if (isCellular) return sorted[0].url;
+  // WiFi: pick 720p tier (middle) — matches our maxBitRate cap of 2.5Mbps
+  const mid = Math.floor(sorted.length / 2);
+  return sorted[mid]?.url ?? sorted[0].url;
 }
 
-const prefetchInProgress = new Set<string>();
+async function warmUrl(url: string): Promise<void> {
+  try {
+    // fetch() populates NSURLCache (iOS) and the Hermes HTTP cache.
+    // AVPlayer will get a cache hit when it requests the same URL.
+    await fetch(url, {headers: {'User-Agent': 'BromoMobile/1 (hls-prefetch)'}});
+  } catch { /* non-fatal */ }
+}
 
 /**
  * Prefetch HLS segments for a given master playlist URL.
- * @param masterUrl   - absolute URL to master.m3u8
- * @param postId      - unique ID for cache namespace
- * @param isCellular  - if true, pick lowest quality variant
- * @param segmentLimit - max segments to download (null = all)
+ * Fetches warm the iOS NSURLCache so AVPlayer starts without waiting on the network.
  */
 export function prefetchHlsSegments(
   masterUrl: string,
@@ -93,14 +68,32 @@ export function prefetchHlsSegments(
   segmentLimit: number | null = LOOKAHEAD_SEGMENTS,
 ): void {
   if (!masterUrl?.trim()) return;
-  const key = `${safeKey(postId)}_${isCellular ? 'cell' : 'wifi'}`;
+  const key = `${postId}_${isCellular ? 'cell' : 'wifi'}`;
   if (prefetchInProgress.has(key)) return;
   prefetchInProgress.add(key);
 
   void (async () => {
     try {
-      await ensureCacheDir();
-      await runPrefetch(masterUrl, postId, isCellular, segmentLimit);
+      const masterResp = await fetch(masterUrl, {headers: {'User-Agent': 'BromoMobile/1 (hls-prefetch)'}});
+      const masterText = await masterResp.text();
+      if (!masterText.includes('#EXTM3U')) return;
+
+      let segmentPlaylistUrl: string;
+      if (masterText.includes('#EXT-X-STREAM-INF')) {
+        const variants = parseVariantUrls(masterText, masterUrl);
+        const chosen = selectVariant(variants, isCellular);
+        if (!chosen) return;
+        segmentPlaylistUrl = chosen;
+      } else {
+        segmentPlaylistUrl = masterUrl;
+      }
+
+      const playlistResp = await fetch(segmentPlaylistUrl, {headers: {'User-Agent': 'BromoMobile/1 (hls-prefetch)'}});
+      const playlistText = await playlistResp.text();
+      const segmentUrls = parseSegmentUrls(playlistText, segmentPlaylistUrl);
+      const toFetch = segmentLimit !== null ? segmentUrls.slice(0, segmentLimit) : segmentUrls;
+
+      await Promise.all(toFetch.map(warmUrl));
     } catch (e) {
       if (__DEV__) console.warn('[hlsPrefetch] error:', postId, e);
     } finally {
@@ -109,111 +102,12 @@ export function prefetchHlsSegments(
   })();
 }
 
-async function runPrefetch(
-  masterUrl: string,
-  postId: string,
-  isCellular: boolean,
-  segmentLimit: number | null,
-): Promise<void> {
-  // Fetch master playlist
-  const masterResp = await ReactNativeBlobUtil.fetch('GET', masterUrl, {
-    'User-Agent': 'BromoMobile/1 (hls-prefetch)',
-  });
-  const masterText = await Promise.resolve(masterResp.text());
-  if (!masterText || !masterText.includes('#EXTM3U')) return;
-
-  // If master has variants, pick appropriate one
-  let segmentPlaylistUrl: string;
-  if (masterText.includes('#EXT-X-STREAM-INF')) {
-    const variants = parseVariantUrls(masterText, masterUrl);
-    const chosen = selectVariant(variants, isCellular);
-    if (!chosen) return;
-    segmentPlaylistUrl = chosen;
-  } else {
-    // masterUrl IS the segment playlist
-    segmentPlaylistUrl = masterUrl;
-  }
-
-  // Fetch segment playlist
-  const playlistResp = await ReactNativeBlobUtil.fetch('GET', segmentPlaylistUrl, {
-    'User-Agent': 'BromoMobile/1 (hls-prefetch)',
-  });
-  const playlistText = await Promise.resolve(playlistResp.text());
-  const segmentUrls = parseSegmentUrls(playlistText, segmentPlaylistUrl);
-
-  const toFetch = segmentLimit !== null ? segmentUrls.slice(0, segmentLimit) : segmentUrls;
-
-  const dir = `${cacheRoot()}/${safeKey(postId)}`;
-  if (!(await ReactNativeBlobUtil.fs.exists(dir))) {
-    await ReactNativeBlobUtil.fs.mkdir(dir).catch(() => null);
-  }
-
-  const CONCURRENCY = 4;
-  let cursor = 0;
-  const workers = Array.from({length: Math.min(CONCURRENCY, toFetch.length)}, async () => {
-    while (cursor < toFetch.length) {
-      const idx = cursor++;
-      const segUrl = toFetch[idx];
-      const segName = segUrl.split('/').pop()?.split('?')[0] ?? 'seg';
-      const segPath = `${dir}/${segName}`;
-      if (await ReactNativeBlobUtil.fs.exists(segPath)) continue;
-      try {
-        await ReactNativeBlobUtil.config({path: segPath, timeout: 10000})
-          .fetch('GET', segUrl, {'User-Agent': 'BromoMobile/1 (hls-prefetch)'})
-          .catch(() => null);
-      } catch {
-        // Non-fatal: skip this segment
-      }
-    }
-  });
-  await Promise.all(workers);
-
-  // LRU eviction if over limit
-  await evictIfOverLimit();
-}
-
-async function evictIfOverLimit(): Promise<void> {
-  try {
-    const root = cacheRoot();
-    if (!(await ReactNativeBlobUtil.fs.exists(root))) return;
-
-    const entries = await ReactNativeBlobUtil.fs.ls(root);
-    let totalBytes = 0;
-    type CacheEntry = {name: string; size: number; mtime: number};
-    const fileStats: CacheEntry[] = [];
-
-    for (const name of entries) {
-      const fullPath = `${root}/${name}`;
-      try {
-        const stat = await ReactNativeBlobUtil.fs.stat(fullPath);
-        totalBytes += stat.size;
-        fileStats.push({name, size: stat.size, mtime: stat.lastModified});
-      } catch { /* ignore */ }
-    }
-
-    if (totalBytes <= MAX_CACHE_BYTES) return;
-
-    // Evict oldest directories first
-    fileStats.sort((a, b) => a.mtime - b.mtime);
-    for (const entry of fileStats) {
-      if (totalBytes <= MAX_CACHE_BYTES * 0.7) break;
-      await ReactNativeBlobUtil.fs.unlink(`${root}/${entry.name}`).catch(() => null);
-      totalBytes -= entry.size;
-    }
-  } catch { /* ignore */ }
-}
-
 /** Cancel all in-progress prefetch operations (call on app background). */
 export function cancelAllPrefetch(): void {
   prefetchInProgress.clear();
 }
 
-/** Clear entire HLS segment cache. */
+/** No-op: cache managed by OS (NSURLCache). Kept for API compatibility. */
 export async function clearHlsCache(): Promise<void> {
   prefetchInProgress.clear();
-  const root = cacheRoot();
-  try {
-    if (!(await ReactNativeBlobUtil.fs.exists(root))) return;
-    await ReactNativeBlobUtil.fs.unlink(root).catch(() => null);
-  } catch { /* ignore */ }
 }
