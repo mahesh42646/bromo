@@ -1426,7 +1426,7 @@ export function UsernameSetupScreen() {
           <Text style={{
             color: available === true ? palette.success : palette.placeholder,
             fontSize: 12,
-            marginTop: -8,
+            marginTop: 8,
             marginBottom: 12,
             fontWeight: '500',
           }}>
@@ -1464,20 +1464,53 @@ export function UsernameSetupScreen() {
             </View>
           </View>
         )}
-
+   <View
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.accent,
+            backgroundColor: palette.accent,
+            borderRadius: 100,
+            paddingHorizontal: 24,
+            marginTop: 20
+          }}
+        >
         <GradCTA
-          label="Continue"
+          label="Continues"
           onPress={handleSave}
           loading={saving}
           disabled={!canSubmit}
-          style={{marginTop: 8, marginBottom: 12}}
+         
         />
+        </View>
+        <View
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            paddingTop: 12,
+            paddingBottom: 12,
+            borderWidth: StyleSheet.hairlineWidth,
+            // borderColor: palette.accent,
+            // backgroundColor: palette.accent,
+            borderRadius: 100,
+            paddingHorizontal: 12,
+            // width: '50%',
+            marginTop: 20
+          }}
+        >
+
         <OutlineCTA
           label={loggingOut ? 'Signing out...' : 'Log in to existing account'}
           onPress={handleLoginExisting}
           loading={loggingOut}
           disabled={saving || loggingOut}
         />
+        </View>
         <View style={{height: 24}} />
       </View>
     </Chrome>

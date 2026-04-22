@@ -52,8 +52,8 @@ async function resolveToken(token: string): Promise<TokenCacheEntry> {
     dbUser: null,
   };
 
-  // Fetch DB user and cache alongside auth claims in one round-trip.
-  const dbUser = await User.findOne({ firebaseUid: uid }).lean() as UserDoc | null;
+  // Full Mongoose doc (not .lean()) so handlers can call .save(); same object is cached per token until TTL.
+  const dbUser = await User.findOne({ firebaseUid: uid });
   entry.dbUser = dbUser;
   tokenCache.set(key, entry);
   return entry;
