@@ -19,8 +19,8 @@ const DEFAULT_CAP: PlaybackNetworkCap = {
   maxBitRate: null,
 };
 
-const CELLULAR_CAP_BPS = 1_500_000; // 1.5 Mbps — cellular safe floor
-const WIFI_CAP_BPS = 2_500_000;    // 2.5 Mbps — 720p ceiling, prevents server uplink overload
+const CELLULAR_CAP_BPS = 800_000;  // 800kbps — cellular safe, matches 360p segment rate
+const WIFI_CAP_BPS = 1_500_000;   // 1.5 Mbps — WiFi, between 360p and 720p, server can sustain
 
 /** Lazy require — avoids crash when RNCNetInfo native module is not linked yet. */
 function tryGetNetInfo(): null | {

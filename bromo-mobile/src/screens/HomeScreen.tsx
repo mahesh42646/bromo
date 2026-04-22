@@ -842,6 +842,11 @@ export function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       setHomeFeedMuted(true);
+      return () => {
+        // Pause all feed videos when leaving home screen (e.g. navigating to reels)
+        setVisiblePostId(null);
+        setVisibleFeedPostId(null);
+      };
     }, [setHomeFeedMuted]),
   );
 

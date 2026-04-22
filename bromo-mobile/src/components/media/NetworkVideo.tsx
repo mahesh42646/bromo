@@ -51,14 +51,6 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     bufferForPlaybackAfterRebufferMs: 800,
     backBufferDurationMs: 2000,
   },
-  /** Adjacent (pre-buffer) reels — mounted & paused, buffer as much as possible while user watches current reel. */
-  'reel-hls-prebuffer': {
-    minBufferMs: 10000,
-    maxBufferMs: 30000,
-    bufferForPlaybackMs: 300,
-    bufferForPlaybackAfterRebufferMs: 800,
-    backBufferDurationMs: 0,
-  },
   feed: {
     minBufferMs: 3000,
     maxBufferMs: 12000,
@@ -89,11 +81,11 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
   },
 };
 
-/** Safety-net delay per context: time before we force-unblock the poster if native callbacks stall. */
+/** Safety-net delay per context: time before we force-unblock the spinner if native callbacks stall. */
 const SAFETY_MS: Record<string, number> = {
   story: 3500,
-  reel:  10000,  // extended — reel has no poster overlay, only fires onDecoderReady
-  'reel-hls': 10000,
+  reel:  3000,
+  'reel-hls': 4000,
   feed:  1500,
   'feed-hls': 2000,
 };

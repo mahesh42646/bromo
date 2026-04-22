@@ -476,7 +476,6 @@ const ReelItem = React.memo(function ReelItem({
   const suppressMuteTap = useRef(false);
   const [following, setFollowing] = useState(item.isFollowing);
   const [coverSpinner, setCoverSpinner] = useState(true);
-  const [spinnerVisible, setSpinnerVisible] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const viewRecorded = useRef(false);
@@ -492,7 +491,6 @@ const ReelItem = React.memo(function ReelItem({
 
   useEffect(() => {
     setCoverSpinner(true);
-    setSpinnerVisible(false);
     setProgress(0);
     durationRef.current = 0;
     clearedSpinnerOnProgress.current = false;
@@ -503,17 +501,14 @@ const ReelItem = React.memo(function ReelItem({
     if (!isActive) setHoldPaused(false);
   }, [isActive]);
 
-  // Grace-period spinner: show only after 200ms of active+not-ready.
-  // Pre-buffered reels: onReadyForDisplay fires in <50ms → spinner never appears.
-  // Cold reels: spinner appears after 200ms, giving network a fair chance first.
-  useEffect(() => {
-    setSpinnerVisible(false);
-    if (!isActive || !coverSpinner) return;
-    const t = setTimeout(() => setSpinnerVisible(true), 200);
-    return () => clearTimeout(t);
-  }, [isActive, coverSpinner]);
-
-  const paused = !isActive || holdPaused;
+  // Pre-play: the immediately adjacent reel plays silently so its frame pipeline is
+  // already running when the user swipes. onReadyForDisplay fires while "playing"
+  // (even muted) → coverSpinner=false before swipe → zero-flash transition.
+  // Items 2+ positions away stay paused to save bandwidth.
+  const isPrePlaying = Boolean(preBuffer) && !isActive;
+  const paused = (!isActive && !isPrePlaying) || holdPaused;
+  // Mute when not active (pre-playing) or when user muted
+  const effectiveMuted = reelsMuted || !isActive;
 
   // Record view + accumulate watch time
   useEffect(() => {
@@ -563,13 +558,10 @@ const ReelItem = React.memo(function ReelItem({
   const playUri = resolveMediaUrl(rawVideoUrl);
   const thumbUri = resolveMediaUrl(item.thumbnailUrl ?? '') || playUri;
   const isHls = rawVideoUrl.endsWith('.m3u8');
-  // Adjacent reels use a more aggressive buffer config to pre-load while paused
-  const videoContext = isHls ? (preBuffer ? 'reel-hls-prebuffer' : 'reel-hls') : 'reel';
+  const videoContext = isHls ? 'reel-hls' : 'reel';
 
-  /** Stable so `NetworkVideo` safety timer / native callbacks are not reset every progress tick. */
   const hideCoverSpinner = useCallback(() => {
     setCoverSpinner(false);
-    setSpinnerVisible(false);
   }, []);
 
   return (
@@ -586,7 +578,7 @@ const ReelItem = React.memo(function ReelItem({
           resizeMode="cover"
           repeat={!autoScroll}
           paused={paused}
-          muted={reelsMuted}
+          muted={effectiveMuted}
           ignoreSilentSwitch="ignore"
           preventsDisplaySleepDuringVideoPlayback
           posterOverlayUntilReady={false}
@@ -634,8 +626,8 @@ const ReelItem = React.memo(function ReelItem({
         </>
       )}
 
-      {/* Spinner: only shown after 200ms grace period — pre-buffered reels never reach this */}
-      {isActive && spinnerVisible && coverSpinner && item.mediaType === 'video' && (
+      {/* Spinner: pre-playing reels clear coverSpinner before becoming active, so no flash */}
+      {isActive && coverSpinner && item.mediaType === 'video' && (
         <View style={{...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center'}} pointerEvents="none">
           <ActivityIndicator color="#fff" size="large" />
         </View>
@@ -1142,6 +1134,16 @@ export function ReelsScreen() {
     });
   }, [initialPostId, loading, reelHeight, displayReels]);
 
+  if (loading && reels.length === 0) {
+    return (
+      <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
+        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
+          <ActivityIndicator color={palette.primary} size="large" />
+        </View>
+      </ThemedSafeScreen>
+    );
+  }
+
   return (
     <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
@@ -1194,12 +1196,6 @@ export function ReelsScreen() {
         </Pressable>
       </View>
 
-      {loading && displayReels.length === 0 && (
-        <View style={{...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 50}} pointerEvents="none">
-          <ActivityIndicator color={palette.primary} size="large" />
-        </View>
-      )}
-
       <FlatList
         ref={listRef}
         style={{flex: 1}}
@@ -1226,7 +1222,7 @@ export function ReelsScreen() {
         }
         initialNumToRender={2}
         maxToRenderPerBatch={2}
-        windowSize={7}
+        windowSize={5}
         removeClippedSubviews={false}
         viewabilityConfig={VIEWABILITY_CONFIG}
         onViewableItemsChanged={onViewableItemsChanged}
@@ -1269,7 +1265,7 @@ export function ReelsScreen() {
             <ReelItem
               item={item.data}
               isActive={screenFocused && index === activeIndex}
-              preBuffer={index !== activeIndex && Math.abs(index - activeIndex) <= 2}
+              preBuffer={Math.abs(index - activeIndex) === 1}
               reelHeight={reelHeight}
               reelWidth={reelWidth}
               navigation={navigation}
