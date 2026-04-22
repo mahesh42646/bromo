@@ -1,5 +1,6 @@
 {
   "apiBaseUrl": "https://bromo.darkunde.in",
   "apiInternalUrl": "https://bromo.darkunde.in",
+  "cdnBaseUrl": "",
   "metroHost": "Maheshs-MacBook-Air.local"
 }

@@ -51,10 +51,10 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     backBufferDurationMs: 0,
   },
   'reel-hls': {
-    minBufferMs: 1500,
-    maxBufferMs: 6000,
-    bufferForPlaybackMs: 400,
-    bufferForPlaybackAfterRebufferMs: 800,
+    minBufferMs: 2000,
+    maxBufferMs: 14000,
+    bufferForPlaybackMs: 600,
+    bufferForPlaybackAfterRebufferMs: 1600,
     backBufferDurationMs: 0,
   },
   feed: {
@@ -65,10 +65,10 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
     backBufferDurationMs: 0,
   },
   'feed-hls': {
-    minBufferMs: 2000,
-    maxBufferMs: 6000,
-    bufferForPlaybackMs: 800,
-    bufferForPlaybackAfterRebufferMs: 1500,
+    minBufferMs: 2200,
+    maxBufferMs: 12000,
+    bufferForPlaybackMs: 900,
+    bufferForPlaybackAfterRebufferMs: 1800,
     backBufferDurationMs: 0,
   },
   story: {

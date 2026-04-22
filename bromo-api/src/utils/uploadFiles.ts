@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getPublicApiOrigin } from "./publicMediaUrl.js";
+import { getCdnBaseUrl } from "./publicMediaUrl.js";
 
 const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
 
@@ -31,7 +31,7 @@ export function relativeUploadPathFromAbs(absFilePath: string): string {
 }
 
 export function publicUrlForUploadRelative(relativePosix: string): string {
-  const base = getPublicApiOrigin();
+  const base = getCdnBaseUrl();
   const clean = relativePosix.replace(/^\/+/, "");
   return `${base}/uploads/${clean}`;
 }

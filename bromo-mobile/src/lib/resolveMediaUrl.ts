@@ -1,13 +1,12 @@
-import {apiBase} from '../api/authApi';
+import {settings} from '../config/settings';
 
 /**
- * Point `/uploads/*` at the same host as `apiBase()` so stored URLs from
- * localhost or old deployments still play on device.
+ * Point `/uploads/*` at CDN when configured, else API host — keeps media off the app server.
  */
 export function resolveMediaUrl(url: string | undefined | null): string {
   if (!url?.trim()) return '';
   const u = url.trim();
-  const base = apiBase().replace(/\/+$/, '');
+  const base = (settings.cdnBaseUrl || settings.apiBaseUrl).replace(/\/+$/, '');
   try {
     const parsed = new URL(u);
     if (parsed.pathname.startsWith('/uploads/')) {

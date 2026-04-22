@@ -20,6 +20,7 @@ import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 import { postForSocketBroadcast } from "../utils/postSocketPayload.js";
 import { publicUrlForUploadRelative } from "../utils/uploadFiles.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
+import { mirrorUploadRelative, mirrorUploadTreeRelative } from "../services/s3Mirror.js";
 
 const UPLOAD_DIR = uploadsRoot();
 
@@ -179,6 +180,11 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
 
   await notifyUser(job.userId.toString(), job.postDraftId?.toString(), "ready");
   console.info(`[mediaWorker] job ${jobId} done → HLS ${masterUrl}, MP4 ${mezzanineUrl}`);
+
+  const hlsTree = path.posix.dirname(result.masterRelPath);
+  void mirrorUploadTreeRelative(hlsTree)
+    .then(() => mirrorUploadRelative(mezzanineRel))
+    .catch((e) => console.warn("[s3Mirror] video mirror:", e));
 }
 
 async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
@@ -216,6 +222,8 @@ async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
 
   await notifyUser(job.userId.toString(), job.postDraftId?.toString(), "ready");
   console.info(`[mediaWorker] image job ${jobId} done → ${imageUrl}`);
+
+  void mirrorUploadRelative(newRel).catch((e) => console.warn("[s3Mirror] image mirror:", e));
 }
 
 async function notifyUser(

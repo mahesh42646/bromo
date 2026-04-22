@@ -17,7 +17,9 @@ import {
   publicUrlForUploadRelative,
   relativeUploadPathFromAbs,
   normalizeUploadCategory,
+  uploadRelativePathFromUrl,
 } from "../utils/uploadFiles.js";
+import { mirrorUploadRelative } from "../services/s3Mirror.js";
 import {
   validateUploadForCategory,
   isVideoLike,
@@ -125,6 +127,12 @@ mediaRouter.post(
       } catch (err) {
         console.error("[media] thumbnail generation failed:", err);
       }
+    }
+
+    void mirrorUploadRelative(rel).catch(() => null);
+    if (thumbnailUrl) {
+      const tr = uploadRelativePathFromUrl(thumbnailUrl);
+      if (tr) void mirrorUploadRelative(tr).catch(() => null);
     }
 
     return res.json({ url, thumbnailUrl, filename: rel, mediaType, converted });
@@ -343,6 +351,8 @@ mediaRouter.post(
         req.dbUser.profilePicture = url;
         await req.dbUser.save();
       }
+
+      void mirrorUploadRelative(rel).catch(() => null);
 
       return res.json({ url });
     } catch (err) {

@@ -60,6 +60,10 @@ export type ThemePalette = {
 };
 
 export type RuntimeThemeContract = {
+  /** From `GET /settings/public` — CloudFront (or API origin if no CDN env). */
+  media?: {
+    cdnBaseUrl?: string;
+  };
   branding: {
     platformName: string;
     adminTitle: string;

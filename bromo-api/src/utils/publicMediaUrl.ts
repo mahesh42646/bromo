@@ -20,16 +20,17 @@ export function getCdnBaseUrl(): string {
  * Normalize media URLs stored with wrong host (localhost, internal IP, old domain)
  * so iOS/Android can fetch over HTTPS from the same host as the API.
  */
+/** Force `/uploads/*` onto CDN (or API origin if `CDN_BASE_URL` unset). */
 export function rewritePublicMediaUrl(url: string): string {
-  const base = getPublicApiOrigin();
+  const cdn = getCdnBaseUrl();
   try {
     const u = new URL(url);
     if (u.pathname.startsWith("/uploads/")) {
-      return `${base}${u.pathname}${u.search}`;
+      return `${cdn}${u.pathname}${u.search}`;
     }
   } catch {
     if (url.startsWith("/uploads/")) {
-      return `${base}${url}`;
+      return `${cdn}${url}`;
     }
   }
   return url;

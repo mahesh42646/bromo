@@ -16,7 +16,7 @@ import {
   type RuntimeThemeContract,
   type ThemePalette,
 } from '../config/platform-theme';
-import {settings} from '../config/settings';
+import {setRuntimeCdnBaseUrl, settings} from '../config/settings';
 import {
   hasThemeContractFetchedThisSession,
   markThemeContractFetchedThisSession,
@@ -41,6 +41,14 @@ async function saveContractCache(contract: RuntimeThemeContract): Promise<void> 
   try {
     await AsyncStorage.setItem(THEME_CACHE_KEY, JSON.stringify({contract, savedAt: Date.now()}));
   } catch {}
+}
+
+/** Only when the server/cache included `media.cdnBaseUrl` — avoids wiping CDN on failed theme fetch. */
+function applyMediaCdnFromContract(c: RuntimeThemeContract): void {
+  const v = c.media?.cdnBaseUrl;
+  if (v !== undefined) {
+    setRuntimeCdnBaseUrl(v);
+  }
 }
 
 type ThemeContextValue = {
@@ -74,7 +82,10 @@ export function ThemeProvider({children}: {children: React.ReactNode}) {
   // Load cache instantly on mount, then fetch in background
   useEffect(() => {
     loadCachedContract().then(cached => {
-      if (cached) setContract(cached);
+      if (cached) {
+        setContract(cached);
+        applyMediaCdnFromContract(cached);
+      }
     });
   }, []);
 
@@ -91,6 +102,7 @@ export function ThemeProvider({children}: {children: React.ReactNode}) {
     try {
       const c = await fetchThemeContractFromUrls(candidates);
       setContract(c);
+      applyMediaCdnFromContract(c);
       saveContractCache(c);
       markThemeContractFetchedThisSession();
     } catch {

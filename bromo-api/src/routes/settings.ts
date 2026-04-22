@@ -4,6 +4,7 @@ import path from "node:path";
 import multer from "multer";
 import { PlatformSettings } from "../models/PlatformSettings.js";
 import { requireAdminToken } from "../middleware/authBearer.js";
+import { getCdnBaseUrl } from "../utils/publicMediaUrl.js";
 
 // ── Palette builder (mirrors platform-theme.ts) ───────────────────
 
@@ -112,6 +113,9 @@ router.get("/public", async (_req, res) => {
 
   return res.json({
     branding: doc.branding,
+    media: {
+      cdnBaseUrl: getCdnBaseUrl(),
+    },
     theme: {
       defaultTheme:    doc.theme.defaultTheme,
       fontFamily:      doc.theme.fontFamily,
