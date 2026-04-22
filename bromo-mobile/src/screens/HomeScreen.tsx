@@ -992,6 +992,17 @@ export function HomeScreen() {
       .catch(() => null);
   }, []);
 
+  // Proactively prefetch thumbnails for posts beyond the initial viewport so they
+  // appear instantly as the user scrolls. Image.prefetch warms NSURLCache (iOS) and
+  // the bitmap cache (Android) without blocking the render thread.
+  useEffect(() => {
+    if (posts.length === 0) return;
+    posts.slice(3, 20).forEach(p => {
+      const uri = resolveMediaUrl(p.thumbnailUrl ?? p.mediaUrl);
+      if (uri) Image.prefetch(uri).catch(() => null);
+    });
+  }, [posts]);
+
   // Single initial-load path: fire once auth is ready OR whenever the category
   // tab changes. No duplicate fetches, no full-screen gate after cache paint.
   useEffect(() => {

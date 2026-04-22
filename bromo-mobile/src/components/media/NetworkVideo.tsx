@@ -47,9 +47,17 @@ const BUFFER_PRESETS: Record<string, BufferConfig> = {
   'reel-hls': {
     minBufferMs: 2000,
     maxBufferMs: 15000,
-    bufferForPlaybackMs: 300,       // ~2 segments (2s segments × 300ms threshold)
+    bufferForPlaybackMs: 300,
     bufferForPlaybackAfterRebufferMs: 800,
     backBufferDurationMs: 2000,
+  },
+  /** Adjacent (pre-buffer) reels — mounted & paused, buffer as much as possible while user watches current reel. */
+  'reel-hls-prebuffer': {
+    minBufferMs: 10000,
+    maxBufferMs: 30000,
+    bufferForPlaybackMs: 300,
+    bufferForPlaybackAfterRebufferMs: 800,
+    backBufferDurationMs: 0,
   },
   feed: {
     minBufferMs: 3000,

@@ -40,6 +40,20 @@ import { LRUCache } from "lru-cache";
 
 export const postsRouter = Router();
 
+type ReelPageResult = {posts: unknown[]; hasMore: boolean; nextCursor: string | null};
+/** Per-user page-1 reel cache. Eliminates 3 DB round-trips on every reel screen open. */
+const reelPageCache = new LRUCache<string, ReelPageResult>({
+  max: 2000,
+  ttl: 30_000, // 30-second freshness window
+});
+
+type FeedPageResult = {posts: unknown[]; hasMore: boolean};
+/** Per-user per-category feed cache (page 1 only). */
+const feedPageCache = new LRUCache<string, FeedPageResult>({
+  max: 2000,
+  ttl: 30_000,
+});
+
 const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
 const DELIVERY_FREQ_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -597,8 +611,6 @@ postsRouter.get(
           normalizePost(p, likedSet, followingSet, String(dbUser?._id)),
         );
 
-      res.setHeader("Cache-Control", "private, no-store");
-
       if (tab === "for-you") {
         const fyPhaseRaw = String(req.query.fyPhase ?? "friends").toLowerCase();
         const fyPhase = fyPhaseRaw === "general" ? "general" : "friends";
@@ -626,6 +638,18 @@ postsRouter.get(
         const wantFriends = fyPhase === "friends" && hasFollows && dbUser;
 
         if (wantFriends) {
+          // Serve from cache for the first page (no cursor) to skip DB round-trips on re-open
+          const feedCacheKey = `${String(dbUser._id)}_friends`;
+          if (!cf) {
+            const cachedFeed = feedPageCache.get(feedCacheKey);
+            if (cachedFeed) {
+              res.setHeader("Cache-Control", "private, max-age=30");
+              return res.json({...cachedFeed, tab: "for-you", forYouPhase: "friends",
+                hasMoreFriends: cachedFeed.hasMore, hasMoreGeneral: false,
+                nextCursorFriends: null, nextCursorGeneral: null, page: 1});
+            }
+          }
+
           const baseQuery = {
             authorId: { $in: [...followingIds, dbUser._id] },
             ...FEED_TYPES,
@@ -646,7 +670,6 @@ postsRouter.get(
           const nextCursorFriends = hasMoreFriends ? String(posts[posts.length - 1]._id) : null;
 
           let friendPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
-          // Inject promoted feed slots for non-followers of the advertiser (friends feed otherwise never shows promos).
           if (!cf && dbUser) {
             const excludeAuthors = [...followingIds, dbUser._id] as mongoose.Types.ObjectId[];
             const promotedRaw = await getPromotedPostDocs(dbUser._id, excludeAuthors, ["feed", "explore"], 2);
@@ -659,12 +682,16 @@ postsRouter.get(
             ) as typeof friendPosts;
           }
 
+          if (!cf) {
+            feedPageCache.set(feedCacheKey, {posts: friendPosts, hasMore: hasMoreFriends});
+          }
+
+          res.setHeader("Cache-Control", "private, max-age=30");
           return res.json({
             posts: friendPosts,
             tab: "for-you",
             forYouPhase: "friends",
             hasMoreFriends,
-            // Do not imply a blended "general" discover tail on home — client should not chain-fetch stranger posts.
             hasMoreGeneral: false,
             nextCursorFriends,
             nextCursorGeneral: null,
@@ -778,6 +805,16 @@ postsRouter.get(
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = cursor ? 0 : (page - 1) * PAGE_SIZE;
 
+      // Page-1, no cursor: try cache before any DB work
+      const cacheKey = dbUser ? `${String(dbUser._id)}_p1` : null;
+      if (!cursor && page === 1 && cacheKey) {
+        const cached = reelPageCache.get(cacheKey);
+        if (cached) {
+          res.setHeader("Cache-Control", "private, max-age=30");
+          return res.json({...cached, page});
+        }
+      }
+
       const hiddenIds: mongoose.Types.ObjectId[] = [];
       if (dbUser) {
         const hides = await mongoose.connection
@@ -848,9 +885,14 @@ postsRouter.get(
       }
 
       const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
+      const pageResult: ReelPageResult = {posts: result, hasMore: posts.length === PAGE_SIZE, nextCursor};
 
-      res.setHeader("Cache-Control", "private, no-store");
-      return res.json({ posts: result, page, hasMore: posts.length === PAGE_SIZE, nextCursor });
+      if (!cursor && page === 1 && cacheKey) {
+        reelPageCache.set(cacheKey, pageResult);
+      }
+
+      res.setHeader("Cache-Control", "private, max-age=30");
+      return res.json({...pageResult, page});
     } catch (err) {
       console.error("[posts] reels error:", err);
       return res.status(500).json({ message: "Failed to fetch reels" });

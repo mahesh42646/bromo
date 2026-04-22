@@ -437,6 +437,7 @@ function ReelMoreSheet({
 const ReelItem = React.memo(function ReelItem({
   item,
   isActive,
+  preBuffer,
   reelHeight,
   reelWidth,
   navigation,
@@ -452,6 +453,8 @@ const ReelItem = React.memo(function ReelItem({
 }: {
   item: Post;
   isActive: boolean;
+  /** True for the reel immediately adjacent to the active one — buffers aggressively while paused. */
+  preBuffer?: boolean;
   reelHeight: number;
   reelWidth: number;
   navigation: Nav;
@@ -473,6 +476,7 @@ const ReelItem = React.memo(function ReelItem({
   const suppressMuteTap = useRef(false);
   const [following, setFollowing] = useState(item.isFollowing);
   const [coverSpinner, setCoverSpinner] = useState(true);
+  const [spinnerVisible, setSpinnerVisible] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const viewRecorded = useRef(false);
@@ -488,6 +492,7 @@ const ReelItem = React.memo(function ReelItem({
 
   useEffect(() => {
     setCoverSpinner(true);
+    setSpinnerVisible(false);
     setProgress(0);
     durationRef.current = 0;
     clearedSpinnerOnProgress.current = false;
@@ -497,6 +502,16 @@ const ReelItem = React.memo(function ReelItem({
   useEffect(() => {
     if (!isActive) setHoldPaused(false);
   }, [isActive]);
+
+  // Grace-period spinner: show only after 200ms of active+not-ready.
+  // Pre-buffered reels: onReadyForDisplay fires in <50ms → spinner never appears.
+  // Cold reels: spinner appears after 200ms, giving network a fair chance first.
+  useEffect(() => {
+    setSpinnerVisible(false);
+    if (!isActive || !coverSpinner) return;
+    const t = setTimeout(() => setSpinnerVisible(true), 200);
+    return () => clearTimeout(t);
+  }, [isActive, coverSpinner]);
 
   const paused = !isActive || holdPaused;
 
@@ -548,10 +563,13 @@ const ReelItem = React.memo(function ReelItem({
   const playUri = resolveMediaUrl(rawVideoUrl);
   const thumbUri = resolveMediaUrl(item.thumbnailUrl ?? '') || playUri;
   const isHls = rawVideoUrl.endsWith('.m3u8');
+  // Adjacent reels use a more aggressive buffer config to pre-load while paused
+  const videoContext = isHls ? (preBuffer ? 'reel-hls-prebuffer' : 'reel-hls') : 'reel';
 
   /** Stable so `NetworkVideo` safety timer / native callbacks are not reset every progress tick. */
   const hideCoverSpinner = useCallback(() => {
     setCoverSpinner(false);
+    setSpinnerVisible(false);
   }, []);
 
   return (
@@ -560,7 +578,7 @@ const ReelItem = React.memo(function ReelItem({
         <PostVideoWithClientMeta
           key={item._id}
           post={item}
-          context={isHls ? 'reel-hls' : 'reel'}
+          context={videoContext}
           uri={playUri}
           fallbackUri={isHls ? resolveMediaUrl(item.mediaUrl) ?? undefined : undefined}
           maxBitRate={isHls ? maxBitRate : undefined}
@@ -616,8 +634,8 @@ const ReelItem = React.memo(function ReelItem({
         </>
       )}
 
-      {/* First-frame / buffer cover (do not tie to isActive-only — that caused endless spinner after swipe back) */}
-      {isActive && coverSpinner && item.mediaType === 'video' && (
+      {/* Spinner: only shown after 200ms grace period — pre-buffered reels never reach this */}
+      {isActive && spinnerVisible && coverSpinner && item.mediaType === 'video' && (
         <View style={{...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center'}} pointerEvents="none">
           <ActivityIndicator color="#fff" size="large" />
         </View>
@@ -959,6 +977,15 @@ export function ReelsScreen() {
     }
   }, []);
 
+  // Prefetch reel thumbnails so the next visible item has its frame ready instantly.
+  // This warms NSURLCache before AVPlayer even requests the HLS master playlist.
+  useEffect(() => {
+    reels.slice(1, 8).forEach(r => {
+      const uri = resolveMediaUrl(r.thumbnailUrl ?? '');
+      if (uri) Image.prefetch(uri).catch(() => null);
+    });
+  }, [reels]);
+
   // Paint cached reels instantly before auth round-trip.
   useEffect(() => {
     peekReelFeedCache()
@@ -1085,37 +1112,18 @@ export function ReelsScreen() {
     setActiveIndex(idx);
   }, []);
 
-  // HLS prefetch: fully download next reel, partial for +2..+4
+  // HLS segment prefetch: warm iOS NSURLCache so adjacent reels start without network latency.
+  // Next reel (+1): prefetch first 4 segments (~8s). Beyond that: first 2 segments (~4s).
   useEffect(() => {
     const currentReels = reels;
     const idx = activeIndex;
+    const hlsUrl = (r: Post) => r.hlsMasterUrl ?? '';
 
-    // Full prefetch for the next item (most likely to play)
-    const next = currentReels[idx + 1];
-    if (next?.hlsMasterUrl) {
-      prefetchHlsSegments(
-        isCellular
-          ? next.hlsMasterUrl.replace(/master\.m3u8$/, 'master_cell.m3u8')
-          : next.hlsMasterUrl,
-        next._id,
-        isCellular,
-        null, // all segments
-      );
-    }
-
-    // Partial lookahead for +2 to +4
-    for (let i = idx + 2; i <= idx + 4 && i < currentReels.length; i++) {
+    for (let i = idx + 1; i <= idx + 5 && i < currentReels.length; i++) {
       const r = currentReels[i];
-      if (r?.hlsMasterUrl) {
-        prefetchHlsSegments(
-          isCellular
-            ? r.hlsMasterUrl.replace(/master\.m3u8$/, 'master_cell.m3u8')
-            : r.hlsMasterUrl,
-          r._id,
-          isCellular,
-          6,
-        );
-      }
+      if (!r || !hlsUrl(r)) continue;
+      const limit = i === idx + 1 ? 4 : 2;
+      prefetchHlsSegments(hlsUrl(r), r._id, isCellular, limit);
     }
   }, [activeIndex, reels, isCellular]);
 
@@ -1133,16 +1141,6 @@ export function ReelsScreen() {
       }
     });
   }, [initialPostId, loading, reelHeight, displayReels]);
-
-  if (loading) {
-    return (
-      <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
-        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
-          <ActivityIndicator color={palette.primary} size="large" />
-        </View>
-      </ThemedSafeScreen>
-    );
-  }
 
   return (
     <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
@@ -1196,6 +1194,12 @@ export function ReelsScreen() {
         </Pressable>
       </View>
 
+      {loading && displayReels.length === 0 && (
+        <View style={{...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 50}} pointerEvents="none">
+          <ActivityIndicator color={palette.primary} size="large" />
+        </View>
+      )}
+
       <FlatList
         ref={listRef}
         style={{flex: 1}}
@@ -1220,10 +1224,9 @@ export function ReelsScreen() {
               })
             : undefined
         }
-        // Instagram-style: render 1 ahead, keep 3 in window, unload rest
-        initialNumToRender={1}
+        initialNumToRender={2}
         maxToRenderPerBatch={2}
-        windowSize={4}
+        windowSize={7}
         removeClippedSubviews={false}
         viewabilityConfig={VIEWABILITY_CONFIG}
         onViewableItemsChanged={onViewableItemsChanged}
@@ -1266,6 +1269,7 @@ export function ReelsScreen() {
             <ReelItem
               item={item.data}
               isActive={screenFocused && index === activeIndex}
+              preBuffer={index !== activeIndex && Math.abs(index - activeIndex) <= 2}
               reelHeight={reelHeight}
               reelWidth={reelWidth}
               navigation={navigation}
