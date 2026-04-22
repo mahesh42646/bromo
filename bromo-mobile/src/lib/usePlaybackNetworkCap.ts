@@ -14,17 +14,13 @@ export type PlaybackNetworkCap = {
 };
 
 const DEFAULT_CAP: PlaybackNetworkCap = {
-  maxHeight: 360,
+  maxHeight: 720,
   isCellular: false,
-  maxBitRate: 700_000,
+  maxBitRate: 2_500_000,
 };
 
-// Hard-locked to the 360p variant on ALL networks. ABR was probing multiple quality
-// tiers concurrently, triggering hundreds of segment requests per reel view and
-// saturating the server (1 reel → 20+ duplicate segment fetches). Single locked
-// tier = predictable load + zero buffering on sub-1 Mbps connections.
-const CELLULAR_CAP_BPS = 500_000;  // 500 kbps hard cap
-const WIFI_CAP_BPS = 700_000;      // 700 kbps hard cap (same 360p rung)
+const CELLULAR_CAP_BPS = 900_000;
+const WIFI_CAP_BPS = 4_500_000;
 
 /** Lazy require — avoids crash when RNCNetInfo native module is not linked yet. */
 function tryGetNetInfo(): null | {
@@ -47,18 +43,22 @@ function deriveCapFromState(state: unknown): PlaybackNetworkCap {
   const s = state as {
     type?: string;
     isConnected?: boolean;
-    details?: {isConnectionExpensive?: boolean};
+    details?: {isConnectionExpensive?: boolean; cellularGeneration?: '2g' | '3g' | '4g' | '5g' | null; downlink?: number | null};
   };
 
   const isCellular = s.type === 'cellular';
   const isWifi = s.type === 'wifi' || s.type === 'ethernet' || s.type === 'wimax';
   const isExpensive = s.details?.isConnectionExpensive ?? false;
+  const cellularGen = s.details?.cellularGeneration ?? null;
+  const downlink = typeof s.details?.downlink === 'number' ? s.details.downlink : null;
   const capped = isCellular || (!isWifi && isExpensive);
+  const veryFastWifi = isWifi && (downlink == null || downlink >= 15);
+  const fastCell = isCellular && (cellularGen === '5g' || cellularGen === '4g');
 
   return {
-    maxHeight: 360,
+    maxHeight: veryFastWifi ? 1080 : fastCell ? 720 : 360,
     isCellular: capped,
-    maxBitRate: capped ? CELLULAR_CAP_BPS : WIFI_CAP_BPS,
+    maxBitRate: capped ? (fastCell ? 1_800_000 : CELLULAR_CAP_BPS) : WIFI_CAP_BPS,
   };
 }
 

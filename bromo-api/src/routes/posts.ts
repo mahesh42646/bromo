@@ -37,8 +37,34 @@ import { normalizeFeedCategory } from "../utils/feedCategory.js";
 import { PromotionCampaign } from "../models/PromotionCampaign.js";
 import { ContentDeliveryLog } from "../models/ContentDeliveryLog.js";
 import { LRUCache } from "lru-cache";
+import { cacheGetJson, cacheSetJson } from "../services/cacheLayer.js";
+import { isCanaryUser, perfFlags } from "../config/perfFlags.js";
 
 export const postsRouter = Router();
+
+type PerfEventBody = {
+  event?: string;
+  ts?: number;
+  sessionId?: string;
+  durationMs?: number;
+  [key: string]: unknown;
+};
+
+postsRouter.post("/perf-event", requireFirebaseToken, async (req: FirebaseAuthedRequest, res: Response) => {
+  const body = (req.body ?? {}) as PerfEventBody;
+  if (!body.event || typeof body.event !== "string") {
+    return res.status(400).json({ message: "event is required" });
+  }
+  const safe = {
+    event: body.event,
+    ts: typeof body.ts === "number" ? body.ts : Date.now(),
+    sessionId: typeof body.sessionId === "string" ? body.sessionId : "unknown",
+    userId: req.dbUser?._id ? String(req.dbUser._id) : "anon",
+    durationMs: typeof body.durationMs === "number" ? body.durationMs : null,
+  };
+  console.info("[perf-event]", JSON.stringify(safe));
+  return res.status(202).json({ accepted: true });
+});
 
 type ReelPageResult = {posts: unknown[]; hasMore: boolean; nextCursor: string | null};
 /** Per-user page-1 reel cache. Eliminates 3 DB round-trips on every reel screen open. */
@@ -644,9 +670,11 @@ postsRouter.get(
           // Serve from cache for the first page (no cursor) to skip DB round-trips on re-open
           const feedCacheKey = `${String(dbUser._id)}_friends`;
           if (!cf) {
-            const cachedFeed = feedPageCache.get(feedCacheKey);
+            const cachedFeed =
+              (await cacheGetJson<FeedPageResult>(`feed:p1:${feedCacheKey}`)) ?? feedPageCache.get(feedCacheKey);
             if (cachedFeed) {
               res.setHeader("Cache-Control", "private, max-age=30");
+              res.setHeader("x-bromo-cache-source", "cache");
               return res.json({...cachedFeed, tab: "for-you", forYouPhase: "friends",
                 hasMoreFriends: cachedFeed.hasMore, hasMoreGeneral: false,
                 nextCursorFriends: null, nextCursorGeneral: null, page: 1});
@@ -687,9 +715,11 @@ postsRouter.get(
 
           if (!cf) {
             feedPageCache.set(feedCacheKey, {posts: friendPosts, hasMore: hasMoreFriends});
+            await cacheSetJson(`feed:p1:${feedCacheKey}`, {posts: friendPosts, hasMore: hasMoreFriends}, 30);
           }
 
           res.setHeader("Cache-Control", "private, max-age=30");
+          res.setHeader("x-bromo-cache-source", "db");
           return res.json({
             posts: friendPosts,
             tab: "for-you",
@@ -797,6 +827,77 @@ postsRouter.get(
   },
 );
 
+postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const dbUser = req.dbUser;
+    if (!perfFlags.cursorApiV2 || !dbUser || !isCanaryUser(String(dbUser._id))) {
+      return res.status(404).json({ message: "feed v2 disabled" });
+    }
+    const [follows, likes] = await Promise.all([
+      Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
+      Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean(),
+    ]);
+    const followingIds = follows.map((f) => f.followingId);
+    const likedSet = new Set(likes.map((l) => String(l.targetId)));
+    const followingSet = new Set(followingIds.map(String));
+    const posts = await Post.find({
+      authorId: { $in: [...followingIds, dbUser._id] },
+      ...FEED_TYPES,
+      ...VISIBLE_POST,
+    })
+      .sort({ _id: -1 })
+      .limit(PAGE_SIZE)
+      .populate("authorId", AUTHOR_SELECT)
+      .lean();
+    const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
+    const out = posts.map((p) =>
+      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
+    );
+    return res.json({ posts: out, tab: "for-you", cursor: nextCursor, hasMore: posts.length === PAGE_SIZE });
+  } catch (err) {
+    console.error("[posts] feed/initial error:", err);
+    return res.status(500).json({ message: "Failed to fetch feed initial page" });
+  }
+});
+
+postsRouter.get("/feed/next", requireFirebaseToken, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const dbUser = req.dbUser;
+    if (!perfFlags.cursorApiV2 || !dbUser || !isCanaryUser(String(dbUser._id))) {
+      return res.status(404).json({ message: "feed v2 disabled" });
+    }
+    const cursor = String(req.query.cursor ?? "").trim();
+    if (!dbUser || !cursor || !mongoose.Types.ObjectId.isValid(cursor)) {
+      return res.status(400).json({ message: "valid cursor is required" });
+    }
+    const [follows, likes] = await Promise.all([
+      Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
+      Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean(),
+    ]);
+    const followingIds = follows.map((f) => f.followingId);
+    const likedSet = new Set(likes.map((l) => String(l.targetId)));
+    const followingSet = new Set(followingIds.map(String));
+    const posts = await Post.find({
+      authorId: { $in: [...followingIds, dbUser._id] },
+      ...FEED_TYPES,
+      ...VISIBLE_POST,
+      _id: { $lt: new mongoose.Types.ObjectId(cursor) },
+    })
+      .sort({ _id: -1 })
+      .limit(PAGE_SIZE)
+      .populate("authorId", AUTHOR_SELECT)
+      .lean();
+    const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
+    const out = posts.map((p) =>
+      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
+    );
+    return res.json({ posts: out, tab: "for-you", cursor: nextCursor, hasMore: posts.length === PAGE_SIZE });
+  } catch (err) {
+    console.error("[posts] feed/next error:", err);
+    return res.status(500).json({ message: "Failed to fetch feed next page" });
+  }
+});
+
 // ── GET /posts/reels ─────────────────────────────────────────────────
 postsRouter.get(
   "/reels",
@@ -811,9 +912,11 @@ postsRouter.get(
       // Page-1, no cursor: try cache before any DB work
       const cacheKey = dbUser ? `${String(dbUser._id)}_p1` : null;
       if (!cursor && page === 1 && cacheKey) {
-        const cached = reelPageCache.get(cacheKey);
+        const cached =
+          (await cacheGetJson<ReelPageResult>(`reel:p1:${cacheKey}`)) ?? reelPageCache.get(cacheKey);
         if (cached) {
           res.setHeader("Cache-Control", "private, max-age=30");
+          res.setHeader("x-bromo-cache-source", "cache");
           return res.json({...cached, page});
         }
       }
@@ -892,9 +995,11 @@ postsRouter.get(
 
       if (!cursor && page === 1 && cacheKey) {
         reelPageCache.set(cacheKey, pageResult);
+        await cacheSetJson(`reel:p1:${cacheKey}`, pageResult, 30);
       }
 
       res.setHeader("Cache-Control", "private, max-age=30");
+      res.setHeader("x-bromo-cache-source", "db");
       return res.json({...pageResult, page});
     } catch (err) {
       console.error("[posts] reels error:", err);
@@ -902,6 +1007,80 @@ postsRouter.get(
     }
   },
 );
+
+// Cursor-first v2 contracts used by mobile orchestration.
+postsRouter.get("/reels/initial", requireFirebaseToken, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const dbUser = req.dbUser;
+    if (!perfFlags.cursorApiV2 || !dbUser || !isCanaryUser(String(dbUser._id))) {
+      return res.status(404).json({ message: "reels v2 disabled" });
+    }
+    const baseQuery = { type: "reel" as const, ...VISIBLE_POST };
+    const posts = await Post.find(baseQuery)
+      .sort({ _id: -1 })
+      .limit(PAGE_SIZE)
+      .populate("authorId", AUTHOR_SELECT)
+      .lean();
+    const likedSet = new Set<string>();
+    const followingSet = new Set<string>();
+    if (dbUser) {
+      const [likes, follows] = await Promise.all([
+        Like.find({ userId: dbUser._id, targetType: "post", targetId: { $in: posts.map((p) => p._id) } }).select("targetId").lean(),
+        Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
+      ]);
+      likes.forEach((l) => likedSet.add(String(l.targetId)));
+      follows.forEach((f) => followingSet.add(String(f.followingId)));
+    }
+    const out = posts.map((p) =>
+      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+    );
+    const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
+    return res.json({ posts: out, hasMore: posts.length === PAGE_SIZE, nextCursor });
+  } catch (err) {
+    console.error("[posts] reels/initial error:", err);
+    return res.status(500).json({ message: "Failed to fetch reels initial page" });
+  }
+});
+
+postsRouter.get("/reels/next", requireFirebaseToken, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const dbUser = req.dbUser;
+    if (!perfFlags.cursorApiV2 || !dbUser || !isCanaryUser(String(dbUser._id))) {
+      return res.status(404).json({ message: "reels v2 disabled" });
+    }
+    const cursor = String(req.query.cursor ?? "").trim();
+    if (!cursor || !mongoose.Types.ObjectId.isValid(cursor)) {
+      return res.status(400).json({ message: "cursor is required" });
+    }
+    const posts = await Post.find({
+      type: "reel",
+      ...VISIBLE_POST,
+      _id: { $lt: new mongoose.Types.ObjectId(cursor) },
+    })
+      .sort({ _id: -1 })
+      .limit(PAGE_SIZE)
+      .populate("authorId", AUTHOR_SELECT)
+      .lean();
+    const likedSet = new Set<string>();
+    const followingSet = new Set<string>();
+    if (dbUser) {
+      const [likes, follows] = await Promise.all([
+        Like.find({ userId: dbUser._id, targetType: "post", targetId: { $in: posts.map((p) => p._id) } }).select("targetId").lean(),
+        Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
+      ]);
+      likes.forEach((l) => likedSet.add(String(l.targetId)));
+      follows.forEach((f) => followingSet.add(String(f.followingId)));
+    }
+    const out = posts.map((p) =>
+      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+    );
+    const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
+    return res.json({ posts: out, hasMore: posts.length === PAGE_SIZE, nextCursor });
+  } catch (err) {
+    console.error("[posts] reels/next error:", err);
+    return res.status(500).json({ message: "Failed to fetch reels next page" });
+  }
+});
 
 // ── GET /posts/saved ────────────────────────────────────────────────
 postsRouter.get(

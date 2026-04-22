@@ -63,7 +63,19 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
-import {getFeed, getTrendingReels, toggleLike, hidePost, reportPost, recordView, resolveVideoUrl, type Post, type StoryGroup} from '../api/postsApi';
+import {
+  getFeed,
+  getFeedInitial,
+  getFeedNext,
+  getTrendingReels,
+  toggleLike,
+  hidePost,
+  reportPost,
+  recordView,
+  resolveVideoUrl,
+  type Post,
+  type StoryGroup,
+} from '../api/postsApi';
 import {logPromotionDelivery} from '../api/promotionsApi';
 import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
 import {hashString, pickAdSlots} from '../lib/adSlots';
@@ -78,6 +90,8 @@ import {socketService} from '../services/socketService';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
 import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
 import {openExternalUrl} from '../lib/openExternalUrl';
+import {perfMark, perfMeasure, trackPerfEvent} from '../lib/perfTelemetry';
+import {perfFlags} from '../config/perfFlags';
 
 type IconComp = ComponentType<{size?: number; color?: string}>;
 
@@ -827,11 +841,11 @@ export function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const topicPageRef = useRef(1);
+  const homeCursorRef = useRef<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const forYouPhaseRef = useRef<'friends' | 'general'>('friends');
-  const cfRef = useRef<string | null>(null);
-  const cgRef = useRef<string | null>(null);
+  const firstNetworkResponseSentRef = useRef(false);
+  const firstPaintSentRef = useRef(false);
   const activeCategoryRef = useRef(activeCategory);
   /** ID of the currently-visible video post (only this one autoplays). */
   const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
@@ -891,65 +905,71 @@ export function HomeScreen() {
     const isHome = cat === 'home';
 
     if (reset && isHome) {
-      forYouPhaseRef.current = 'friends';
-      cfRef.current = null;
-      cgRef.current = null;
+      homeCursorRef.current = null;
     }
 
-    // Fire auxiliary fetches independently — feed never waits on them.
+    // Defer auxiliary fetches slightly so the feed payload owns first paint bandwidth.
     if (reset) {
-      loadStoriesFeedDeduped()
-        .then(s => setStoryGroups(s))
-        .catch(() => null);
-      getUserSuggestions(6)
-        .then(r => setSuggestions(r.users))
-        .catch(() => null);
-      fetchAds('feed', 5)
-        .then(a => setFeedAds(a))
-        .catch(() => null);
-      fetchAds('stories', 2)
-        .then(a => setStoryAds(a))
-        .catch(() => null);
-      if (isHome) {
-        getTrendingReels(3)
-          .then(r => setTrendingReels(r?.posts ?? []))
-          .catch(() => setTrendingReels([]));
-      } else {
-        setTrendingReels([]);
-      }
+      setTimeout(() => {
+        loadStoriesFeedDeduped()
+          .then(s => setStoryGroups(s))
+          .catch(() => null);
+        getUserSuggestions(6)
+          .then(r => setSuggestions(r.users))
+          .catch(() => null);
+        fetchAds('feed', 5)
+          .then(a => setFeedAds(a))
+          .catch(() => null);
+        fetchAds('stories', 2)
+          .then(a => setStoryAds(a))
+          .catch(() => null);
+        if (isHome) {
+          getTrendingReels(3)
+            .then(r => setTrendingReels(r?.posts ?? []))
+            .catch(() => setTrendingReels([]));
+        } else {
+          setTrendingReels([]);
+        }
+      }, 250);
     }
 
     try {
       if (isHome) {
-        const res = await getFeed({
-          tab: 'for-you',
-          fyPhase: forYouPhaseRef.current,
-          cf: forYouPhaseRef.current === 'friends' ? cfRef.current : undefined,
-          cg: forYouPhaseRef.current === 'general' ? cgRef.current : undefined,
-        });
+        const res = reset
+          ? perfFlags.cursorApiV2
+            ? await getFeedInitial()
+            : await getFeed({tab: 'for-you'}).then(r => ({
+                posts: r.posts,
+                tab: 'for-you',
+                cursor: r.nextCursorFriends ?? null,
+                hasMore: Boolean(r.hasMoreFriends),
+              }))
+          : homeCursorRef.current
+            ? await getFeedNext(homeCursorRef.current)
+            : await getFeed({tab: 'for-you'}).then(r => ({
+                posts: r.posts,
+                tab: 'for-you',
+                cursor: r.nextCursorFriends ?? null,
+                hasMore: Boolean(r.hasMoreFriends),
+              }));
 
-        if (res.forYouPhase === 'friends') {
-          forYouPhaseRef.current = 'friends';
-          if (res.nextCursorFriends) cfRef.current = res.nextCursorFriends;
-        } else {
-          forYouPhaseRef.current = 'general';
-          cgRef.current = res.nextCursorGeneral ?? null;
-        }
+        homeCursorRef.current = res.cursor ?? null;
 
         const mergedPosts = dedupePostsById(res.posts);
         if (reset) {
           setPosts(mergedPosts);
+          if (!firstNetworkResponseSentRef.current) {
+            firstNetworkResponseSentRef.current = true;
+            const ms = perfMeasure('home_first_feed_response_ms', 'app_open_home');
+            void trackPerfEvent('home_first_feed_response', {durationMs: ms});
+          }
           // Only cache the default home tab — other tabs shouldn't leak into cold start.
           void saveHomeFeedCache('home', mergedPosts);
         } else {
           setPosts(prev => dedupePostsById([...prev, ...mergedPosts]));
         }
 
-        const more =
-          res.forYouPhase === 'friends'
-            ? Boolean(res.hasMoreFriends)
-            : Boolean(res.hasMoreGeneral);
-        setHasMore(more);
+        setHasMore(Boolean(res.hasMore));
       } else {
         const tab = cat === 'trending' ? 'trending' : cat;
         if (reset) topicPageRef.current = 1;
@@ -1011,11 +1031,19 @@ export function HomeScreen() {
   // Single initial-load path: fire once auth is ready OR whenever the category
   // tab changes. No duplicate fetches, no full-screen gate after cache paint.
   useEffect(() => {
+    perfMark('app_open_home');
     if (!authReady) return;
     if (posts.length === 0) setLoading(true);
     loadData(true).finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCategory, authReady]);
+
+  useEffect(() => {
+    if (firstPaintSentRef.current || posts.length === 0) return;
+    firstPaintSentRef.current = true;
+    const ms = perfMeasure('home_first_paint_ms', 'app_open_home');
+    void trackPerfEvent('home_first_paint', {durationMs: ms, posts: posts.length});
+  }, [posts.length]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1171,14 +1199,6 @@ export function HomeScreen() {
     () => (myAvatar ? resolveMediaUrl(myAvatar) || myAvatar : undefined),
     [myAvatar],
   );
-  const profileInitials = useMemo(() => {
-    const source = (dbUser?.displayName || dbUser?.username || dbUser?.email || '').trim();
-    if (!source) return '';
-    const parts = source.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    return source.slice(0, 2).toUpperCase();
-  }, [dbUser?.displayName, dbUser?.username, dbUser?.email]);
-
   type HomeFeedItem =
     | {kind: 'post'; post: Post; key: string}
     | {kind: 'suggestions'; key: string}

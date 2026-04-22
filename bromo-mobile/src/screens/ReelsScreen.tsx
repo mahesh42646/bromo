@@ -54,6 +54,8 @@ import {
   createStoryFromReel,
   getPost,
   getReels,
+  getReelsInitial,
+  getReelsNext,
   toggleLike,
   recordView,
   recordShare,
@@ -70,7 +72,9 @@ import {AdReelItem} from '../components/AdReelItem';
 import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
+import {perfMark, perfMeasure, trackPerfEvent} from '../lib/perfTelemetry';
 import {peekReelFeedCache, saveReelFeedCache} from '../lib/reelFeedCache';
+import {perfFlags} from '../config/perfFlags';
 import type {ThemePalette} from '../config/platform-theme';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
 
@@ -448,6 +452,7 @@ const ReelItem = React.memo(function ReelItem({
   maxBitRate,
   viewerAvatarUri,
   onRemoveFromFeed,
+  onFirstFrame,
 }: {
   item: Post;
   isActive: boolean;
@@ -463,6 +468,7 @@ const ReelItem = React.memo(function ReelItem({
   maxBitRate: number | null;
   viewerAvatarUri?: string;
   onRemoveFromFeed: (postId: string) => void;
+  onFirstFrame: (postId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const {palette, contract} = useTheme();
@@ -551,7 +557,8 @@ const ReelItem = React.memo(function ReelItem({
 
   const hideCoverSpinner = useCallback(() => {
     setCoverSpinner(false);
-  }, []);
+    onFirstFrame(item._id);
+  }, [item._id, onFirstFrame]);
 
   return (
     <View style={{width: reelWidth, height: reelHeight, position: 'relative', backgroundColor: '#000'}}>
@@ -842,16 +849,16 @@ export function ReelsScreen() {
   const [reels, setReels] = useState<Post[]>([]);
   const [reelAds, setReelAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [autoScroll, setAutoScroll] = useState(false);
   const listRef = useRef<FlatList>(null);
   const pageRef = useRef(1);
+  const cursorRef = useRef<string | null>(null);
   const hasMoreRef = useRef(true);
   const loadingMoreRef = useRef(false);
   const activeIndexRef = useRef(0);
   const displayReelsLenRef = useRef(0);
+  const firstResponseSentRef = useRef(false);
   const reelHeightRef = useRef(reelHeight);
 
   const displayReels = useMemo((): ReelFeedItem[] => {
@@ -911,6 +918,11 @@ export function ReelsScreen() {
     }
   }, []);
 
+  const onReelFirstFrame = useCallback((postId: string) => {
+    const ms = perfMeasure(`reels_first_frame_${postId}`, 'app_open_reels');
+    void trackPerfEvent('reels_first_frame', {postId, durationMs: ms});
+  }, []);
+
   const onAutoAdvanceClip = useCallback(() => {
     const next = activeIndexRef.current + 1;
     if (next >= displayReelsLenRef.current) return;
@@ -922,29 +934,38 @@ export function ReelsScreen() {
   }, []);
 
   const loadReels = useCallback(async (reset = false, retry = 0) => {
-    const p = reset ? 1 : pageRef.current;
     try {
       const [res, adsRes] = await Promise.all([
-        getReels(p),
+        reset
+          ? (perfFlags.cursorApiV2 ? getReelsInitial() : getReels(1).then(r => ({posts: r.posts, hasMore: r.hasMore, nextCursor: null})))
+          : cursorRef.current
+            ? getReelsNext(cursorRef.current)
+            : getReels(pageRef.current).then(r => ({posts: r.posts, hasMore: r.hasMore, nextCursor: null})),
         reset ? fetchAds('reels', 3) : Promise.resolve(null),
       ]);
       if (reset) {
         setReels(res.posts);
         void saveReelFeedCache(res.posts);
-        if (adsRes) setReelAds(adsRes);
+        if (!firstResponseSentRef.current) {
+          firstResponseSentRef.current = true;
+          const ms = perfMeasure('reels_first_feed_response_ms', 'app_open_reels');
+          void trackPerfEvent('reels_first_feed_response', {durationMs: ms, items: res.posts.length});
+        }
+        if (adsRes) {
+          setTimeout(() => setReelAds(adsRes), 250);
+        }
         pageRef.current = 2;
-        setPage(2);
+        cursorRef.current = res.nextCursor;
       } else {
         setReels(prev => {
           // Unload reels more than 10 positions behind current to save memory
           const combined = [...prev, ...res.posts];
           return combined;
         });
-        pageRef.current = p + 1;
-        setPage(p + 1);
+        pageRef.current += 1;
+        cursorRef.current = res.nextCursor;
       }
       hasMoreRef.current = res.hasMore;
-      setHasMore(res.hasMore);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const transient = /aborted|network request failed|timeout/i.test(msg);
@@ -971,6 +992,7 @@ export function ReelsScreen() {
   }, []);
 
   useEffect(() => {
+    perfMark('app_open_reels');
     if (!authReady) return;
     if (reels.length === 0) setLoading(true);
     loadReels(true).finally(() => setLoading(false));
@@ -1242,6 +1264,7 @@ export function ReelsScreen() {
               maxBitRate={maxBitRate}
               viewerAvatarUri={viewerAvatarUri}
               onRemoveFromFeed={removeReelFromFeed}
+              onFirstFrame={onReelFirstFrame}
             />
           );
         }}

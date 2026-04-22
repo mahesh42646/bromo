@@ -1,6 +1,7 @@
 import {getAuth, getIdToken as firebaseGetIdToken} from '@react-native-firebase/auth';
 import {settings} from '../config/settings';
 import {navigationRef, resetToAuth} from '../navigation/rootNavigation';
+import {trackNetworkRequest} from '../lib/perfTelemetry';
 
 export function apiBase(): string {
   const base = settings.apiBaseUrl?.trim().replace(/\/+$/, '');
@@ -24,7 +25,8 @@ export function invalidateTokenCache(): void {
   /* no-op */
 }
 
-const FETCH_TIMEOUT_MS = 20_000;
+const FETCH_TIMEOUT_MS = 6_000;
+const FETCH_RETRY_TIMEOUT_MS = 6_000;
 
 let sessionExpiredPromise: Promise<void> | null = null;
 
@@ -74,6 +76,7 @@ function mergeAuthHeaders(init: RequestInit, token: string): RequestInit {
  * then sign-out + navigate to Auth if the session cannot be recovered.
  */
 export async function authorizedFetch(fullUrl: string, init: RequestInit = {}): Promise<Response> {
+  const startedAt = Date.now();
   const doFetchWithTimeout = async (reqInit: RequestInit, timeoutMs: number): Promise<Response> => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -91,7 +94,7 @@ export async function authorizedFetch(fullUrl: string, init: RequestInit = {}): 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/aborted|network request failed|timeout/i.test(msg)) {
-      res = await doFetchWithTimeout(reqInit, FETCH_TIMEOUT_MS + 8_000);
+      res = await doFetchWithTimeout(reqInit, FETCH_RETRY_TIMEOUT_MS);
     } else {
       throw err;
     }
@@ -109,6 +112,7 @@ export async function authorizedFetch(fullUrl: string, init: RequestInit = {}): 
       await handleSessionExpiredAndNavigate();
     }
   }
+  trackNetworkRequest(init.method ? `${init.method}:${fullUrl}` : `GET:${fullUrl}`, Date.now() - startedAt, res.ok);
   return res;
 }
 

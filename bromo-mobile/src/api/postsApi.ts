@@ -215,6 +215,30 @@ export async function getReels(page = 1): Promise<FeedResponse> {
   return res.json() as Promise<FeedResponse>;
 }
 
+export async function getReelsInitial(): Promise<{posts: Post[]; hasMore: boolean; nextCursor: string | null}> {
+  const res = await authedFetch('/posts/reels/initial');
+  if (!res.ok) throw new Error('Failed to fetch initial reels');
+  return res.json() as Promise<{posts: Post[]; hasMore: boolean; nextCursor: string | null}>;
+}
+
+export async function getReelsNext(cursor: string): Promise<{posts: Post[]; hasMore: boolean; nextCursor: string | null}> {
+  const res = await authedFetch(`/posts/reels/next?cursor=${encodeURIComponent(cursor)}`);
+  if (!res.ok) throw new Error('Failed to fetch next reels');
+  return res.json() as Promise<{posts: Post[]; hasMore: boolean; nextCursor: string | null}>;
+}
+
+export async function getFeedInitial(): Promise<{posts: Post[]; tab: string; cursor: string | null; hasMore: boolean}> {
+  const res = await authedFetch('/posts/feed/initial');
+  if (!res.ok) throw new Error('Failed to fetch initial feed');
+  return res.json() as Promise<{posts: Post[]; tab: string; cursor: string | null; hasMore: boolean}>;
+}
+
+export async function getFeedNext(cursor: string): Promise<{posts: Post[]; tab: string; cursor: string | null; hasMore: boolean}> {
+  const res = await authedFetch(`/posts/feed/next?cursor=${encodeURIComponent(cursor)}`);
+  if (!res.ok) throw new Error('Failed to fetch next feed');
+  return res.json() as Promise<{posts: Post[]; tab: string; cursor: string | null; hasMore: boolean}>;
+}
+
 export async function getExplore(page = 1): Promise<FeedResponse> {
   const res = await authedFetch(`/posts/explore?page=${page}`);
   if (!res.ok) throw new Error('Failed to fetch explore');
