@@ -70,7 +70,6 @@ import {AdReelItem} from '../components/AdReelItem';
 import {socketService} from '../services/socketService';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
-import {prefetchHlsSegments} from '../lib/hlsPrefetch';
 import {peekReelFeedCache, saveReelFeedCache} from '../lib/reelFeedCache';
 import type {ThemePalette} from '../config/platform-theme';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
@@ -437,7 +436,6 @@ function ReelMoreSheet({
 const ReelItem = React.memo(function ReelItem({
   item,
   isActive,
-  preBuffer,
   reelHeight,
   reelWidth,
   navigation,
@@ -453,8 +451,6 @@ const ReelItem = React.memo(function ReelItem({
 }: {
   item: Post;
   isActive: boolean;
-  /** True for the reel immediately adjacent to the active one — buffers aggressively while paused. */
-  preBuffer?: boolean;
   reelHeight: number;
   reelWidth: number;
   navigation: Nav;
@@ -501,14 +497,7 @@ const ReelItem = React.memo(function ReelItem({
     if (!isActive) setHoldPaused(false);
   }, [isActive]);
 
-  // Pre-play: the immediately adjacent reel plays silently so its frame pipeline is
-  // already running when the user swipes. onReadyForDisplay fires while "playing"
-  // (even muted) → coverSpinner=false before swipe → zero-flash transition.
-  // Items 2+ positions away stay paused to save bandwidth.
-  const isPrePlaying = Boolean(preBuffer) && !isActive;
-  const paused = (!isActive && !isPrePlaying) || holdPaused;
-  // Mute when not active (pre-playing) or when user muted
-  const effectiveMuted = reelsMuted || !isActive;
+  const paused = !isActive || holdPaused;
 
   // Record view + accumulate watch time
   useEffect(() => {
@@ -578,7 +567,7 @@ const ReelItem = React.memo(function ReelItem({
           resizeMode="cover"
           repeat={!autoScroll}
           paused={paused}
-          muted={effectiveMuted}
+          muted={reelsMuted}
           ignoreSilentSwitch="ignore"
           preventsDisplaySleepDuringVideoPlayback
           posterOverlayUntilReady={false}
@@ -969,15 +958,6 @@ export function ReelsScreen() {
     }
   }, []);
 
-  // Prefetch reel thumbnails so the next visible item has its frame ready instantly.
-  // This warms NSURLCache before AVPlayer even requests the HLS master playlist.
-  useEffect(() => {
-    reels.slice(1, 8).forEach(r => {
-      const uri = resolveMediaUrl(r.thumbnailUrl ?? '');
-      if (uri) Image.prefetch(uri).catch(() => null);
-    });
-  }, [reels]);
-
   // Paint cached reels instantly before auth round-trip.
   useEffect(() => {
     peekReelFeedCache()
@@ -1104,21 +1084,6 @@ export function ReelsScreen() {
     setActiveIndex(idx);
   }, []);
 
-  // HLS segment prefetch: warm iOS NSURLCache so adjacent reels start without network latency.
-  // Next reel (+1): prefetch first 4 segments (~8s). Beyond that: first 2 segments (~4s).
-  useEffect(() => {
-    const currentReels = reels;
-    const idx = activeIndex;
-    const hlsUrl = (r: Post) => r.hlsMasterUrl ?? '';
-
-    for (let i = idx + 1; i <= idx + 5 && i < currentReels.length; i++) {
-      const r = currentReels[i];
-      if (!r || !hlsUrl(r)) continue;
-      const limit = i === idx + 1 ? 4 : 2;
-      prefetchHlsSegments(hlsUrl(r), r._id, isCellular, limit);
-    }
-  }, [activeIndex, reels, isCellular]);
-
   useEffect(() => {
     if (!initialPostId || loading || reelHeight <= 0) return;
     if (didScrollToInitialRef.current === initialPostId) return;
@@ -1220,10 +1185,10 @@ export function ReelsScreen() {
               })
             : undefined
         }
-        initialNumToRender={2}
-        maxToRenderPerBatch={2}
-        windowSize={5}
-        removeClippedSubviews={false}
+        initialNumToRender={1}
+        maxToRenderPerBatch={1}
+        windowSize={3}
+        removeClippedSubviews={true}
         viewabilityConfig={VIEWABILITY_CONFIG}
         onViewableItemsChanged={onViewableItemsChanged}
         onMomentumScrollEnd={onMomentumScrollEnd}
@@ -1265,7 +1230,6 @@ export function ReelsScreen() {
             <ReelItem
               item={item.data}
               isActive={screenFocused && index === activeIndex}
-              preBuffer={Math.abs(index - activeIndex) === 1}
               reelHeight={reelHeight}
               reelWidth={reelWidth}
               navigation={navigation}

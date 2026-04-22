@@ -8,19 +8,23 @@
 import {useEffect, useState} from 'react';
 
 export type PlaybackNetworkCap = {
-  maxHeight: 720 | 1080;
+  maxHeight: 360 | 720 | 1080;
   isCellular: boolean;
   maxBitRate: number | null;
 };
 
 const DEFAULT_CAP: PlaybackNetworkCap = {
-  maxHeight: 1080,
+  maxHeight: 360,
   isCellular: false,
-  maxBitRate: null,
+  maxBitRate: 700_000,
 };
 
-const CELLULAR_CAP_BPS = 800_000;  // 800kbps — cellular safe, matches 360p segment rate
-const WIFI_CAP_BPS = 1_500_000;   // 1.5 Mbps — WiFi, between 360p and 720p, server can sustain
+// Hard-locked to the 360p variant on ALL networks. ABR was probing multiple quality
+// tiers concurrently, triggering hundreds of segment requests per reel view and
+// saturating the server (1 reel → 20+ duplicate segment fetches). Single locked
+// tier = predictable load + zero buffering on sub-1 Mbps connections.
+const CELLULAR_CAP_BPS = 500_000;  // 500 kbps hard cap
+const WIFI_CAP_BPS = 700_000;      // 700 kbps hard cap (same 360p rung)
 
 /** Lazy require — avoids crash when RNCNetInfo native module is not linked yet. */
 function tryGetNetInfo(): null | {
@@ -52,7 +56,7 @@ function deriveCapFromState(state: unknown): PlaybackNetworkCap {
   const capped = isCellular || (!isWifi && isExpensive);
 
   return {
-    maxHeight: 720,
+    maxHeight: 360,
     isCellular: capped,
     maxBitRate: capped ? CELLULAR_CAP_BPS : WIFI_CAP_BPS,
   };

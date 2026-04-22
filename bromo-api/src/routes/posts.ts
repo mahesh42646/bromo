@@ -390,7 +390,10 @@ function recomputeTrending(postId: string): void {
     .catch(() => null);
 }
 
-const PAGE_SIZE = 20;
+// Small page size is intentional: the client never shows more than 1-3 items at
+// once, so shipping 20 in the first response wastes bandwidth on rows the user
+// may never scroll to. Next page loads on demand at the end-reached threshold.
+const PAGE_SIZE = 6;
 const TRENDING_WINDOW_MS = 48 * 3600 * 1000;
 const FEED_TOPIC_TABS = new Set(["politics", "sports", "shopping", "tech"]);
 const FEED_TYPES = { type: { $in: ["post", "reel"] } } as const;

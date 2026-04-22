@@ -115,8 +115,9 @@ export function createApp() {
           res.setHeader("Cache-Control", "public, max-age=604800, s-maxage=2592000, immutable");
           res.setHeader("Access-Control-Allow-Origin", "*");
         } else if (isHlsDir && HLS_PLAYLIST_EXTS.has(ext)) {
-          // Playlists are VOD (static after transcode) — cache 1h client, 1h CDN
-          res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
+          // Playlists are static once transcode finishes. Cache 1 day client-side
+          // so revisiting a reel never re-fetches the master playlist from origin.
+          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, immutable");
           res.setHeader("Access-Control-Allow-Origin", "*");
           res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
         } else if (VIDEO_STATIC_EXTS.has(ext)) {

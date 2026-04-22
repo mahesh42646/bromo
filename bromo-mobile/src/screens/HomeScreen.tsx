@@ -997,12 +997,12 @@ export function HomeScreen() {
       .catch(() => null);
   }, []);
 
-  // Proactively prefetch thumbnails for posts beyond the initial viewport so they
-  // appear instantly as the user scrolls. Image.prefetch warms NSURLCache (iOS) and
-  // the bitmap cache (Android) without blocking the render thread.
+  // Warm thumbnails for the 2 posts immediately after the initial viewport — enough
+  // that the next scroll feels instant, nothing beyond that until the user actually
+  // scrolls (avoids wasting server bandwidth on posts they never see).
   useEffect(() => {
     if (posts.length === 0) return;
-    posts.slice(3, 20).forEach(p => {
+    posts.slice(1, 3).forEach(p => {
       const uri = resolveMediaUrl(p.thumbnailUrl ?? p.mediaUrl);
       if (uri) Image.prefetch(uri).catch(() => null);
     });
@@ -1414,10 +1414,10 @@ export function HomeScreen() {
             />
           }
           onEndReached={onLoadMore}
-          onEndReachedThreshold={0.4}
-          initialNumToRender={3}
-          maxToRenderPerBatch={4}
-          windowSize={5}
+          onEndReachedThreshold={0.2}
+          initialNumToRender={2}
+          maxToRenderPerBatch={2}
+          windowSize={3}
           removeClippedSubviews
           viewabilityConfig={feedViewabilityConfig}
           onViewableItemsChanged={onFeedViewableItemsChanged}

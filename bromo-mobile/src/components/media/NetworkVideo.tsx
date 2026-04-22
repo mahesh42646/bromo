@@ -35,48 +35,54 @@ type BufferConfig = {
   backBufferDurationMs?: number;
 };
 
-/** Fast-start presets — start on first 1-2 segments (~200-400ms), let ABR handle quality. */
+/**
+ * Tight buffer presets — download only what the visible reel needs, nothing more.
+ * maxBufferMs is the ceiling on how far ahead the player will fetch; keeping it
+ * small (4-6 s) means a fast scroll-past wastes at most a few seconds of segment
+ * data. Previously used 10-20 s windows had the server drowning in parallel
+ * segment requests the user immediately scrolled past.
+ */
 const BUFFER_PRESETS: Record<string, BufferConfig> = {
   reel: {
-    minBufferMs: 1000,
-    maxBufferMs: 10000,
-    bufferForPlaybackMs: 200,       // start after ~1 segment buffered
-    bufferForPlaybackAfterRebufferMs: 600,
+    minBufferMs: 800,
+    maxBufferMs: 4000,
+    bufferForPlaybackMs: 200,
+    bufferForPlaybackAfterRebufferMs: 500,
     backBufferDurationMs: 0,
   },
   'reel-hls': {
-    minBufferMs: 2000,
-    maxBufferMs: 15000,
-    bufferForPlaybackMs: 300,
+    minBufferMs: 1500,
+    maxBufferMs: 6000,
+    bufferForPlaybackMs: 400,
     bufferForPlaybackAfterRebufferMs: 800,
-    backBufferDurationMs: 2000,
+    backBufferDurationMs: 0,
   },
   feed: {
-    minBufferMs: 3000,
-    maxBufferMs: 12000,
-    bufferForPlaybackMs: 1200,
-    bufferForPlaybackAfterRebufferMs: 2000,
-    backBufferDurationMs: 1000,
+    minBufferMs: 1500,
+    maxBufferMs: 5000,
+    bufferForPlaybackMs: 500,
+    bufferForPlaybackAfterRebufferMs: 1000,
+    backBufferDurationMs: 0,
   },
   'feed-hls': {
-    minBufferMs: 4000,
-    maxBufferMs: 20000,
-    bufferForPlaybackMs: 1200,
-    bufferForPlaybackAfterRebufferMs: 2500,
-    backBufferDurationMs: 4000,
+    minBufferMs: 2000,
+    maxBufferMs: 6000,
+    bufferForPlaybackMs: 800,
+    bufferForPlaybackAfterRebufferMs: 1500,
+    backBufferDurationMs: 0,
   },
   story: {
-    minBufferMs: 1200,
-    maxBufferMs: 12000,
-    bufferForPlaybackMs: 500,
-    bufferForPlaybackAfterRebufferMs: 1200,
+    minBufferMs: 800,
+    maxBufferMs: 4000,
+    bufferForPlaybackMs: 400,
+    bufferForPlaybackAfterRebufferMs: 800,
     backBufferDurationMs: 0,
   },
   'story-hls': {
-    minBufferMs: 2000,
-    maxBufferMs: 15000,
-    bufferForPlaybackMs: 800,
-    bufferForPlaybackAfterRebufferMs: 1500,
+    minBufferMs: 1500,
+    maxBufferMs: 6000,
+    bufferForPlaybackMs: 600,
+    bufferForPlaybackAfterRebufferMs: 1200,
     backBufferDurationMs: 0,
   },
 };
