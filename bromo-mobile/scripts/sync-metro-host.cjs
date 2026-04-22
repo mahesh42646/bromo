@@ -38,6 +38,28 @@ function detectIp() {
   return null;
 }
 
+function detectBonjourHost() {
+  try {
+    const localHostName = execSync('scutil --get LocalHostName', { encoding: 'utf8' }).trim();
+    if (!localHostName) return null;
+    // Bonjour host is stable across DHCP IP changes on the same machine.
+    return `${localHostName}.local`;
+  } catch {
+    return null;
+  }
+}
+
+function detectMetroHost() {
+  const envHost = (process.env.METRO_LAN_HOST || process.env.BROMO_METRO_HOST || '').trim();
+  if (envHost) return envHost;
+
+  // Default to a stable hostname so device reconnect survives LAN IP changes.
+  const bonjour = detectBonjourHost();
+  if (bonjour) return bonjour;
+
+  return detectIp();
+}
+
 function main() {
   let raw;
   try {
@@ -50,9 +72,9 @@ function main() {
   const cfg = JSON.parse(raw);
   const prev = String(cfg.metroHost ?? '').trim();
   const looksLikePlaceholder = (h) => !h || h.toLowerCase().includes('x.x');
-  const ip = detectIp();
+  const metroHost = detectMetroHost();
 
-  if (!ip) {
+  if (!metroHost) {
     if (looksLikePlaceholder(prev)) {
       cfg.metroHost = '';
       fs.writeFileSync(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`);
@@ -60,8 +82,8 @@ function main() {
       console.warn('[metro:sync-ip] Cleared invalid metroHost placeholder from bromo-config.json.');
     }
     console.warn(
-      '[metro:sync-ip] Could not detect LAN IP (Wi‑Fi off or unknown interface). ' +
-        'Set METRO_LAN_HOST=192.168.1.12 (your Mac’s IPv4) and run again, or edit metroHost in bromo-config.json.',
+      '[metro:sync-ip] Could not detect a usable Metro host (Bonjour hostname or LAN IP). ' +
+        'Set METRO_LAN_HOST=192.168.1.12 (or My-Mac.local) and run again, or edit metroHost in bromo-config.json.',
     );
     if (!looksLikePlaceholder(prev)) {
       console.warn('[metro:sync-ip] Leaving metroHost unchanged.');
@@ -69,10 +91,10 @@ function main() {
     process.exit(0);
   }
 
-  cfg.metroHost = ip;
+  cfg.metroHost = metroHost;
   fs.writeFileSync(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`);
-  mergeMetroHostIntoMonorepo(ip);
-  console.log(`Updated ${path.relative(root, cfgPath)} → metroHost: ${ip}`);
+  mergeMetroHostIntoMonorepo(metroHost);
+  console.log(`Updated ${path.relative(root, cfgPath)} → metroHost: ${metroHost}`);
   console.log('Rebuild the iOS app once so bundled bromo-config.json matches (physical device).');
 }
 
