@@ -66,6 +66,72 @@ postsRouter.post("/perf-event", requireFirebaseToken, async (req: FirebaseAuthed
   return res.status(202).json({ accepted: true });
 });
 
+/** Batched view / watch-time (mobile scroll storm → one round-trip). */
+postsRouter.post("/views/batch", requireFirebaseToken, async (req: FirebaseAuthedRequest, res: Response) => {
+  const raw = (req.body as { items?: unknown }).items;
+  if (!Array.isArray(raw)) {
+    return res.status(400).json({ message: "items array required" });
+  }
+  type BatchItem = { postId?: string; watchMs?: number; impression?: boolean };
+  const capped = (raw as BatchItem[]).slice(0, 40);
+  const agg = new Map<string, { impression: boolean; watchMs: number }>();
+
+  for (const it of capped) {
+    const pid = String(it.postId ?? "");
+    if (!mongoose.Types.ObjectId.isValid(pid)) continue;
+    const w = Math.min(Math.max(0, Number(it.watchMs) || 0), 3_600_000);
+    const explicitImp = it.impression === true;
+    const cur = agg.get(pid) ?? { impression: false, watchMs: 0 };
+    if (explicitImp) cur.impression = true;
+    if (w > 0) cur.watchMs += w;
+    if (w === 0 && it.impression !== false) cur.impression = true;
+    agg.set(pid, cur);
+  }
+
+  const ops: mongoose.mongo.AnyBulkWriteOperation<mongoose.Document>[] = [];
+  for (const [postId, v] of agg) {
+    const inc: Record<string, number> = {};
+    if (v.impression) {
+      inc.viewsCount = 1;
+      inc.impressionsCount = 1;
+    }
+    if (v.watchMs > 0) inc.totalWatchTimeMs = v.watchMs;
+    if (Object.keys(inc).length === 0) continue;
+    const oid = new mongoose.Types.ObjectId(postId);
+    ops.push({
+      updateOne: {
+        filter: {_id: oid, isActive: true, isDeleted: {$ne: true}},
+        update: {$inc: inc},
+      },
+    });
+  }
+
+  if (ops.length > 0) {
+    try {
+      await Post.bulkWrite(ops as Parameters<typeof Post.bulkWrite>[0], {ordered: false});
+    } catch (err) {
+      console.error("[posts] views/batch bulkWrite:", err);
+      return res.status(500).json({ message: "Batch failed" });
+    }
+    for (const postId of agg.keys()) {
+      Post.findById(postId)
+        .select("viewsCount totalWatchTimeMs")
+        .lean()
+        .then((p) => {
+          if (p && p.viewsCount > 0) {
+            const avg = p.totalWatchTimeMs / p.viewsCount;
+            return Post.updateOne({ _id: postId }, { $set: { avgWatchTimeMs: avg } });
+          }
+          return null;
+        })
+        .catch(() => null);
+      recomputeTrending(postId);
+    }
+  }
+
+  return res.json({ ok: true, n: agg.size });
+});
+
 type ReelPageResult = {posts: unknown[]; hasMore: boolean; nextCursor: string | null};
 /** Per-user page-1 reel cache. Eliminates 3 DB round-trips on every reel screen open. */
 const reelPageCache = new LRUCache<string, ReelPageResult>({
@@ -2152,17 +2218,25 @@ postsRouter.post(
     const watchMs = Math.min(Math.max(0, Number((req.body as {watchMs?: unknown}).watchMs) || 0), 3_600_000);
     const postId = String(req.params.id);
 
+    /** Impression (watchMs === 0) counts a view once; watch-time updates must not inflate viewsCount. */
+    const inc =
+      watchMs <= 0
+        ? {viewsCount: 1, impressionsCount: 1, totalWatchTimeMs: 0}
+        : {totalWatchTimeMs: watchMs};
+
     Post.findOneAndUpdate(
-      { _id: postId, isActive: true, isDeleted: { $ne: true } },
-      { $inc: { viewsCount: 1, impressionsCount: 1, totalWatchTimeMs: watchMs } },
-      { new: true },
-    ).then((p) => {
-      if (p && p.viewsCount > 0) {
-        const avg = p.totalWatchTimeMs / p.viewsCount;
-        Post.updateOne({ _id: postId }, { $set: { avgWatchTimeMs: avg } }).catch(() => null);
-      }
-      recomputeTrending(postId);
-    }).catch(() => null);
+      {_id: postId, isActive: true, isDeleted: {$ne: true}},
+      {$inc: inc},
+      {new: true},
+    )
+      .then((p) => {
+        if (p && p.viewsCount > 0) {
+          const avg = p.totalWatchTimeMs / p.viewsCount;
+          Post.updateOne({_id: postId}, {$set: {avgWatchTimeMs: avg}}).catch(() => null);
+        }
+        recomputeTrending(postId);
+      })
+      .catch(() => null);
 
     return res.json({ ok: true });
   },

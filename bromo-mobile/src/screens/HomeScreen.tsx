@@ -67,6 +67,7 @@ import {
   getFeed,
   getFeedInitial,
   getFeedNext,
+  getReelsInitial,
   getTrendingReels,
   toggleLike,
   hidePost,
@@ -85,6 +86,7 @@ import {AdCard} from '../components/AdCard';
 import {AdStoryViewer} from '../components/AdStoryViewer';
 import {clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
 import {peekHomeFeedCache, saveHomeFeedCache} from '../lib/homeFeedCache';
+import {saveReelFeedCache} from '../lib/reelFeedCache';
 import {getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getUnreadCount} from '../api/notificationsApi';
 import {getConversations} from '../api/chatApi';
@@ -200,6 +202,7 @@ const PostCard = React.memo(function PostCard({
   const [videoEnded, setVideoEnded] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
   const viewRecordedRef = useRef(false);
+  const viewImpressionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promoImpressionLoggedRef = useRef(false);
   const {borderRadiusScale} = contract.brandGuidelines;
   const radius = borderRadiusScale === 'bold' ? 14 : 10;
@@ -232,12 +235,28 @@ const PostCard = React.memo(function PostCard({
 
   useEffect(() => {
     if (!isFeedItemVisible) {
+      if (viewImpressionTimerRef.current) {
+        clearTimeout(viewImpressionTimerRef.current);
+        viewImpressionTimerRef.current = null;
+      }
       viewRecordedRef.current = false;
       return;
     }
     if (viewRecordedRef.current) return;
-    viewRecordedRef.current = true;
-    recordView(post._id, 0).catch(() => null);
+    if (viewImpressionTimerRef.current) clearTimeout(viewImpressionTimerRef.current);
+    viewImpressionTimerRef.current = setTimeout(() => {
+      viewImpressionTimerRef.current = null;
+      if (!viewRecordedRef.current && isFeedItemVisible) {
+        viewRecordedRef.current = true;
+        recordView(post._id, 0).catch(() => null);
+      }
+    }, 450);
+    return () => {
+      if (viewImpressionTimerRef.current) {
+        clearTimeout(viewImpressionTimerRef.current);
+        viewImpressionTimerRef.current = null;
+      }
+    };
   }, [isFeedItemVisible, post._id]);
 
   useEffect(() => {
@@ -985,6 +1004,20 @@ export function HomeScreen() {
           }
           // Only cache the default home tab — other tabs shouldn't leak into cold start.
           void saveHomeFeedCache('home', mergedPosts);
+          if (perfFlags.cursorApiV2) {
+            Promise.resolve().then(() =>
+              getReelsInitial()
+                .then(r => {
+                  const chunk = dedupePostsById(mergePostsWithSessionCache(r.posts));
+                  for (const p of chunk) {
+                    if (p.author) rememberAuthor(p.author);
+                  }
+                  prefetchPostThumbnails(chunk.slice(0, 8));
+                  void saveReelFeedCache(chunk);
+                })
+                .catch(() => null),
+            );
+          }
         } else {
           setPosts(prev => dedupePostsById([...prev, ...mergedPosts]));
         }

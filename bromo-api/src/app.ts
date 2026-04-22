@@ -124,8 +124,12 @@ export function createApp() {
           // Videos: cache 7 days CDN, 1 day client
           res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
         } else if (IMAGE_EXTS.has(ext)) {
-          // Images / thumbnails
-          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+          const underProfile = /[/\\]profile[/\\]/.test(absPath);
+          if (underProfile) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          } else {
+            res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+          }
         } else {
           res.setHeader("Cache-Control", "public, max-age=3600");
         }

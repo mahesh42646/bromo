@@ -3,6 +3,7 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 import {authedFetch, apiBase, authorizedFetch, getIdToken} from './authApi';
 import type {PromotionObjective} from './promotionsApi';
 import {buildMediaUploadPart} from '../lib/mediaUploadPart';
+import {queuePostView} from '../lib/viewQueue';
 
 /** Matches server `upload.ts` — larger files rejected before upload starts. */
 export const MAX_UPLOAD_BYTES = 600 * 1024 * 1024;
@@ -346,11 +347,9 @@ export async function toggleLike(postId: string): Promise<{liked: boolean; likes
   return res.json() as Promise<{liked: boolean; likesCount: number}>;
 }
 
-export async function recordView(postId: string, watchMs = 0): Promise<void> {
-  await authedFetch(`/posts/${postId}/view`, {
-    method: 'POST',
-    body: JSON.stringify({watchMs: Math.round(watchMs)}),
-  }).catch(() => null);
+export function recordView(postId: string, watchMs = 0): Promise<void> {
+  queuePostView(postId, watchMs);
+  return Promise.resolve();
 }
 
 /** Mark a story post as seen for the current user (tray ring + ordering). */

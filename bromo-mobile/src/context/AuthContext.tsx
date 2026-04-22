@@ -29,6 +29,7 @@ import {clearOwnProfileSessionCache} from '../lib/ownProfileSessionCache';
 import {clearUnreadCountSessionCache} from '../api/notificationsApi';
 import {clearConversationsSessionCache} from '../api/chatApi';
 import {clearOtherUserProfileSessionCache} from '../lib/otherUserProfileSessionCache';
+import {resetViewQueueForLogout} from '../lib/viewQueue';
 
 const K_ONBOARD = '@bromo/onboarding_done';
 const K_DB_USER = '@bromo/db_user_v1';
@@ -263,6 +264,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     clearUnreadCountSessionCache();
     clearConversationsSessionCache();
     clearOtherUserProfileSessionCache();
+    await resetViewQueueForLogout();
     await clearStoriesFeedCache();
     await clearStoryVideoCache();
     await auth().signOut();

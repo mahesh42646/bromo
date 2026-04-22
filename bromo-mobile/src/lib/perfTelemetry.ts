@@ -19,6 +19,8 @@ type PerfPayload = Record<string, unknown> & {
 const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const marks = new Map<string, number>();
 let flushedAppState = AppState.currentState;
+/** Avoid one perf POST per reel during scroll — keep a single cold-start sample. */
+let reelsFirstFrameTelemetrySent = false;
 
 function now(): number {
   return Date.now();
@@ -42,6 +44,10 @@ function apiBase(): string {
 }
 
 export function trackPerfEvent(event: PerfEventName, data: Record<string, unknown> = {}): void {
+  if (event === 'reels_first_frame') {
+    if (reelsFirstFrameTelemetrySent) return;
+    reelsFirstFrameTelemetrySent = true;
+  }
   const payload: PerfPayload = {
     event,
     ts: now(),

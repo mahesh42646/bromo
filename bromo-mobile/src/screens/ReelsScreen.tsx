@@ -498,6 +498,7 @@ const ReelItem = React.memo(function ReelItem({
   const viewRecorded = useRef(false);
   const watchStartMs = useRef(0);
   const accumulatedWatchMs = useRef(0);
+  const impressionDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const durationRef = useRef(0);
   const lastProgTick = useRef(0);
   const clearedSpinnerOnProgress = useRef(false);
@@ -512,6 +513,10 @@ const ReelItem = React.memo(function ReelItem({
     durationRef.current = 0;
     clearedSpinnerOnProgress.current = false;
     naturalEndSentRef.current = false;
+    if (impressionDelayRef.current) {
+      clearTimeout(impressionDelayRef.current);
+      impressionDelayRef.current = null;
+    }
   }, [item._id, item.mediaUrl]);
 
   useEffect(() => {
@@ -520,26 +525,43 @@ const ReelItem = React.memo(function ReelItem({
 
   const paused = !isActive || holdPaused;
 
-  // Record view + accumulate watch time
+  // Impression after short dwell (skip flick-scroll); watch time batched client-side.
   useEffect(() => {
     if (isActive) {
       if (!viewRecorded.current) {
-        viewRecorded.current = true;
-        watchStartMs.current = Date.now();
-        recordView(item._id, 0);
+        if (impressionDelayRef.current) clearTimeout(impressionDelayRef.current);
+        impressionDelayRef.current = setTimeout(() => {
+          impressionDelayRef.current = null;
+          if (!viewRecorded.current) {
+            viewRecorded.current = true;
+            watchStartMs.current = Date.now();
+            recordView(item._id, 0);
+          }
+        }, 400);
       } else {
         watchStartMs.current = Date.now();
       }
-    } else if (watchStartMs.current > 0) {
-      accumulatedWatchMs.current += Date.now() - watchStartMs.current;
-      watchStartMs.current = 0;
-      // Send accumulated watch time on deactivate
+    } else {
+      if (impressionDelayRef.current) {
+        clearTimeout(impressionDelayRef.current);
+        impressionDelayRef.current = null;
+      }
+      if (watchStartMs.current > 0) {
+        accumulatedWatchMs.current += Date.now() - watchStartMs.current;
+        watchStartMs.current = 0;
+      }
       if (accumulatedWatchMs.current > 500) {
         recordView(item._id, accumulatedWatchMs.current);
         accumulatedWatchMs.current = 0;
         viewRecorded.current = false;
       }
     }
+    return () => {
+      if (impressionDelayRef.current) {
+        clearTimeout(impressionDelayRef.current);
+        impressionDelayRef.current = null;
+      }
+    };
   }, [isActive, item._id]);
 
   const handleFollowToggle = async () => {
@@ -943,7 +965,7 @@ export function ReelsScreen() {
 
   const onReelFirstFrame = useCallback((postId: string) => {
     const ms = perfMeasure(`reels_first_frame_${postId}`, 'app_open_reels');
-    void trackPerfEvent('reels_first_frame', {postId, durationMs: ms});
+    void trackPerfEvent('reels_first_frame', {postId, durationMs: ms ?? undefined});
   }, []);
 
   const onAutoAdvanceClip = useCallback(() => {
@@ -1243,7 +1265,7 @@ export function ReelsScreen() {
         }
         initialNumToRender={1}
         maxToRenderPerBatch={1}
-        windowSize={3}
+        windowSize={2}
         removeClippedSubviews={true}
         viewabilityConfig={VIEWABILITY_CONFIG}
         onViewableItemsChanged={onViewableItemsChanged}
