@@ -59,6 +59,13 @@ import {getWallet} from '../api/walletApi';
 import {followUser, getUserSuggestions, type SuggestedUser} from '../api/followApi';
 import {socketService} from '../services/socketService';
 import {clearStoriesFeedCache} from '../lib/storiesFeedCache';
+import {
+  getCachedOwnGridStats,
+  getCachedOwnPosts,
+  invalidateOwnProfileSession,
+  setCachedOwnGridStats,
+  setCachedOwnPosts,
+} from '../lib/ownProfileSessionCache';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -232,14 +239,20 @@ export function ProfileScreen() {
 
   const loadGridStats = useCallback(async () => {
     if (!dbUser?._id) return;
+    const id = String(dbUser._id);
+    const cached = getCachedOwnGridStats(id);
+    if (cached) {
+      setGridStats(cached);
+      return;
+    }
     try {
-      const s = await getUserGridStats(String(dbUser._id));
+      const s = await getUserGridStats(id);
       setGridStats(s);
-      void refreshDbUser();
+      setCachedOwnGridStats(id, s);
     } catch {
       setGridStats(null);
     }
-  }, [dbUser?._id, refreshDbUser]);
+  }, [dbUser?._id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -257,11 +270,19 @@ export function ProfileScreen() {
 
   const loadPosts = useCallback(async (tab: string) => {
     if (!dbUser?._id) return;
+    const id = String(dbUser._id);
+    const tabKey = tab === 'posts' ? 'posts' : tab === 'reels' ? 'reels' : 'saved';
+    const cached = getCachedOwnPosts(id, tabKey);
+    if (cached) {
+      setUserPosts(cached);
+      return;
+    }
     setPostsLoading(true);
     try {
       const typeMap: Record<string, string> = {posts: 'post', reels: 'reel', saved: 'saved'};
-      const res = await getUserPosts(String(dbUser._id), typeMap[tab] ?? 'post');
+      const res = await getUserPosts(id, typeMap[tab] ?? 'post');
       setUserPosts(res.posts);
+      setCachedOwnPosts(id, tabKey, res.posts);
     } catch (e) {
       console.error('[Profile] getUserPosts failed', tab, e);
       setUserPosts([]);
@@ -286,13 +307,9 @@ export function ProfileScreen() {
   useEffect(() => {
     const unsubDel = socketService.on('post:delete', ({postId}) => {
       setUserPosts(prev => prev.filter(p => p._id !== postId));
-      void refreshDbUser();
-      void loadGridStats();
     });
     const unsubNew = socketService.on('post:new', p => {
       if (!dbUser?._id || String(p.author?._id) !== String(dbUser._id)) return;
-      void refreshDbUser();
-      void loadGridStats();
       if (p.type === 'story') {
         void clearStoriesFeedCache().catch(() => null);
         return;
@@ -318,13 +335,14 @@ export function ProfileScreen() {
       unsubDel();
       unsubNew();
     };
-  }, [dbUser?._id, gridTab, refreshDbUser, loadGridStats]);
+  }, [dbUser?._id, gridTab]);
 
   const onRefresh = useCallback(async () => {
+    if (dbUser?._id) invalidateOwnProfileSession(String(dbUser._id));
     setRefreshing(true);
     await Promise.all([refreshDbUser(), loadPosts(gridTab), loadGridStats()]);
     setRefreshing(false);
-  }, [refreshDbUser, loadPosts, gridTab, loadGridStats]);
+  }, [refreshDbUser, loadPosts, gridTab, loadGridStats, dbUser?._id]);
 
   const appName = contract.branding.appTitle || 'bromo';
 

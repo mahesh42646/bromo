@@ -13,6 +13,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   type DbUser,
   getMe,
+  clearMeSessionCache,
+  primeMeSession,
   registerUser,
   googleAuth as googleAuthApi,
   setUsername as setUsernameApi,
@@ -21,6 +23,12 @@ import {
 } from '../api/authApi';
 import {clearStoriesFeedCache} from '../lib/storiesFeedCache';
 import {clearStoryVideoCache} from '../lib/storyVideoCache';
+import {clearPostEntityCache} from '../lib/postEntityCache';
+import {clearAuthorSessionCache} from '../lib/authorSessionCache';
+import {clearOwnProfileSessionCache} from '../lib/ownProfileSessionCache';
+import {clearUnreadCountSessionCache} from '../api/notificationsApi';
+import {clearConversationsSessionCache} from '../api/chatApi';
+import {clearOtherUserProfileSessionCache} from '../lib/otherUserProfileSessionCache';
 
 const K_ONBOARD = '@bromo/onboarding_done';
 const K_DB_USER = '@bromo/db_user_v1';
@@ -142,6 +150,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
 
       try {
         const result = await registerUser(displayName, phone);
+        primeMeSession({user: result.user});
         setDbUser(result.user);
       } catch {
         // Will be created on next /me check
@@ -172,12 +181,13 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
         result.user.displayName ?? result.user.email?.split('@')[0] ?? 'User',
         result.user.photoURL ?? undefined,
       );
+      primeMeSession({user: apiResult.user});
       setDbUser(apiResult.user);
     } catch {
       // googleAuthApi failed — user may already exist (race with onAuthStateChanged).
       // Do a final getMe() to ensure dbUser is consistent before navigation fires.
       try {
-        const me = await getMe();
+        const me = await getMe({force: true});
         if ('user' in me) setDbUser(me.user);
       } catch {}
     }
@@ -196,7 +206,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     if (user.emailVerified) {
       if (dbUser && !dbUser.emailVerified) {
         try {
-          const result = await getMe();
+          const result = await getMe({force: true});
           if ('user' in result) setDbUser(result.user);
         } catch {}
       }
@@ -213,6 +223,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     try {
       const result = await setUsernameApi(username);
       if ('user' in result) {
+        primeMeSession({user: result.user});
         setDbUser(result.user);
       }
       return;
@@ -230,10 +241,12 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       auth().currentUser?.email?.split('@')[0] ||
       'User';
     const reg = await registerUser(fallbackName);
+    primeMeSession({user: reg.user});
     setDbUser(reg.user);
 
     const retried = await setUsernameApi(username);
     if ('user' in retried) {
+      primeMeSession({user: retried.user});
       setDbUser(retried.user);
     }
   }, []);
@@ -243,6 +256,13 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       await GoogleSignin.signOut();
     } catch {}
     invalidateTokenCache();
+    clearMeSessionCache();
+    clearOwnProfileSessionCache();
+    clearPostEntityCache();
+    clearAuthorSessionCache();
+    clearUnreadCountSessionCache();
+    clearConversationsSessionCache();
+    clearOtherUserProfileSessionCache();
     await clearStoriesFeedCache();
     await clearStoryVideoCache();
     await auth().signOut();
@@ -253,8 +273,9 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   const refreshDbUser = useCallback(async () => {
     if (!firebaseUser) return;
     try {
-      const result = await getMe();
+      const result = await getMe({force: true});
       if ('user' in result) {
+        primeMeSession({user: result.user});
         setDbUser(result.user);
         AsyncStorage.setItem(K_DB_USER, JSON.stringify(result.user));
       }

@@ -35,10 +35,35 @@ export type ApiMessage = {
   createdAt: string;
 };
 
-export async function getConversations(): Promise<{conversations: ApiConversation[]}> {
-  const res = await authedFetch('/chat/conversations');
-  if (!res.ok) throw new Error('Failed to fetch conversations');
-  return res.json() as Promise<{conversations: ApiConversation[]}>;
+let conversationsSession: {conversations: ApiConversation[]} | null = null;
+let conversationsInflight: Promise<{conversations: ApiConversation[]}> | null = null;
+
+export function clearConversationsSessionCache(): void {
+  conversationsSession = null;
+  conversationsInflight = null;
+}
+
+/** One network read per app session unless `force`. */
+export async function getConversations(
+  opts?: {force?: boolean},
+): Promise<{conversations: ApiConversation[]}> {
+  if (!opts?.force && conversationsSession) return conversationsSession;
+  if (!opts?.force && conversationsInflight) return conversationsInflight;
+
+  const run = (async (): Promise<{conversations: ApiConversation[]}> => {
+    const res = await authedFetch('/chat/conversations');
+    if (!res.ok) throw new Error('Failed to fetch conversations');
+    const out = (await res.json()) as {conversations: ApiConversation[]};
+    conversationsSession = out;
+    return out;
+  })();
+
+  if (!opts?.force) conversationsInflight = run;
+  try {
+    return await run;
+  } finally {
+    if (conversationsInflight === run) conversationsInflight = null;
+  }
 }
 
 export async function createConversation(participantId: string): Promise<{conversation: ApiConversation; created: boolean}> {

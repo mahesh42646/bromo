@@ -838,8 +838,22 @@ postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthe
       Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean(),
     ]);
     const followingIds = follows.map((f) => f.followingId);
+    const hasFollows = followingIds.length > 0;
     const likedSet = new Set(likes.map((l) => String(l.targetId)));
     const followingSet = new Set(followingIds.map(String));
+
+    const mapPosts = (rows: Record<string, unknown>[]) =>
+      rows.map((p) => normalizePost(p, likedSet, followingSet, String(dbUser._id)));
+
+    // Match GET /posts/feed for-you: no follows → promoted-only surface (not an empty authorId $in).
+    if (!hasFollows) {
+      const promotedRaw = await getPromotedPostDocs(dbUser._id, [dbUser._id], ["feed", "explore"], 8);
+      const onlyPromoted = promotedRaw.map((p) =>
+        normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
+      );
+      return res.json({ posts: onlyPromoted, tab: "for-you", cursor: null, hasMore: false });
+    }
+
     const posts = await Post.find({
       authorId: { $in: [...followingIds, dbUser._id] },
       ...FEED_TYPES,
@@ -849,11 +863,22 @@ postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthe
       .limit(PAGE_SIZE)
       .populate("authorId", AUTHOR_SELECT)
       .lean();
-    const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
-    const out = posts.map((p) =>
-      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
-    );
-    return res.json({ posts: out, tab: "for-you", cursor: nextCursor, hasMore: posts.length === PAGE_SIZE });
+
+    const hasMoreFriends = posts.length === PAGE_SIZE;
+    const nextCursor = hasMoreFriends ? String(posts[posts.length - 1]._id) : null;
+
+    let friendPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
+    const excludeAuthors = [...followingIds, dbUser._id] as mongoose.Types.ObjectId[];
+    const promotedRaw = await getPromotedPostDocs(dbUser._id, excludeAuthors, ["feed", "explore"], 2);
+    friendPosts = splicePromotedIntoFeed(
+      friendPosts,
+      promotedRaw,
+      likedSet,
+      followingSet,
+      String(dbUser._id),
+    ) as typeof friendPosts;
+
+    return res.json({ posts: friendPosts, tab: "for-you", cursor: nextCursor, hasMore: hasMoreFriends });
   } catch (err) {
     console.error("[posts] feed/initial error:", err);
     return res.status(500).json({ message: "Failed to fetch feed initial page" });
@@ -1008,34 +1033,66 @@ postsRouter.get(
   },
 );
 
-// Cursor-first v2 contracts used by mobile orchestration.
+// Cursor-first v2 contracts — parity with GET /posts/reels (hides, likes, follows, promoted reel).
 postsRouter.get("/reels/initial", requireFirebaseToken, async (req: FirebaseAuthedRequest, res: Response) => {
   try {
     const dbUser = req.dbUser;
     if (!perfFlags.cursorApiV2 || !dbUser || !isCanaryUser(String(dbUser._id))) {
       return res.status(404).json({ message: "reels v2 disabled" });
     }
-    const baseQuery = { type: "reel" as const, ...VISIBLE_POST };
-    const posts = await Post.find(baseQuery)
-      .sort({ _id: -1 })
-      .limit(PAGE_SIZE)
-      .populate("authorId", AUTHOR_SELECT)
-      .lean();
-    const likedSet = new Set<string>();
-    const followingSet = new Set<string>();
-    if (dbUser) {
-      const [likes, follows] = await Promise.all([
-        Like.find({ userId: dbUser._id, targetType: "post", targetId: { $in: posts.map((p) => p._id) } }).select("targetId").lean(),
-        Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
-      ]);
-      likes.forEach((l) => likedSet.add(String(l.targetId)));
-      follows.forEach((f) => followingSet.add(String(f.followingId)));
+
+    const hiddenIds: mongoose.Types.ObjectId[] = [];
+    const hides = await mongoose.connection
+      .collection("post_hides")
+      .find({ userId: dbUser._id })
+      .project({ postId: 1 })
+      .toArray();
+    for (const h of hides) {
+      const pid = h.postId as mongoose.Types.ObjectId | undefined;
+      if (pid) hiddenIds.push(pid);
     }
-    const out = posts.map((p) =>
-      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+
+    const baseQuery = { type: "reel" as const, ...VISIBLE_POST };
+    const idClause = hiddenIds.length ? {_id: {$nin: hiddenIds}} : {};
+    const query = {...baseQuery, ...idClause};
+
+    const [posts, likes, follows] = await Promise.all([
+      Post.find(query)
+        .sort({ _id: -1 })
+        .limit(PAGE_SIZE)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean(),
+      Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean(),
+      Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
+    ]);
+
+    const likedSet = new Set(likes.map((l) => String(l.targetId)));
+    const followingIds = follows.map((f) => f.followingId);
+    const followingSet = new Set(followingIds.map(String));
+
+    let result = posts.map((p) =>
+      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
     );
+
+    const promotedRaw = await getPromotedPostDocs(
+      dbUser._id,
+      [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
+      ["reels", "feed", "explore"],
+      1,
+      "reel",
+    );
+    if (promotedRaw.length) {
+      const rawPr = promotedRaw[0] as Record<string, unknown>;
+      const prId = String(rawPr._id);
+      const p0 = normalizePost(rawPr, likedSet, followingSet, String(dbUser._id));
+      const seen = new Set(result.map((x) => String((x as unknown as {_id: unknown})._id)));
+      if (!seen.has(prId)) {
+        result = [p0, ...result];
+      }
+    }
+
     const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
-    return res.json({ posts: out, hasMore: posts.length === PAGE_SIZE, nextCursor });
+    return res.json({posts: result, hasMore: posts.length === PAGE_SIZE, nextCursor});
   } catch (err) {
     console.error("[posts] reels/initial error:", err);
     return res.status(500).json({ message: "Failed to fetch reels initial page" });
@@ -1052,30 +1109,44 @@ postsRouter.get("/reels/next", requireFirebaseToken, async (req: FirebaseAuthedR
     if (!cursor || !mongoose.Types.ObjectId.isValid(cursor)) {
       return res.status(400).json({ message: "cursor is required" });
     }
-    const posts = await Post.find({
-      type: "reel",
-      ...VISIBLE_POST,
-      _id: { $lt: new mongoose.Types.ObjectId(cursor) },
-    })
-      .sort({ _id: -1 })
-      .limit(PAGE_SIZE)
-      .populate("authorId", AUTHOR_SELECT)
-      .lean();
-    const likedSet = new Set<string>();
-    const followingSet = new Set<string>();
-    if (dbUser) {
-      const [likes, follows] = await Promise.all([
-        Like.find({ userId: dbUser._id, targetType: "post", targetId: { $in: posts.map((p) => p._id) } }).select("targetId").lean(),
-        Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
-      ]);
-      likes.forEach((l) => likedSet.add(String(l.targetId)));
-      follows.forEach((f) => followingSet.add(String(f.followingId)));
+
+    const hiddenIds: mongoose.Types.ObjectId[] = [];
+    const hides = await mongoose.connection
+      .collection("post_hides")
+      .find({ userId: dbUser._id })
+      .project({ postId: 1 })
+      .toArray();
+    for (const h of hides) {
+      const pid = h.postId as mongoose.Types.ObjectId | undefined;
+      if (pid) hiddenIds.push(pid);
     }
+
+    const [posts, likes, follows] = await Promise.all([
+      Post.find({
+        type: "reel",
+        ...VISIBLE_POST,
+        _id: {
+          $lt: new mongoose.Types.ObjectId(cursor),
+          ...(hiddenIds.length ? {$nin: hiddenIds} : {}),
+        },
+      })
+        .sort({ _id: -1 })
+        .limit(PAGE_SIZE)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean(),
+      Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean(),
+      Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean(),
+    ]);
+
+    const likedSet = new Set(likes.map((l) => String(l.targetId)));
+    const followingIds = follows.map((f) => f.followingId);
+    const followingSet = new Set(followingIds.map(String));
+
     const out = posts.map((p) =>
-      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
     );
     const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
-    return res.json({ posts: out, hasMore: posts.length === PAGE_SIZE, nextCursor });
+    return res.json({posts: out, hasMore: posts.length === PAGE_SIZE, nextCursor});
   } catch (err) {
     console.error("[posts] reels/next error:", err);
     return res.status(500).json({ message: "Failed to fetch reels next page" });

@@ -1,5 +1,5 @@
 import {AppState} from 'react-native';
-import {getAuth} from '@react-native-firebase/auth';
+import {getAuth, getIdToken as firebaseGetIdToken} from '@react-native-firebase/auth';
 import {settings} from '../config/settings';
 
 type PerfEventName =
@@ -8,7 +8,6 @@ type PerfEventName =
   | 'home_first_paint'
   | 'reels_first_feed_response'
   | 'reels_first_frame'
-  | 'network_request'
   | 'video_qoe';
 
 type PerfPayload = Record<string, unknown> & {
@@ -42,7 +41,7 @@ function apiBase(): string {
   return base || 'https://bromo.darkunde.in';
 }
 
-export async function trackPerfEvent(event: PerfEventName, data: Record<string, unknown> = {}): Promise<void> {
+export function trackPerfEvent(event: PerfEventName, data: Record<string, unknown> = {}): void {
   const payload: PerfPayload = {
     event,
     ts: now(),
@@ -50,23 +49,29 @@ export async function trackPerfEvent(event: PerfEventName, data: Record<string, 
     appState: flushedAppState,
     ...data,
   };
-  try {
-    const token = await getAuth().currentUser?.getIdToken().catch(() => null);
-    await fetch(`${apiBase()}/posts/perf-event`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? {Authorization: `Bearer ${token}`} : {}),
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    // Telemetry must never block UX.
-  }
-}
-
-export function trackNetworkRequest(name: string, durationMs: number, ok: boolean): void {
-  void trackPerfEvent('network_request', {name, durationMs, ok});
+  void (async () => {
+    try {
+      const user = getAuth().currentUser;
+      const token = user ? await firebaseGetIdToken(user, false).catch(() => null) : null;
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8_000);
+      try {
+        await fetch(`${apiBase()}/posts/perf-event`, {
+          method: 'POST',
+          signal: ctrl.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? {Authorization: `Bearer ${token}`} : {}),
+          },
+          body: JSON.stringify(payload),
+        });
+      } finally {
+        clearTimeout(t);
+      }
+    } catch {
+      // Telemetry must never block UX.
+    }
+  })();
 }
 
 export function trackVideoQoe(data: {

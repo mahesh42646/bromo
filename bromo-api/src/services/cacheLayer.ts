@@ -12,19 +12,28 @@ type RedisLike = {
 };
 
 let redisClientPromise: Promise<RedisLike | null> | null = null;
+let redisDisabled = false;
 
 async function getRedisClient() {
+  if (redisDisabled) return null;
   if (redisClientPromise) return redisClientPromise;
   redisClientPromise = (async () => {
     const url = process.env.REDIS_URL?.trim();
     if (!url) return null;
     try {
       const mod = await import("redis");
-      const client = mod.createClient({ url });
+      const client = mod.createClient({
+        url,
+        socket: { connectTimeout: 1_500 },
+      });
       client.on("error", () => null);
-      await client.connect();
+      await Promise.race([
+        client.connect(),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("redis connect timeout")), 2_000)),
+      ]);
       return client;
     } catch {
+      redisDisabled = true;
       return null;
     }
   })();

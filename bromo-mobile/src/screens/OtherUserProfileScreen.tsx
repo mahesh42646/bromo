@@ -22,6 +22,12 @@ import {getUserGridStats, getUserPosts, type Post, type UserGridStats} from '../
 import {useMessaging} from '../messaging/MessagingContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
+import {peekAuthorSnapshot} from '../lib/authorSessionCache';
+import {
+  getOtherUserProfileBundle,
+  invalidateOtherUserProfile,
+  rememberOtherUserProfileBundle,
+} from '../lib/otherUserProfileSessionCache';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'OtherUserProfile'>;
@@ -30,6 +36,25 @@ function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+function profileFromAuthorPeek(userId: string): UserProfile | null {
+  const a = peekAuthorSnapshot(userId);
+  if (!a) return null;
+  return {
+    _id: userId,
+    username: a.username ?? '',
+    displayName: a.displayName ?? 'User',
+    profilePicture: a.profilePicture ?? '',
+    bio: '',
+    website: '',
+    followersCount: 0,
+    followingCount: 0,
+    postsCount: 0,
+    isPrivate: false,
+    emailVerified: false,
+    followStatus: 'none',
+  };
 }
 
 export function OtherUserProfileScreen() {
@@ -44,7 +69,7 @@ export function OtherUserProfileScreen() {
   const isSelf = dbUser?._id === userId;
   const [startingChat, setStartingChat] = useState(false);
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(() => profileFromAuthorPeek(userId));
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingPosts, setLoadingPosts] = useState(false);
@@ -73,39 +98,79 @@ export function OtherUserProfileScreen() {
     }
   }, [userId, navigation, openThreadForUser, profile]);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await getUserProfile(userId);
-      setProfile(res.user);
-      setFollowStatus(res.user.followStatus ?? 'none');
-    } catch {}
-    try {
-      const s = await getUserGridStats(userId);
-      setGridStats(s);
-    } catch {
-      setGridStats(null);
-    }
-  }, [userId]);
+  const fetchProfilePage = useCallback(
+    async (forceNetwork: boolean) => {
+      if (!forceNetwork) {
+        const b = getOtherUserProfileBundle(userId);
+        if (b) {
+          setProfile(b.profile);
+          setFollowStatus(b.profile.followStatus ?? 'none');
+          setGridStats(b.gridStats);
+          setPosts(b.posts);
+          return;
+        }
+      }
 
-  const loadPosts = useCallback(async () => {
-    setLoadingPosts(true);
-    try {
-      const res = await getUserPosts(userId, 'post', 1);
-      setPosts(res.posts);
-    } catch {}
-    setLoadingPosts(false);
-  }, [userId]);
+      const [res, gridRes, postsRes] = await Promise.allSettled([
+        getUserProfile(userId),
+        getUserGridStats(userId),
+        getUserPosts(userId, 'post', 1),
+      ]);
+
+      let prof: UserProfile | null = null;
+      if (res.status === 'fulfilled') {
+        prof = res.value.user;
+        setProfile(res.value.user);
+        setFollowStatus(res.value.user.followStatus ?? 'none');
+      }
+
+      let grid: UserGridStats | null = null;
+      if (gridRes.status === 'fulfilled') {
+        grid = gridRes.value;
+        setGridStats(grid);
+      } else {
+        setGridStats(null);
+      }
+
+      let plist: Post[] = [];
+      if (postsRes.status === 'fulfilled') {
+        plist = postsRes.value.posts;
+        setPosts(plist);
+      }
+
+      if (prof) {
+        rememberOtherUserProfileBundle(userId, {profile: prof, gridStats: grid, posts: plist});
+      }
+    },
+    [userId],
+  );
 
   useEffect(() => {
+    setProfile(profileFromAuthorPeek(userId));
+    setPosts([]);
+    setGridStats(null);
+    setFollowStatus('none');
     setLoading(true);
-    Promise.all([load(), loadPosts()]).finally(() => setLoading(false));
-  }, [load, loadPosts]);
+    setLoadingPosts(true);
+    fetchProfilePage(false)
+      .catch(() => null)
+      .finally(() => {
+        setLoading(false);
+        setLoadingPosts(false);
+      });
+  }, [fetchProfilePage]);
 
   const onRefresh = useCallback(async () => {
+    invalidateOtherUserProfile(userId);
     setRefreshing(true);
-    await Promise.all([load(), loadPosts()]);
-    setRefreshing(false);
-  }, [load, loadPosts]);
+    setLoadingPosts(true);
+    try {
+      await fetchProfilePage(true);
+    } finally {
+      setRefreshing(false);
+      setLoadingPosts(false);
+    }
+  }, [fetchProfilePage, userId]);
 
   const handleFollow = async () => {
     try {

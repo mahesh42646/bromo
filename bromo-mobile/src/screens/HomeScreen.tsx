@@ -76,6 +76,8 @@ import {
   type Post,
   type StoryGroup,
 } from '../api/postsApi';
+import {mergePostsWithSessionCache, prefetchPostThumbnails} from '../lib/postEntityCache';
+import {getAuthorMerge, rememberAuthor} from '../lib/authorSessionCache';
 import {logPromotionDelivery} from '../api/promotionsApi';
 import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
 import {hashString, pickAdSlots} from '../lib/adSlots';
@@ -116,6 +118,19 @@ function dedupePostsById(posts: Post[]): Post[] {
     if (!m.has(p._id)) m.set(p._id, p);
   }
   return [...m.values()];
+}
+
+function enrichFeedChunk(posts: Post[]): Post[] {
+  const merged = mergePostsWithSessionCache(posts);
+  const withAuthors = merged.map(p => ({
+    ...p,
+    author: p.author ? getAuthorMerge(p.author) : p.author,
+  }));
+  for (const p of withAuthors) {
+    if (p.author) rememberAuthor(p.author);
+  }
+  prefetchPostThumbnails(withAuthors);
+  return withAuthors;
 }
 
 function timeAgo(dateStr: string): string {
@@ -842,7 +857,9 @@ export function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const topicPageRef = useRef(1);
   const homeCursorRef = useRef<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
+  /** Prevents onEndReached from firing /feed?page before the first /feed/initial completes (race = duplicate fetches + wrong state). */
+  const homeFeedInitialDoneRef = useRef(false);
+  const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const firstNetworkResponseSentRef = useRef(false);
   const firstPaintSentRef = useRef(false);
@@ -906,6 +923,7 @@ export function HomeScreen() {
 
     if (reset && isHome) {
       homeCursorRef.current = null;
+      homeFeedInitialDoneRef.current = false;
     }
 
     // Defer auxiliary fetches slightly so the feed payload owns first paint bandwidth.
@@ -946,16 +964,18 @@ export function HomeScreen() {
               }))
           : homeCursorRef.current
             ? await getFeedNext(homeCursorRef.current)
-            : await getFeed({tab: 'for-you'}).then(r => ({
-                posts: r.posts,
-                tab: 'for-you',
-                cursor: r.nextCursorFriends ?? null,
-                hasMore: Boolean(r.hasMoreFriends),
-              }));
+            : perfFlags.cursorApiV2
+              ? {posts: [] as Post[], tab: 'for-you', cursor: null, hasMore: false}
+              : await getFeed({tab: 'for-you'}).then(r => ({
+                  posts: r.posts,
+                  tab: 'for-you',
+                  cursor: r.nextCursorFriends ?? null,
+                  hasMore: Boolean(r.hasMoreFriends),
+                }));
 
         homeCursorRef.current = res.cursor ?? null;
 
-        const mergedPosts = dedupePostsById(res.posts);
+        const mergedPosts = dedupePostsById(enrichFeedChunk(res.posts));
         if (reset) {
           setPosts(mergedPosts);
           if (!firstNetworkResponseSentRef.current) {
@@ -975,11 +995,12 @@ export function HomeScreen() {
         if (reset) topicPageRef.current = 1;
         const p = topicPageRef.current;
         const res = await getFeed({tab, page: p});
+        const chunk = enrichFeedChunk(res.posts);
         if (reset) {
-          setPosts(res.posts);
+          setPosts(chunk);
           topicPageRef.current = 2;
         } else {
-          setPosts(prev => [...prev, ...res.posts]);
+          setPosts(prev => [...prev, ...chunk]);
           topicPageRef.current += 1;
         }
         setHasMore(res.hasMore ?? false);
@@ -993,6 +1014,10 @@ export function HomeScreen() {
       }
       if (!transient) {
         console.error('[HomeScreen] loadData error:', err);
+      }
+    } finally {
+      if (isHome) {
+        homeFeedInitialDoneRef.current = true;
       }
     }
   }, [activeCategory]);
@@ -1052,11 +1077,12 @@ export function HomeScreen() {
   }, [loadData]);
 
   const onLoadMore = useCallback(async () => {
+    if (activeCategory === 'home' && !homeFeedInitialDoneRef.current) return;
     if (!hasMore || loadingMore) return;
     setLoadingMore(true);
     await loadData(false);
     setLoadingMore(false);
-  }, [hasMore, loadingMore, loadData]);
+  }, [activeCategory, hasMore, loadingMore, loadData]);
 
   const handleLikeToggle = useCallback((postId: string) => {
     setPosts(prev =>
@@ -1171,7 +1197,8 @@ export function HomeScreen() {
         trendingScore: p.trendingScore ?? 0,
         feedCategory: p.feedCategory ?? 'general',
       };
-      setPosts(prev => (prev.some(x => x._id === enriched._id) ? prev : [enriched, ...prev]));
+      const [hydrated] = enrichFeedChunk([enriched]);
+      setPosts(prev => (prev.some(x => x._id === hydrated._id) ? prev : [hydrated, ...prev]));
     });
     const unsubSeen = DeviceEventEmitter.addListener('bromo:storiesChanged', () => {
       void clearStoriesFeedCache()

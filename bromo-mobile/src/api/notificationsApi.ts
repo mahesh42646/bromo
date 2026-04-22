@@ -38,14 +38,37 @@ export async function getNotifications(page = 1, unreadOnly = false): Promise<No
   return res.json() as Promise<NotificationsResponse>;
 }
 
-export async function getUnreadCount(): Promise<number> {
+let unreadCountSession: number | null = null;
+let unreadCountInflight: Promise<number> | null = null;
+
+export function clearUnreadCountSessionCache(): void {
+  unreadCountSession = null;
+  unreadCountInflight = null;
+}
+
+/** One network read per app session unless `force` (logout clears cache). */
+export async function getUnreadCount(opts?: {force?: boolean}): Promise<number> {
+  if (!opts?.force && unreadCountSession !== null) return unreadCountSession;
+  if (!opts?.force && unreadCountInflight) return unreadCountInflight;
+
+  const run = (async (): Promise<number> => {
+    try {
+      const res = await authedFetch('/notifications/unread-count');
+      if (!res.ok) return 0;
+      const data = await res.json() as {count: number};
+      const c = data.count;
+      unreadCountSession = c;
+      return c;
+    } catch {
+      return 0;
+    }
+  })();
+
+  if (!opts?.force) unreadCountInflight = run;
   try {
-    const res = await authedFetch('/notifications/unread-count');
-    if (!res.ok) return 0;
-    const data = await res.json() as {count: number};
-    return data.count;
-  } catch {
-    return 0;
+    return await run;
+  } finally {
+    if (unreadCountInflight === run) unreadCountInflight = null;
   }
 }
 

@@ -74,9 +74,24 @@ import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
 import {perfMark, perfMeasure, trackPerfEvent} from '../lib/perfTelemetry';
 import {peekReelFeedCache, saveReelFeedCache} from '../lib/reelFeedCache';
+import {getCachedPost, mergePostsWithSessionCache, prefetchPostThumbnails} from '../lib/postEntityCache';
+import {getAuthorMerge, rememberAuthor} from '../lib/authorSessionCache';
 import {perfFlags} from '../config/perfFlags';
 import type {ThemePalette} from '../config/platform-theme';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
+
+function enrichReelChunk(posts: Post[]): Post[] {
+  const merged = mergePostsWithSessionCache(posts);
+  const withAuthors = merged.map(p => ({
+    ...p,
+    author: p.author ? getAuthorMerge(p.author) : p.author,
+  }));
+  for (const p of withAuthors) {
+    if (p.author) rememberAuthor(p.author);
+  }
+  prefetchPostThumbnails(withAuthors);
+  return withAuthors;
+}
 
 type Nav = NavigationProp<Record<string, object | undefined>> & {
   getParent: () => {navigate: (name: string, params?: object) => void} | undefined;
@@ -854,7 +869,8 @@ export function ReelsScreen() {
   const listRef = useRef<FlatList>(null);
   const pageRef = useRef(1);
   const cursorRef = useRef<string | null>(null);
-  const hasMoreRef = useRef(true);
+  const hasMoreRef = useRef(false);
+  const reelsInitialLoadDoneRef = useRef(false);
   const loadingMoreRef = useRef(false);
   const activeIndexRef = useRef(0);
   const displayReelsLenRef = useRef(0);
@@ -903,10 +919,17 @@ export function ReelsScreen() {
 
   useEffect(() => {
     if (!initialPostId || !authReady) return;
+    const cached = getCachedPost(initialPostId);
+    if (cached?.type === 'reel') {
+      const [h] = enrichReelChunk([cached]);
+      setReels(prev => (prev.some(r => r._id === h._id) ? prev : [h, ...prev]));
+      return;
+    }
     getPost(initialPostId)
       .then(({post}) => {
         if (post.type !== 'reel') return;
-        setReels(prev => (prev.some(r => r._id === post._id) ? prev : [post, ...prev]));
+        const [h] = enrichReelChunk([post]);
+        setReels(prev => (prev.some(r => r._id === h._id) ? prev : [h, ...prev]));
       })
       .catch(() => null);
   }, [initialPostId, authReady]);
@@ -934,22 +957,28 @@ export function ReelsScreen() {
   }, []);
 
   const loadReels = useCallback(async (reset = false, retry = 0) => {
+    if (reset) {
+      reelsInitialLoadDoneRef.current = false;
+    }
     try {
       const [res, adsRes] = await Promise.all([
         reset
           ? (perfFlags.cursorApiV2 ? getReelsInitial() : getReels(1).then(r => ({posts: r.posts, hasMore: r.hasMore, nextCursor: null})))
           : cursorRef.current
             ? getReelsNext(cursorRef.current)
-            : getReels(pageRef.current).then(r => ({posts: r.posts, hasMore: r.hasMore, nextCursor: null})),
+            : perfFlags.cursorApiV2
+              ? {posts: [] as Post[], hasMore: false, nextCursor: null}
+              : getReels(pageRef.current).then(r => ({posts: r.posts, hasMore: r.hasMore, nextCursor: null})),
         reset ? fetchAds('reels', 3) : Promise.resolve(null),
       ]);
       if (reset) {
-        setReels(res.posts);
-        void saveReelFeedCache(res.posts);
+        const hydrated = enrichReelChunk(res.posts);
+        setReels(hydrated);
+        void saveReelFeedCache(hydrated);
         if (!firstResponseSentRef.current) {
           firstResponseSentRef.current = true;
           const ms = perfMeasure('reels_first_feed_response_ms', 'app_open_reels');
-          void trackPerfEvent('reels_first_feed_response', {durationMs: ms, items: res.posts.length});
+          void trackPerfEvent('reels_first_feed_response', {durationMs: ms, items: hydrated.length});
         }
         if (adsRes) {
           setTimeout(() => setReelAds(adsRes), 250);
@@ -957,9 +986,10 @@ export function ReelsScreen() {
         pageRef.current = 2;
         cursorRef.current = res.nextCursor;
       } else {
+        const more = enrichReelChunk(res.posts);
         setReels(prev => {
           // Unload reels more than 10 positions behind current to save memory
-          const combined = [...prev, ...res.posts];
+          const combined = [...prev, ...more];
           return combined;
         });
         pageRef.current += 1;
@@ -976,6 +1006,8 @@ export function ReelsScreen() {
       if (!transient) {
         console.error('[ReelsScreen] load error:', err);
       }
+    } finally {
+      reelsInitialLoadDoneRef.current = true;
     }
   }, []);
 
@@ -1018,9 +1050,10 @@ export function ReelsScreen() {
         avgWatchTimeMs: p.avgWatchTimeMs ?? 0,
         trendingScore: p.trendingScore ?? 0,
       };
+      const [hydrated] = enrichReelChunk([enriched]);
       setReels(prev => {
-        if (prev.some(r => r._id === enriched._id)) return prev;
-        return [enriched, ...prev];
+        if (prev.some(r => r._id === hydrated._id)) return prev;
+        return [hydrated, ...prev];
       });
     });
     const unsubLike = socketService.on('post:like', ({postId, likesCount, liked}) => {
@@ -1057,6 +1090,7 @@ export function ReelsScreen() {
   }, []);
 
   const onLoadMore = useCallback(async () => {
+    if (!reelsInitialLoadDoneRef.current) return;
     if (!hasMoreRef.current || loadingMoreRef.current) return;
     loadingMoreRef.current = true;
     setLoadingMore(true);

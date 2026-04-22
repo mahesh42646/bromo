@@ -17,6 +17,10 @@ import {
   type ThemePalette,
 } from '../config/platform-theme';
 import {settings} from '../config/settings';
+import {
+  hasThemeContractFetchedThisSession,
+  markThemeContractFetchedThisSession,
+} from '../lib/sessionFlags';
 
 const THEME_CACHE_KEY = '@bromo/theme_contract_v2';
 const THEME_CACHE_TTL = 5 * 60 * 1000; // 5 min — stale-while-revalidate
@@ -44,7 +48,8 @@ type ThemeContextValue = {
   palette: ThemePalette;
   isDark: boolean;
   toggleTheme: () => void;
-  refresh: () => Promise<void>;
+  /** Pass `true` to bypass the one-fetch-per-session guard (e.g. dev menu). */
+  refresh: (forceNetwork?: boolean) => Promise<void>;
 };
 
 const ThemeContext = createContext<ThemeContextValue>({
@@ -57,7 +62,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   ),
   isDark: true,
   toggleTheme: () => {},
-  refresh: async () => {},
+  refresh: async (_force?: boolean) => {},
 });
 
 export function ThemeProvider({children}: {children: React.ReactNode}) {
@@ -73,10 +78,10 @@ export function ThemeProvider({children}: {children: React.ReactNode}) {
     });
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (forceNetwork = false) => {
+    if (!forceNetwork && hasThemeContractFetchedThisSession()) return;
     const now = Date.now();
-    // Debounce: don't refetch more often than themeRefreshMs even if called directly
-    if (now - lastFetchAt.current < settings.themeRefreshMs - 1000) return;
+    if (!forceNetwork && now - lastFetchAt.current < settings.themeRefreshMs - 1000) return;
     lastFetchAt.current = now;
     const candidates = [
       settings.webThemeContractUrl,
@@ -87,19 +92,15 @@ export function ThemeProvider({children}: {children: React.ReactNode}) {
       const c = await fetchThemeContractFromUrls(candidates);
       setContract(c);
       saveContractCache(c);
+      markThemeContractFetchedThisSession();
     } catch {
       // keep cached / default
     }
   }, []);
 
   useEffect(() => {
-    // Initial fetch (non-blocking — cache already loaded above)
-    refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    const id = setInterval(refresh, settings.themeRefreshMs);
-    return () => clearInterval(id);
+    // Initial fetch (non-blocking — AsyncStorage cache already loaded above)
+    refresh(false);
   }, [refresh]);
 
   const isDark = useMemo(() => {
