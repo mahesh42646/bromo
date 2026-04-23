@@ -61,6 +61,12 @@ export type AppStackParamList = {
   StoreWebShare: {storeId: string};
   StoreReachDetail: {storeId: string};
   StoreCoinSettings: {storeId: string};
+  // ── New real store system ──
+  CreateStore: undefined;
+  ManageStore: undefined;
+  StorePublicProfile: {storeId: string};
+  AllStores: undefined;
+  AddProduct: {storeId: string};
 
   CreateAdStep1: undefined;
   CreateAdStep2: undefined;

@@ -62,6 +62,11 @@ import {
   StoreSubscriptionPlansScreen,
   StoreWebShareScreen,
 } from '../screens/sop/bundles/storeAdsBundle';
+import {CreateStoreScreen} from '../screens/store/CreateStoreScreen';
+import {MyStoreDashboardScreen as ManageStoreScreen} from '../screens/store/MyStoreDashboardScreen';
+import {StorePublicProfileScreen} from '../screens/store/StorePublicProfileScreen';
+import {AllStoresScreen} from '../screens/store/AllStoresScreen';
+import {AddProductScreen} from '../screens/store/AddProductScreen';
 import {
   AudioDetailScreen,
   AutoDmScreen,
@@ -154,6 +159,12 @@ export function MainAppNavigator() {
       <Stack.Screen name="StoreWebShare" component={StoreWebShareScreen} />
       <Stack.Screen name="StoreReachDetail" component={StoreReachDetailScreen} />
       <Stack.Screen name="StoreCoinSettings" component={StoreCoinSettingsScreen} />
+      {/* ── New real store screens ── */}
+      <Stack.Screen name="CreateStore" component={CreateStoreScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="ManageStore" component={ManageStoreScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="StorePublicProfile" component={StorePublicProfileScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="AllStores" component={AllStoresScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="AddProduct" component={AddProductScreen} options={{animation: 'slide_from_bottom', presentation: 'modal'}} />
       <Stack.Screen name="CreateAdStep1" component={CreateAdStep1Screen} />
       <Stack.Screen name="CreateAdStep2" component={CreateAdStep2Screen} />
       <Stack.Screen name="CreateAdStep3" component={CreateAdStep3Screen} />

@@ -142,6 +142,7 @@ export type DbUser = {
   followersCount: number;
   followingCount: number;
   postsCount: number;
+  storeId?: string | null;
 };
 
 export async function getEmailByUsername(username: string): Promise<{email: string}> {

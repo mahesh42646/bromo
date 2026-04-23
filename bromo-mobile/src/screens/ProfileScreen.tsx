@@ -47,6 +47,8 @@ import {
   Share2,
   PenSquare,
   TrendingUp,
+  Store,
+  ShoppingBag,
 } from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
@@ -679,6 +681,59 @@ export function ProfileScreen() {
               <ChevronRight size={18} color={palette.foregroundSubtle} />
             </View>
           </Pressable>
+
+          {/* ── Store section ── */}
+          {dbUser?.storeId ? (
+            <Pressable
+              onPress={() => parentNavigate(navigation, 'ManageStore')}
+              style={{
+                marginTop: 12,
+                padding: 14,
+                borderRadius: 12,
+                backgroundColor: `${palette.primary}10`,
+                borderWidth: 1,
+                borderColor: `${palette.primary}30`,
+              }}>
+              <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                <View style={{width: 32, height: 32, borderRadius: 10, backgroundColor: `${palette.primary}20`, alignItems: 'center', justifyContent: 'center'}}>
+                  <Store size={17} color={palette.primary} />
+                </View>
+                <View style={{flex: 1}}>
+                  <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '800'}}>Manage Store</Text>
+                  <Text style={{color: palette.foregroundSubtle, fontSize: 12, marginTop: 1}}>Products, analytics & store profile</Text>
+                </View>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+                  <View style={[{backgroundColor: `${palette.primary}20`, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6}]}>
+                    <Text style={{color: palette.primary, fontSize: 10, fontWeight: '800'}}>STORE OWNER</Text>
+                  </View>
+                  <ChevronRight size={16} color={palette.foregroundSubtle} />
+                </View>
+              </View>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => parentNavigate(navigation, 'CreateStore')}
+              style={{
+                marginTop: 12,
+                padding: 14,
+                borderRadius: 12,
+                backgroundColor: palette.glassFaint,
+                borderWidth: 1,
+                borderColor: palette.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+              }}>
+              <View style={{width: 36, height: 36, borderRadius: 10, backgroundColor: `${palette.accent}15`, alignItems: 'center', justifyContent: 'center'}}>
+                <ShoppingBag size={18} color={palette.accent} />
+              </View>
+              <View style={{flex: 1}}>
+                <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '700'}}>Open Your Store</Text>
+                <Text style={{color: palette.foregroundSubtle, fontSize: 12, marginTop: 1}}>Sell products and reach local customers</Text>
+              </View>
+              <ChevronRight size={16} color={palette.foregroundSubtle} />
+            </Pressable>
+          )}
         </View>
 
         {discoverPeople.filter(u => !dismissedSuggest.includes(u._id)).length > 0 ? (

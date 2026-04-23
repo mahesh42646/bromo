@@ -1,0 +1,24 @@
+- generic [active]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]: "N"
+      - heading "NXT Health Admin" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Sign in to continue
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: Email
+        - generic [ref=e12]:
+          - img [ref=e13]
+          - textbox "admin@nxthealth.com" [ref=e16]
+      - generic [ref=e17]:
+        - generic [ref=e18]: Password
+        - generic [ref=e19]:
+          - img [ref=e20]
+          - textbox "••••••••" [ref=e23]
+          - button [ref=e24] [cursor=pointer]:
+            - img [ref=e25]
+      - button "Sign In" [ref=e28] [cursor=pointer]
+    - paragraph [ref=e29]: Authorized access only — NXT Health Admin
+  - button "Open Next.js Dev Tools" [ref=e35] [cursor=pointer]:
+    - img [ref=e36]
+  - alert [ref=e39]

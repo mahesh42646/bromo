@@ -52,6 +52,7 @@ import { promotionsRouter } from "./routes/promotions.js";
 import { affiliateAdminRouter, affiliatePublicRouter } from "./routes/affiliateProducts.js";
 import { draftsRouter } from "./routes/drafts.js";
 import { placesRouter } from "./routes/places.js";
+import { storeRouter } from "./routes/storeRoutes.js";
 import { startPromotionBillingWorker } from "./workers/promotionBillingWorker.js";
 import { initFirebase } from "./config/firebase.js";
 
@@ -160,6 +161,7 @@ export function createApp() {
   app.use("/products", affiliatePublicRouter);
   app.use("/drafts", draftsRouter);
   app.use("/places", placesRouter);
+  app.use("/stores", storeRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });

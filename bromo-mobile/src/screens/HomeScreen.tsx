@@ -96,6 +96,7 @@ import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
 import {openExternalUrl} from '../lib/openExternalUrl';
 import {perfMark, perfMeasure, trackPerfEvent} from '../lib/perfTelemetry';
 import {perfFlags} from '../config/perfFlags';
+import {getFeaturedStores, type Store as BromoStore} from '../api/storeApi';
 
 type IconComp = ComponentType<{size?: number; color?: string}>;
 
@@ -872,6 +873,7 @@ export function HomeScreen() {
       : false;
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [trendingReels, setTrendingReels] = useState<Post[]>([]);
+  const [featuredStores, setFeaturedStores] = useState<BromoStore[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const topicPageRef = useRef(1);
@@ -953,6 +955,9 @@ export function HomeScreen() {
           .catch(() => null);
         getUserSuggestions(6)
           .then(r => setSuggestions(r.users))
+          .catch(() => null);
+        getFeaturedStores()
+          .then(s => setFeaturedStores(s))
           .catch(() => null);
         fetchAds('feed', 5)
           .then(a => setFeedAds(a))
@@ -1264,11 +1269,15 @@ export function HomeScreen() {
     | {kind: 'suggestions'; key: string}
     | {kind: 'stories'; key: string}
     | {kind: 'trendingReels'; key: string}
+    | {kind: 'featuredStores'; key: string}
     | {kind: 'ad'; ad: Ad; key: string};
 
   const feedItems = useMemo((): HomeFeedItem[] => {
     const items: HomeFeedItem[] = [];
     items.push({kind: 'stories', key: 'stories'});
+    if (activeCategory === 'home' && featuredStores.length > 0) {
+      items.push({kind: 'featuredStores', key: 'featured-stores'});
+    }
     if (activeCategory === 'home' && trendingReels.length > 0) {
       items.push({kind: 'trendingReels', key: 'trending-reels'});
     }
@@ -1294,7 +1303,7 @@ export function HomeScreen() {
       }
     }
     return items;
-  }, [activeCategory, trendingReels, posts, suggestions, feedAds]);
+  }, [activeCategory, trendingReels, featuredStores, posts, suggestions, feedAds]);
 
   useEffect(() => {
     if (feedAds.length > 0) prefetchAdMedia(feedAds);
@@ -1634,6 +1643,53 @@ export function HomeScreen() {
               );
             }
 
+            if (item.kind === 'featuredStores') {
+              return (
+                <View style={{borderBottomWidth: 1, borderBottomColor: palette.border, paddingBottom: 14}}>
+                  <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10}}>
+                    <ThemedText variant="heading" style={{fontSize: 15, fontWeight: '800'}}>
+                      Stores Near You
+                    </ThemedText>
+                    <Pressable onPress={() => parentNavigate(navigation, 'AllStores')} hitSlop={8}>
+                      <Text style={{color: palette.primary, fontWeight: '800', fontSize: 12}}>SEE ALL</Text>
+                    </Pressable>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{paddingHorizontal: 14, gap: 12}}>
+                    {featuredStores.map(store => (
+                      <Pressable
+                        key={store._id}
+                        onPress={() => parentNavigate(navigation, 'StorePublicProfile', {storeId: store._id})}
+                        style={({pressed}) => ({
+                          width: 130,
+                          opacity: pressed ? 0.8 : 1,
+                        })}>
+                        <View style={{width: 130, height: 90, borderRadius: 12, overflow: 'hidden', backgroundColor: `${palette.primary}15`}}>
+                          {store.bannerImage ? (
+                            <Image source={{uri: store.bannerImage}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
+                          ) : store.profilePhoto ? (
+                            <Image source={{uri: store.profilePhoto}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
+                          ) : (
+                            <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
+                              <Text style={{color: palette.primary, fontSize: 28, fontWeight: '800'}}>{store.name[0]}</Text>
+                            </View>
+                          )}
+                          {store.hasDelivery && (
+                            <View style={{position: 'absolute', top: 6, right: 6, backgroundColor: palette.success, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2}}>
+                              <Text style={{color: '#fff', fontSize: 8, fontWeight: '800'}}>DELIVERY</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '700', marginTop: 6}} numberOfLines={1}>{store.name}</Text>
+                        <Text style={{color: palette.primary, fontSize: 10, fontWeight: '600', marginTop: 1}} numberOfLines={1}>{store.category}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              );
+            }
             if (item.kind === 'trendingReels') {
               return (
                 <View style={{borderBottomWidth: 1, borderBottomColor: palette.border, paddingBottom: 14}}>

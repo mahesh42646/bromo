@@ -1,0 +1,25 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - img [ref=e9]
+        - generic [ref=e12]:
+          - heading "BROMO Admin" [level=1] [ref=e13]
+          - paragraph [ref=e14]: Secure access for BROMO administrators.
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - text: Email
+          - generic [ref=e17]:
+            - img
+            - textbox "Email" [ref=e18]:
+              - /placeholder: you@organization.com
+        - generic [ref=e19]:
+          - text: Password
+          - generic [ref=e20]:
+            - img
+            - textbox "Password" [ref=e21]:
+              - /placeholder: ••••••••
+        - button "Continue" [ref=e22]:
+          - generic [ref=e25]: Continue
+    - paragraph [ref=e26]: Protected area · use credentials issued by your org
+  - alert [ref=e27]

@@ -1,447 +1,439 @@
-import React, {useState} from 'react';
-import type {ComponentType} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {
   Bell,
-  SlidersHorizontal,
   MapPin,
   Star,
   ChevronRight,
-  Zap,
-  ShoppingCart,
-  Tag,
+  Truck,
+  Package,
+  Search,
+  SlidersHorizontal,
   Store,
+  X,
 } from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {ThemedText} from '../components/ui/ThemedText';
-import {SearchBar} from '../components/ui/SearchBar';
-import {Card} from '../components/ui/Card';
-import {Badge} from '../components/ui/Badge';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
+import {listStores, getFeaturedStores, STORE_CATEGORIES, type Store as BromoStore} from '../api/storeApi';
+import Geolocation from '@react-native-community/geolocation';
 
-type PillIcon = ComponentType<{size?: number; color?: string}>;
-
-const FILTER_PILLS: {id: string; label: string; Icon?: PillIcon}[] = [
-  {id: 'all', label: 'All Stores'},
-  {id: 'trending', label: 'Trending', Icon: Zap},
-  {id: 'premium', label: 'Premium Only'},
-  {id: 'offers', label: 'Offers'},
-  {id: 'nearby', label: 'Near Me', Icon: MapPin},
-];
-
-const FEATURED = [
-  {
-    id: '1',
-    name: 'Nike Elite Store',
-    image: 'https://images.unsplash.com/photo-1555133539-4a34610018f1?w=500',
-    offer: 'Claim 40% Off Today',
-    badge: 'Exclusive',
-  },
-  {
-    id: '2',
-    name: 'Coffee Republic',
-    image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=500',
-    offer: 'Buy 1 Get 1 Free',
-    badge: 'Hot Deal',
-  },
-  {
-    id: '3',
-    name: 'Royal Electronics',
-    image: 'https://images.unsplash.com/photo-1604719312563-8912e9223c6a?w=500',
-    offer: 'Extra 10% via BROMO Pay',
-    badge: 'Partner',
-  },
-];
-
-const STORES = [
-  {
-    id: '1',
-    name: 'Nike Elite Store',
-    category: 'Fashion',
-    image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200',
-    rating: 4.8,
-    reviews: 1240,
-    distance: '0.8 km',
-    offer: '40% Off',
-    tier: 'premium',
-    tags: ['Shoes', 'Sports', 'Apparel'],
-  },
-  {
-    id: '2',
-    name: 'Royal Electronics',
-    category: 'Electronics',
-    image: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=200',
-    rating: 4.6,
-    reviews: 890,
-    distance: '1.2 km',
-    offer: '10% BROMO Pay',
-    tier: 'glow',
-    tags: ['Phones', 'Laptops', 'Gadgets'],
-  },
-  {
-    id: '3',
-    name: 'Spice Garden Restaurant',
-    category: 'Food & Dining',
-    image: 'https://images.unsplash.com/photo-1555133539-4a34610018f1?w=200',
-    rating: 4.9,
-    reviews: 2100,
-    distance: '0.3 km',
-    offer: 'Free Delivery',
-    tier: 'basic',
-    tags: ['Indian', 'Thali', 'Biryani'],
-  },
-  {
-    id: '4',
-    name: 'FitLife Gym',
-    category: 'Health & Fitness',
-    image: 'https://images.unsplash.com/photo-1533107862482-0e6974b06ec4?w=200',
-    rating: 4.7,
-    reviews: 560,
-    distance: '2.1 km',
-    offer: '1st Month Free',
-    tier: 'glow',
-    tags: ['Gym', 'Yoga', 'CrossFit'],
-  },
-];
-
-const TIER_COLORS: Record<string, {label: string}> = {
-  premium: {label: 'PREMIUM'},
-  glow: {label: 'GLOW'},
-  basic: {label: 'BASIC'},
-};
-
-function StoreCard({
-  store,
-  index,
-  onPress,
-}: {
-  store: (typeof STORES)[0];
-  index: number;
-  onPress: () => void;
-}) {
-  const {palette, contract} = useTheme();
-  const {borderRadiusScale} = contract.brandGuidelines;
-  const radius = borderRadiusScale === 'bold' ? 24 : 16;
-  const isEven = index % 2 === 0;
-  const tier = TIER_COLORS[store.tier] || TIER_COLORS.basic;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({pressed}) => ({
-        flexDirection: isEven ? 'row' : 'row-reverse',
-        gap: 16,
-        alignItems: 'center',
-        backgroundColor: palette.card,
-        borderWidth: 1,
-        borderColor: palette.glassFaint,
-        padding: 14,
-        borderRadius: radius,
-        marginBottom: 20,
-        opacity: pressed ? 0.85 : 1,
-        position: 'relative',
-      })}>
-      {/* Tier badge */}
-      <View
-        style={{
-          position: 'absolute',
-          top: -8,
-          left: isEven ? 14 : undefined,
-          right: isEven ? undefined : 14,
-          backgroundColor: store.tier === 'premium' ? palette.warning : store.tier === 'glow' ? palette.accent : palette.surfaceHigh,
-          borderRadius: 8,
-          paddingHorizontal: 8,
-          paddingVertical: 3,
-        }}>
-        <Text style={{
-          color: store.tier === 'premium' ? palette.background : store.tier === 'glow' ? palette.accentForeground : palette.foregroundMuted,
-          fontSize: 8,
-          fontWeight: '900',
-          letterSpacing: 1,
-        }}>
-          {tier.label}
-        </Text>
-      </View>
-
-      {/* Image */}
-      <View
-        style={{
-          width: 90,
-          height: 90,
-          borderRadius: borderRadiusScale === 'bold' ? 20 : 12,
-          overflow: 'hidden',
-          flexShrink: 0,
-        }}>
-        <Image source={{uri: store.image}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
-      </View>
-
-      {/* Info */}
-      <View style={{flex: 1, alignItems: isEven ? 'flex-start' : 'flex-end'}}>
-        <ThemedText variant="label" style={{fontSize: 13}}>{store.name}</ThemedText>
-        <ThemedText variant="caption" style={{marginTop: 2}}>{store.category}</ThemedText>
-
-        {/* Rating */}
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4}}>
-          <Star size={11} color={palette.warning} fill={palette.warning} />
-          <Text style={{color: palette.warning, fontSize: 11, fontWeight: '700'}}>{store.rating}</Text>
-          <ThemedText variant="caption">({store.reviews})</ThemedText>
-        </View>
-
-        {/* Distance + Offer */}
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4}}>
-          <View style={{flexDirection: 'row', alignItems: 'center', gap: 3}}>
-            <MapPin size={10} color={palette.mutedForeground} />
-            <ThemedText variant="caption">{store.distance}</ThemedText>
-          </View>
-          <Badge label={store.offer} variant="green" />
-        </View>
-
-        {/* Tags */}
-        <View style={{flexDirection: 'row', gap: 4, marginTop: 6, flexWrap: 'wrap'}}>
-          {store.tags.slice(0, 2).map(tag => (
-            <View
-              key={tag}
-              style={{
-                backgroundColor: `${palette.primary}15`,
-                borderRadius: 6,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-              }}>
-              <Text style={{color: palette.primary, fontSize: 9, fontWeight: '700'}}>{tag}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </Pressable>
-  );
+function fmtDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
 }
 
 export function StoreScreen() {
   const navigation = useNavigation();
-  const {palette, contract, isDark} = useTheme();
+  const {palette, isDark} = useTheme();
   const tabBarHeight = useBottomTabBarHeight();
-  const [activeFilter, setActiveFilter] = useState('all');
+
+  const [featured, setFeatured] = useState<BromoStore[]>([]);
+  const [stores, setStores] = useState<BromoStore[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const {borderRadiusScale} = contract.brandGuidelines;
-  const chipRadius = borderRadiusScale === 'bold' ? 14 : 10;
+  const [activeCategory, setActiveCategory] = useState('');
+  const [deliveryOnly, setDeliveryOnly] = useState(false);
+  const [userLat, setUserLat] = useState<number | null>(null);
+  const [userLng, setUserLng] = useState<number | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Get user location once
+  useEffect(() => {
+    Geolocation.getCurrentPosition(
+      pos => {
+        setUserLat(pos.coords.latitude);
+        setUserLng(pos.coords.longitude);
+      },
+      () => {/* location denied */},
+      {enableHighAccuracy: false, timeout: 10000},
+    );
+  }, []);
+
+  const loadFeatured = useCallback(async () => {
+    try {
+      const f = await getFeaturedStores();
+      setFeatured(f);
+    } catch {/* ignore */}
+  }, []);
+
+  const loadStores = useCallback(async () => {
+    setLoading(true);
+    try {
+      const {stores: result} = await listStores({
+        q: query.trim() || undefined,
+        delivery: deliveryOnly || undefined,
+        category: activeCategory || undefined,
+        lat: userLat ?? undefined,
+        lng: userLng ?? undefined,
+        maxDistance: userLat != null ? 20000 : undefined,
+      });
+      setStores(result);
+    } catch {
+      setStores([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [query, deliveryOnly, activeCategory, userLat, userLng]);
+
+  useFocusEffect(useCallback(() => {
+    void loadFeatured();
+  }, [loadFeatured]));
+
+  useEffect(() => {
+    if (debounceRef.current != null) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => void loadStores(), 350);
+    return () => { if (debounceRef.current != null) clearTimeout(debounceRef.current); };
+  }, [loadStores]);
+
+  const FILTER_PILLS: {id: string; label: string}[] = [
+    {id: '', label: 'All'},
+    {id: 'Food & Beverages', label: 'Food'},
+    {id: 'Fashion & Clothing', label: 'Fashion'},
+    {id: 'Electronics & Tech', label: 'Electronics'},
+    {id: 'Health & Beauty', label: 'Beauty'},
+    {id: 'Grocery', label: 'Grocery'},
+  ];
 
   return (
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       {/* Sticky Header */}
-      <View
-        style={{
-          backgroundColor: palette.background,
-          borderBottomWidth: 1,
-          borderBottomColor: palette.border,
-          padding: 14,
-          gap: 12,
-        }}>
-        <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-          <View style={{flexDirection: 'row', alignItems: 'center', gap: 2}}>
-            <ThemedText variant="heading" style={{fontSize: 22, fontStyle: 'italic', letterSpacing: -1}}>
-              Local
-            </ThemedText>
-            <ThemedText variant="heading" style={{fontSize: 22, fontStyle: 'italic', letterSpacing: -1, color: palette.primary}}>
-              Pulse
+      <View style={[s.header, {backgroundColor: palette.background, borderBottomColor: palette.border}]}>
+        <View style={[s.headerTop]}>
+          <View style={{flex: 1}}>
+            <ThemedText variant="heading" style={{fontSize: 22, fontWeight: '900', letterSpacing: -0.5}}>
+              Local<Text style={{color: palette.primary}}> Stores</Text>
             </ThemedText>
           </View>
           <Pressable
+            onPress={() => parentNavigate(navigation, 'AllStores')}
+            style={[s.allStoresBtn, {backgroundColor: `${palette.primary}15`, borderColor: `${palette.primary}30`}]}>
+            <Store size={14} color={palette.primary} />
+            <Text style={{color: palette.primary, fontSize: 12, fontWeight: '700'}}>All Stores</Text>
+          </Pressable>
+          <Pressable
             onPress={() => parentNavigate(navigation, 'NotificationHistory3km')}
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              backgroundColor: `${palette.primary}15`,
-              borderWidth: 1,
-              borderColor: `${palette.primary}30`,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
+            style={[s.iconBtn, {backgroundColor: `${palette.primary}15`, borderColor: `${palette.primary}30`}]}>
             <Bell size={16} color={palette.primary} />
           </Pressable>
         </View>
 
         {/* Search */}
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
-          <SearchBar
+        <View style={[s.searchRow, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+          <Search size={15} color={palette.placeholder} />
+          <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search brands, vibes or codes..."
-            style={{flex: 1}}
+            placeholder="Search stores, products..."
+            placeholderTextColor={palette.placeholder}
+            style={[s.searchInput, {color: palette.foreground}]}
           />
-          <Pressable
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: chipRadius,
-              backgroundColor: palette.input,
-              borderWidth: 1,
-              borderColor: palette.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <SlidersHorizontal size={16} color={palette.primary} />
-          </Pressable>
+          {query.length > 0 && (
+            <Pressable onPress={() => setQuery('')} hitSlop={8}>
+              <X size={14} color={palette.foregroundSubtle} />
+            </Pressable>
+          )}
         </View>
 
         {/* Filter Pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{gap: 8}}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillRow}>
           {FILTER_PILLS.map(pill => {
-            const on = activeFilter === pill.id;
-            const fg = on ? palette.primaryForeground : palette.foreground;
-            const PillIcon = pill.Icon;
+            const on = activeCategory === pill.id;
             return (
               <Pressable
                 key={pill.id}
-                onPress={() => setActiveFilter(pill.id)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: chipRadius,
+                onPress={() => setActiveCategory(pill.id)}
+                style={[s.pill, {
                   backgroundColor: on ? palette.primary : isDark ? palette.surface : palette.card,
-                  borderWidth: 1,
                   borderColor: on ? palette.primary : palette.border,
-                }}>
-                {PillIcon ? <PillIcon size={14} color={fg} /> : null}
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: '700',
-                    color: fg,
-                  }}>
+                }]}>
+                <Text style={{fontSize: 12, fontWeight: '700', color: on ? palette.primaryForeground : palette.foreground}}>
                   {pill.label}
                 </Text>
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => setDeliveryOnly(v => !v)}
+            style={[s.pill, {
+              backgroundColor: deliveryOnly ? palette.success : isDark ? palette.surface : palette.card,
+              borderColor: deliveryOnly ? palette.success : palette.border,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+            }]}>
+            <Truck size={12} color={deliveryOnly ? '#fff' : palette.foregroundSubtle} />
+            <Text style={{fontSize: 12, fontWeight: '700', color: deliveryOnly ? '#fff' : palette.foreground}}>
+              Delivery
+            </Text>
+          </Pressable>
         </ScrollView>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{paddingBottom: tabBarHeight + 16}}>
-        {/* Featured Drops */}
-        <View style={{padding: 14}}>
-          <ThemedText variant="caption" style={{fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 12}}>
-            FEATURED DROPS
-          </ThemedText>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{gap: 12}}>
-            {FEATURED.map(item => (
-              <Pressable
-                key={item.id}
-                onPress={() => parentNavigate(navigation, 'StoreProfile', {storeId: item.id})}
-                style={{
-                  width: 280,
-                  height: 140,
-                  borderRadius: borderRadiusScale === 'bold' ? 22 : 14,
-                  overflow: 'hidden',
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  position: 'relative',
-                }}>
-                <Image source={{uri: item.image}} style={{width: '100%', height: '100%', resizeMode: 'cover', opacity: 0.6}} />
-                <View style={{position: 'absolute', inset: 0, backgroundColor: palette.glassMid}} />
-                <View style={{position: 'absolute', bottom: 14, left: 14}}>
-                  <View
-                    style={{
-                      backgroundColor: palette.primary,
-                      borderRadius: 6,
-                      paddingHorizontal: 7,
-                      paddingVertical: 2,
-                      marginBottom: 4,
-                      alignSelf: 'flex-start',
-                    }}>
-                    <Text style={{color: palette.primaryForeground, fontSize: 8, fontWeight: '900'}}>{item.badge.toUpperCase()}</Text>
-                  </View>
-                  <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900', lineHeight: 20}}>{item.name}</Text>
-                  <Text style={{color: palette.primary, fontSize: 10, fontWeight: '700', marginTop: 2}}>{item.offer}</Text>
-                </View>
+
+        {/* Featured carousel */}
+        {featured.length > 0 && (
+          <View style={{paddingTop: 14}}>
+            <View style={s.sectionHeader}>
+              <ThemedText variant="heading" style={{fontSize: 13, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase'}}>
+                Featured Stores
+              </ThemedText>
+              <Pressable onPress={() => parentNavigate(navigation, 'AllStores')} hitSlop={8}>
+                <Text style={{color: palette.primary, fontSize: 12, fontWeight: '700'}}>See all</Text>
               </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Store List */}
-        <View style={{paddingHorizontal: 14}}>
-          <Pressable
-            onPress={() => parentNavigate(navigation, 'StoreNearbyHome')}
-            style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14}}>
-            <ThemedText variant="heading" style={{fontSize: 14}}>Stores Near You</ThemedText>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
-              <MapPin size={12} color={palette.primary} />
-              <ThemedText variant="primary" style={{fontSize: 11}}>Pune, MH · Map</ThemedText>
             </View>
-          </Pressable>
-
-          {STORES.map((store, index) => (
-            <StoreCard
-              key={store.id}
-              store={store}
-              index={index}
-              onPress={() => parentNavigate(navigation, 'StoreProfile', {storeId: store.id})}
-            />
-          ))}
-        </View>
-
-        {/* Quick Categories */}
-        <View style={{padding: 14}}>
-          <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 12}}>Browse by Category</ThemedText>
-          <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 10}}>
-            {[
-              {label: 'Fashion', icon: Tag, color: palette.accent},
-              {label: 'Food', icon: Store, color: palette.warning},
-              {label: 'Electronics', icon: Zap, color: palette.accent},
-              {label: 'Grocery', icon: ShoppingCart, color: palette.success},
-            ].map(cat => {
-              const Icon = cat.icon;
-              return (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 14, gap: 12, paddingBottom: 4}}>
+              {featured.map(store => (
                 <Pressable
-                  key={cat.label}
-                  onPress={() => parentNavigate(navigation, 'StoreMenu', {storeId: 'demo'})}
-                  style={{
-                    flex: 1,
-                    minWidth: '45%',
-                    backgroundColor: `${cat.color}15`,
-                    borderWidth: 1,
-                    borderColor: `${cat.color}30`,
-                    borderRadius: borderRadiusScale === 'bold' ? 16 : 10,
-                    padding: 14,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}>
-                  <Icon size={18} color={cat.color} />
-                  <ThemedText variant="label" style={{fontSize: 13}}>{cat.label}</ThemedText>
-                  <ChevronRight size={14} color={palette.mutedForeground} style={{marginLeft: 'auto'}} />
+                  key={store._id}
+                  onPress={() => parentNavigate(navigation, 'StorePublicProfile', {storeId: store._id})}
+                  style={({pressed}) => ({opacity: pressed ? 0.85 : 1})}>
+                  <View style={[s.featuredCard, {borderColor: palette.border}]}>
+                    {store.bannerImage ? (
+                      <Image source={{uri: store.bannerImage}} style={s.featuredImg} resizeMode="cover" />
+                    ) : (
+                      <View style={[s.featuredImg, {backgroundColor: `${palette.primary}20`, alignItems: 'center', justifyContent: 'center'}]}>
+                        <Text style={{color: palette.primary, fontSize: 32, fontWeight: '800'}}>{store.name[0]}</Text>
+                      </View>
+                    )}
+                    <View style={[s.featuredOverlay, {backgroundColor: 'rgba(0,0,0,0.45)'}]} />
+                    {store.hasDelivery && (
+                      <View style={[s.deliveryBadge, {backgroundColor: palette.success}]}>
+                        <Truck size={9} color="#fff" />
+                        <Text style={{color: '#fff', fontSize: 8, fontWeight: '800'}}>DELIVERY</Text>
+                      </View>
+                    )}
+                    <View style={s.featuredInfo}>
+                      <Text style={{color: '#fff', fontSize: 15, fontWeight: '900', lineHeight: 18}} numberOfLines={1}>{store.name}</Text>
+                      <Text style={{color: 'rgba(255,255,255,0.8)', fontSize: 10, fontWeight: '700', marginTop: 2}}>{store.category}</Text>
+                      {store.ratingAvg > 0 && (
+                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3}}>
+                          <Star size={10} color="#FFD700" fill="#FFD700" />
+                          <Text style={{color: '#FFD700', fontSize: 10, fontWeight: '700'}}>{store.ratingAvg.toFixed(1)}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
                 </Pressable>
-              );
-            })}
+              ))}
+            </ScrollView>
           </View>
-        </View>
+        )}
 
-        <View style={{height: 20}} />
+        {/* Stores list */}
+        <View style={s.storeListSection}>
+          <View style={s.sectionHeader}>
+            <ThemedText variant="heading" style={{fontSize: 13, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase'}}>
+              {userLat != null ? 'Stores Near You' : 'All Stores'}
+            </ThemedText>
+            {userLat != null && (
+              <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+                <MapPin size={11} color={palette.primary} />
+                <Text style={{color: palette.primary, fontSize: 11, fontWeight: '700'}}>Nearby</Text>
+              </View>
+            )}
+          </View>
+
+          {loading ? (
+            <ActivityIndicator color={palette.primary} style={{marginTop: 24}} />
+          ) : stores.length === 0 ? (
+            <View style={s.emptyState}>
+              <Package size={40} color={palette.foregroundSubtle} />
+              <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '600', marginTop: 10}}>No stores found</Text>
+              <Text style={{color: palette.foregroundSubtle, fontSize: 12, marginTop: 4}}>Try adjusting your filters</Text>
+            </View>
+          ) : (
+            stores.map((store, i) => (
+              <StoreListItem
+                key={store._id}
+                store={store}
+                palette={palette}
+                index={i}
+                onPress={() => parentNavigate(navigation, 'StorePublicProfile', {storeId: store._id})}
+              />
+            ))
+          )}
+        </View>
       </ScrollView>
     </ThemedSafeScreen>
   );
 }
+
+function StoreListItem({
+  store,
+  palette,
+  index,
+  onPress,
+}: {
+  store: BromoStore;
+  palette: ReturnType<typeof useTheme>['palette'];
+  index: number;
+  onPress: () => void;
+}) {
+  const isEven = index % 2 === 0;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({pressed}) => [
+        s.storeCard,
+        {
+          flexDirection: isEven ? 'row' : 'row-reverse',
+          backgroundColor: palette.card,
+          borderColor: palette.glassFaint,
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}>
+      <View style={[s.storeCardImg, {backgroundColor: palette.glassMid}]}>
+        {store.profilePhoto ? (
+          <Image source={{uri: store.profilePhoto}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
+        ) : (
+          <Text style={{color: palette.primary, fontSize: 22, fontWeight: '800'}}>{store.name[0]}</Text>
+        )}
+      </View>
+      <View style={{flex: 1, alignItems: isEven ? 'flex-start' : 'flex-end'}}>
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap'}}>
+          <Text style={{color: palette.foreground, fontSize: 14, fontWeight: '700'}} numberOfLines={1}>{store.name}</Text>
+          {store.hasDelivery && (
+            <View style={[s.deliveryTag, {backgroundColor: `${palette.success}20`}]}>
+              <Truck size={9} color={palette.success} />
+              <Text style={{color: palette.success, fontSize: 8, fontWeight: '800'}}>DEL</Text>
+            </View>
+          )}
+        </View>
+        <Text style={{color: palette.primary, fontSize: 11, fontWeight: '700', marginTop: 2}}>{store.category}</Text>
+        <View style={{flexDirection: 'row', gap: 8, marginTop: 5, flexWrap: 'wrap'}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 3}}>
+            <MapPin size={10} color={palette.foregroundSubtle} />
+            <Text style={{color: palette.foregroundSubtle, fontSize: 11}}>{store.city}</Text>
+          </View>
+          {store.distance != null && (
+            <Text style={{color: palette.primary, fontSize: 11, fontWeight: '700'}}>{fmtDistance(store.distance)}</Text>
+          )}
+          {store.ratingAvg > 0 && (
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 3}}>
+              <Star size={10} color={palette.warning} fill={palette.warning} />
+              <Text style={{color: palette.warning, fontSize: 11, fontWeight: '700'}}>{store.ratingAvg.toFixed(1)}</Text>
+            </View>
+          )}
+        </View>
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4}}>
+          <Package size={10} color={palette.foregroundSubtle} />
+          <Text style={{color: palette.foregroundSubtle, fontSize: 11}}>{store.totalProducts} products</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const s = StyleSheet.create({
+  header: {
+    borderBottomWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  headerTop: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  allStoresBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+  },
+  searchInput: {flex: 1, fontSize: 14, paddingVertical: 0},
+  pillRow: {gap: 8},
+  pill: {paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1},
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  featuredCard: {
+    width: 220,
+    height: 130,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    position: 'relative',
+  },
+  featuredImg: {width: '100%', height: '100%'},
+  featuredOverlay: {position: 'absolute', inset: 0},
+  deliveryBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  featuredInfo: {position: 'absolute', bottom: 12, left: 12},
+  storeListSection: {paddingHorizontal: 14, paddingTop: 20},
+  emptyState: {alignItems: 'center', paddingVertical: 40},
+  storeCard: {
+    gap: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 16,
+    position: 'relative',
+  },
+  storeCardImg: {
+    width: 88,
+    height: 88,
+    borderRadius: 14,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  deliveryTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+});

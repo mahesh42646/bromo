@@ -1,0 +1,480 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e33] [cursor=pointer]:
+    - img [ref=e34]
+  - alert [ref=e27]: BROMO ADMIN CONSOLE
+  - generic [ref=e37]:
+    - complementary [ref=e708]:
+      - generic [ref=e709]:
+        - generic [ref=e710]:
+          - link "BROMO Admin" [ref=e711] [cursor=pointer]:
+            - /url: /admin/dashboard
+            - img [ref=e713]
+            - generic [ref=e715]: BROMO Admin
+          - button "Close menu" [ref=e716]:
+            - img [ref=e717]
+        - navigation [ref=e720]:
+          - generic [ref=e721]:
+            - generic [ref=e722]:
+              - paragraph [ref=e723]: Overview
+              - list [ref=e724]:
+                - listitem [ref=e725]:
+                  - link "Dashboard" [ref=e726] [cursor=pointer]:
+                    - /url: /admin/dashboard
+                    - img [ref=e728]
+                    - generic [ref=e733]: Dashboard
+            - generic [ref=e734]:
+              - paragraph [ref=e735]: Users & access
+              - list [ref=e736]:
+                - listitem [ref=e737]:
+                  - link "Admin users" [ref=e738] [cursor=pointer]:
+                    - /url: /admin/users/admins
+                    - img [ref=e739]
+                    - generic [ref=e751]: Admin users
+                - listitem [ref=e752]:
+                  - link "Platform users" [ref=e753] [cursor=pointer]:
+                    - /url: /admin/users/platform
+                    - img [ref=e754]
+                    - generic [ref=e759]: Platform users
+                - listitem [ref=e760]:
+                  - link "User management" [ref=e761] [cursor=pointer]:
+                    - /url: /admin/users/manage
+                    - img [ref=e762]
+                    - generic [ref=e767]: User management
+                - listitem [ref=e768]:
+                  - link "Roles & permissions" [ref=e769] [cursor=pointer]:
+                    - /url: /admin/access/roles
+                    - img [ref=e770]
+                    - generic [ref=e772]: Roles & permissions
+            - generic [ref=e773]:
+              - paragraph [ref=e774]: Content
+              - list [ref=e775]:
+                - listitem [ref=e776]:
+                  - link "CMS pages" [ref=e777] [cursor=pointer]:
+                    - /url: /admin/content/pages
+                    - img [ref=e778]
+                    - generic [ref=e781]: CMS pages
+                - listitem [ref=e782]:
+                  - link "Media library" [ref=e783] [cursor=pointer]:
+                    - /url: /admin/content/media
+                    - img [ref=e784]
+                    - generic [ref=e788]: Media library
+                - listitem [ref=e789]:
+                  - link "Localization" [ref=e790] [cursor=pointer]:
+                    - /url: /admin/content/i18n
+                    - img [ref=e791]
+                    - generic [ref=e793]: Localization
+            - generic [ref=e794]:
+              - paragraph [ref=e795]: Commerce & billing
+              - list [ref=e796]:
+                - listitem [ref=e797]:
+                  - link "Affiliate products" [ref=e798] [cursor=pointer]:
+                    - /url: /admin/commerce/products
+                    - img [ref=e799]
+                    - generic [ref=e803]: Affiliate products
+                - listitem [ref=e804]:
+                  - link "Orders" [ref=e805] [cursor=pointer]:
+                    - /url: /admin/commerce/orders
+                    - img [ref=e806]
+                    - generic [ref=e810]: Orders
+                - listitem [ref=e811]:
+                  - link "Payments" [ref=e812] [cursor=pointer]:
+                    - /url: /admin/commerce/payments
+                    - img [ref=e813]
+                    - generic [ref=e815]: Payments
+                - listitem [ref=e816]:
+                  - link "Subscriptions" [ref=e817] [cursor=pointer]:
+                    - /url: /admin/commerce/subscriptions
+                    - img [ref=e818]
+                    - generic [ref=e820]: Subscriptions
+                - listitem [ref=e821]:
+                  - link "Invoicing & tax" [ref=e822] [cursor=pointer]:
+                    - /url: /admin/commerce/invoicing
+                    - img [ref=e823]
+                    - generic [ref=e826]: Invoicing & tax
+            - generic [ref=e827]:
+              - paragraph [ref=e828]: Monetization
+              - list [ref=e829]:
+                - listitem [ref=e830]:
+                  - link "Ads manager" [ref=e831] [cursor=pointer]:
+                    - /url: /admin/monetization/ads
+                    - img [ref=e832]
+                    - generic [ref=e835]: Ads manager
+            - generic [ref=e836]:
+              - paragraph [ref=e837]: Insights
+              - list [ref=e838]:
+                - listitem [ref=e839]:
+                  - link "Analytics" [ref=e840] [cursor=pointer]:
+                    - /url: /admin/insights/analytics
+                    - img [ref=e841]
+                    - generic [ref=e843]: Analytics
+                - listitem [ref=e844]:
+                  - link "Reports" [ref=e845] [cursor=pointer]:
+                    - /url: /admin/insights/reports
+                    - img [ref=e846]
+                    - generic [ref=e849]: Reports
+                - listitem [ref=e850]:
+                  - link "Audit log" [ref=e851] [cursor=pointer]:
+                    - /url: /admin/insights/audit
+                    - img [ref=e852]
+                    - generic [ref=e854]: Audit log
+            - generic [ref=e855]:
+              - paragraph [ref=e856]: Engagement
+              - list [ref=e857]:
+                - listitem [ref=e858]:
+                  - link "Notifications" [ref=e859] [cursor=pointer]:
+                    - /url: /admin/engagement/notifications
+                    - img [ref=e860]
+                    - generic [ref=e863]: Notifications
+                - listitem [ref=e864]:
+                  - link "Support tickets" [ref=e865] [cursor=pointer]:
+                    - /url: /admin/engagement/support
+                    - img [ref=e866]
+                    - generic [ref=e873]: Support tickets
+                - listitem [ref=e874]:
+                  - link "Campaigns" [ref=e875] [cursor=pointer]:
+                    - /url: /admin/engagement/campaigns
+                    - img [ref=e876]
+                    - generic [ref=e878]: Campaigns
+            - generic [ref=e879]:
+              - paragraph [ref=e880]: Platform
+              - list [ref=e881]:
+                - listitem [ref=e882]:
+                  - link "Integrations" [ref=e883] [cursor=pointer]:
+                    - /url: /admin/platform/integrations
+                    - img [ref=e884]
+                    - generic [ref=e886]: Integrations
+                - listitem [ref=e887]:
+                  - link "Webhooks" [ref=e888] [cursor=pointer]:
+                    - /url: /admin/platform/webhooks
+                    - img [ref=e889]
+                    - generic [ref=e892]: Webhooks
+                - listitem [ref=e893]:
+                  - link "API keys" [ref=e894] [cursor=pointer]:
+                    - /url: /admin/platform/api-keys
+                    - img [ref=e895]
+                    - generic [ref=e898]: API keys
+                - listitem [ref=e899]:
+                  - link "Feature flags" [ref=e900] [cursor=pointer]:
+                    - /url: /admin/platform/feature-flags
+                    - img [ref=e901]
+                    - generic [ref=e903]: Feature flags
+            - generic [ref=e904]:
+              - paragraph [ref=e905]: System
+              - list [ref=e906]:
+                - listitem [ref=e907]:
+                  - link "Settings" [ref=e908] [cursor=pointer]:
+                    - /url: /admin/system/settings
+                    - img [ref=e909]
+                    - generic [ref=e912]: Settings
+                - listitem [ref=e913]:
+                  - link "Branding" [ref=e914] [cursor=pointer]:
+                    - /url: /admin/system/branding
+                    - img [ref=e915]
+                    - generic [ref=e921]: Branding
+                - listitem [ref=e922]:
+                  - link "Security & sessions" [ref=e923] [cursor=pointer]:
+                    - /url: /admin/system/security
+                    - img [ref=e924]
+                    - generic [ref=e928]: Security & sessions
+                - listitem [ref=e929]:
+                  - link "Jobs & maintenance" [ref=e930] [cursor=pointer]:
+                    - /url: /admin/system/maintenance
+                    - img [ref=e931]
+                    - generic [ref=e933]: Jobs & maintenance
+                - listitem [ref=e934]:
+                  - link "Compliance & data" [ref=e935] [cursor=pointer]:
+                    - /url: /admin/system/compliance
+                    - img [ref=e936]
+                    - generic [ref=e938]: Compliance & data
+                - listitem [ref=e939]:
+                  - link "Developer diagnostics" [ref=e940] [cursor=pointer]:
+                    - /url: /admin/system/diagnostics
+                    - img [ref=e941]
+                    - generic [ref=e942]: Developer diagnostics
+        - generic [ref=e944]:
+          - generic [ref=e945]: A
+          - generic [ref=e946]:
+            - paragraph [ref=e947]: admin@gmail.com
+            - paragraph [ref=e948]: super_admin
+    - generic [ref=e278]:
+      - banner [ref=e279]:
+        - generic [ref=e280]:
+          - button "Open navigation" [ref=e949]:
+            - img [ref=e950]
+          - navigation "Breadcrumb" [ref=e281]:
+            - generic [ref=e286]: Dashboard
+        - button [ref=e951]:
+          - img [ref=e292]
+      - generic [ref=e297]:
+        - generic [ref=e298]:
+          - generic [ref=e299]:
+            - paragraph [ref=e300]: Thursday, April 23
+            - heading "BROMO Admin Console" [level=1] [ref=e301]
+            - paragraph [ref=e302]: Managing BROMO — overview and quick entry to every admin area.
+          - generic [ref=e303]:
+            - img [ref=e304]
+            - generic [ref=e307]: System operational
+        - region "Overview metrics" [ref=e308]:
+          - generic [ref=e309]:
+            - img [ref=e310]
+            - heading "Analytics snapshot" [level=2] [ref=e312]
+          - generic [ref=e313]:
+            - generic [ref=e316]:
+              - generic [ref=e317]:
+                - paragraph [ref=e318]: Platform users
+                - img [ref=e320]
+              - paragraph [ref=e325]: "4"
+              - paragraph [ref=e326]: Registered accounts in MongoDB
+            - generic [ref=e329]:
+              - generic [ref=e330]:
+                - paragraph [ref=e331]: Total ads
+                - img [ref=e333]
+              - paragraph [ref=e336]: "0"
+              - paragraph [ref=e337]: Ads created in ads manager
+            - generic [ref=e340]:
+              - generic [ref=e341]:
+                - paragraph [ref=e342]: Audit events (24h)
+                - img [ref=e344]
+              - paragraph [ref=e346]: —
+              - paragraph [ref=e347]: Live when audit API is wired
+            - generic [ref=e350]:
+              - generic [ref=e351]:
+                - paragraph [ref=e352]: Active sessions
+                - img [ref=e354]
+              - paragraph [ref=e356]: —
+              - paragraph [ref=e357]: Live when sessions API is wired
+        - region "Admin areas" [ref=e358]:
+          - heading "All admin areas" [level=2] [ref=e361]
+          - generic [ref=e363]:
+            - link "Admin users Manage internal admin accounts, invites, and status for the operator console." [ref=e364] [cursor=pointer]:
+              - /url: /admin/users/admins
+              - img [ref=e366]
+              - generic [ref=e378]:
+                - generic [ref=e379]:
+                  - paragraph [ref=e380]: Admin users
+                  - img [ref=e381]
+                - paragraph [ref=e383]: Manage internal admin accounts, invites, and status for the operator console.
+            - link "Platform users End-user directory, segmentation, and lifecycle for the consumer-facing product." [ref=e384] [cursor=pointer]:
+              - /url: /admin/users/platform
+              - img [ref=e386]
+              - generic [ref=e391]:
+                - generic [ref=e392]:
+                  - paragraph [ref=e393]: Platform users
+                  - img [ref=e394]
+                - paragraph [ref=e396]: End-user directory, segmentation, and lifecycle for the consumer-facing product.
+            - link "User management Open a member by ID to review profile, media, soft or permanent deletes, and restores." [ref=e397] [cursor=pointer]:
+              - /url: /admin/users/manage
+              - img [ref=e399]
+              - generic [ref=e404]:
+                - generic [ref=e405]:
+                  - paragraph [ref=e406]: User management
+                  - img [ref=e407]
+                - paragraph [ref=e409]: Open a member by ID to review profile, media, soft or permanent deletes, and restores.
+            - link "Roles & permissions RBAC matrices, permission bundles, and audit-friendly policy templates." [ref=e410] [cursor=pointer]:
+              - /url: /admin/access/roles
+              - img [ref=e412]
+              - generic [ref=e414]:
+                - generic [ref=e415]:
+                  - paragraph [ref=e416]: Roles & permissions
+                  - img [ref=e417]
+                - paragraph [ref=e419]: RBAC matrices, permission bundles, and audit-friendly policy templates.
+            - link "CMS pages Structured content blocks, publication workflow, and preview for marketing surfaces." [ref=e420] [cursor=pointer]:
+              - /url: /admin/content/pages
+              - img [ref=e422]
+              - generic [ref=e425]:
+                - generic [ref=e426]:
+                  - paragraph [ref=e427]: CMS pages
+                  - img [ref=e428]
+                - paragraph [ref=e430]: Structured content blocks, publication workflow, and preview for marketing surfaces.
+            - link "Media library Centralized assets, transformations, CDN metadata, and usage tracking." [ref=e431] [cursor=pointer]:
+              - /url: /admin/content/media
+              - img [ref=e433]
+              - generic [ref=e437]:
+                - generic [ref=e438]:
+                  - paragraph [ref=e439]: Media library
+                  - img [ref=e440]
+                - paragraph [ref=e442]: Centralized assets, transformations, CDN metadata, and usage tracking.
+            - link "Localization Locale packs, translation status, and fallbacks for multi-language rollout." [ref=e443] [cursor=pointer]:
+              - /url: /admin/content/i18n
+              - img [ref=e445]
+              - generic [ref=e447]:
+                - generic [ref=e448]:
+                  - paragraph [ref=e449]: Localization
+                  - img [ref=e450]
+                - paragraph [ref=e452]: Locale packs, translation status, and fallbacks for multi-language rollout.
+            - link "Affiliate products Curate affiliate products users can tag in reels and posts. Links auto-append to caption." [ref=e453] [cursor=pointer]:
+              - /url: /admin/commerce/products
+              - img [ref=e455]
+              - generic [ref=e459]:
+                - generic [ref=e460]:
+                  - paragraph [ref=e461]: Affiliate products
+                  - img [ref=e462]
+                - paragraph [ref=e464]: Curate affiliate products users can tag in reels and posts. Links auto-append to caption.
+            - link "Orders Order pipeline, fulfillment states, and exception handling across channels." [ref=e465] [cursor=pointer]:
+              - /url: /admin/commerce/orders
+              - img [ref=e467]
+              - generic [ref=e471]:
+                - generic [ref=e472]:
+                  - paragraph [ref=e473]: Orders
+                  - img [ref=e474]
+                - paragraph [ref=e476]: Order pipeline, fulfillment states, and exception handling across channels.
+            - link "Payments Payment intents, chargebacks, and reconciliation with PSP dashboards." [ref=e477] [cursor=pointer]:
+              - /url: /admin/commerce/payments
+              - img [ref=e479]
+              - generic [ref=e481]:
+                - generic [ref=e482]:
+                  - paragraph [ref=e483]: Payments
+                  - img [ref=e484]
+                - paragraph [ref=e486]: Payment intents, chargebacks, and reconciliation with PSP dashboards.
+            - link "Subscriptions Plans, entitlements, dunning, and MRR-oriented subscription operations." [ref=e487] [cursor=pointer]:
+              - /url: /admin/commerce/subscriptions
+              - img [ref=e489]
+              - generic [ref=e491]:
+                - generic [ref=e492]:
+                  - paragraph [ref=e493]: Subscriptions
+                  - img [ref=e494]
+                - paragraph [ref=e496]: Plans, entitlements, dunning, and MRR-oriented subscription operations.
+            - link "Invoicing & tax Tax IDs, invoice runs, and export packages for finance stakeholders." [ref=e497] [cursor=pointer]:
+              - /url: /admin/commerce/invoicing
+              - img [ref=e499]
+              - generic [ref=e502]:
+                - generic [ref=e503]:
+                  - paragraph [ref=e504]: Invoicing & tax
+                  - img [ref=e505]
+                - paragraph [ref=e507]: Tax IDs, invoice runs, and export packages for finance stakeholders.
+            - link "Ads manager Create image, carousel, and video ads served in feeds, reels, stories, and explore." [ref=e508] [cursor=pointer]:
+              - /url: /admin/monetization/ads
+              - img [ref=e510]
+              - generic [ref=e513]:
+                - generic [ref=e514]:
+                  - paragraph [ref=e515]: Ads manager
+                  - img [ref=e516]
+                - paragraph [ref=e518]: Create image, carousel, and video ads served in feeds, reels, stories, and explore.
+            - link "Analytics Product analytics funnels, cohort views, and adoption metrics." [ref=e519] [cursor=pointer]:
+              - /url: /admin/insights/analytics
+              - img [ref=e521]
+              - generic [ref=e523]:
+                - generic [ref=e524]:
+                  - paragraph [ref=e525]: Analytics
+                  - img [ref=e526]
+                - paragraph [ref=e528]: Product analytics funnels, cohort views, and adoption metrics.
+            - link "Reports Scheduled operational reports and downloadable CSV/Parquet extracts." [ref=e529] [cursor=pointer]:
+              - /url: /admin/insights/reports
+              - img [ref=e531]
+              - generic [ref=e534]:
+                - generic [ref=e535]:
+                  - paragraph [ref=e536]: Reports
+                  - img [ref=e537]
+                - paragraph [ref=e539]: Scheduled operational reports and downloadable CSV/Parquet extracts.
+            - link "Audit log Immutable admin action history for compliance and investigations." [ref=e540] [cursor=pointer]:
+              - /url: /admin/insights/audit
+              - img [ref=e542]
+              - generic [ref=e544]:
+                - generic [ref=e545]:
+                  - paragraph [ref=e546]: Audit log
+                  - img [ref=e547]
+                - paragraph [ref=e549]: Immutable admin action history for compliance and investigations.
+            - link "Notifications Transactional templates, push/email/SMS routing, and send windows." [ref=e550] [cursor=pointer]:
+              - /url: /admin/engagement/notifications
+              - img [ref=e552]
+              - generic [ref=e555]:
+                - generic [ref=e556]:
+                  - paragraph [ref=e557]: Notifications
+                  - img [ref=e558]
+                - paragraph [ref=e560]: Transactional templates, push/email/SMS routing, and send windows.
+            - link "Support tickets Customer issue intake, SLA tracking, and escalation playbooks." [ref=e561] [cursor=pointer]:
+              - /url: /admin/engagement/support
+              - img [ref=e563]
+              - generic [ref=e570]:
+                - generic [ref=e571]:
+                  - paragraph [ref=e572]: Support tickets
+                  - img [ref=e573]
+                - paragraph [ref=e575]: Customer issue intake, SLA tracking, and escalation playbooks.
+            - link "Campaigns Lifecycle campaigns, audience caps, and experiment flags for growth." [ref=e576] [cursor=pointer]:
+              - /url: /admin/engagement/campaigns
+              - img [ref=e578]
+              - generic [ref=e580]:
+                - generic [ref=e581]:
+                  - paragraph [ref=e582]: Campaigns
+                  - img [ref=e583]
+                - paragraph [ref=e585]: Lifecycle campaigns, audience caps, and experiment flags for growth.
+            - link "Integrations Third-party connectors, credential rotation, and partner scopes." [ref=e586] [cursor=pointer]:
+              - /url: /admin/platform/integrations
+              - img [ref=e588]
+              - generic [ref=e590]:
+                - generic [ref=e591]:
+                  - paragraph [ref=e592]: Integrations
+                  - img [ref=e593]
+                - paragraph [ref=e595]: Third-party connectors, credential rotation, and partner scopes.
+            - link "Webhooks Outbound event subscriptions, delivery logs, and retry policies." [ref=e596] [cursor=pointer]:
+              - /url: /admin/platform/webhooks
+              - img [ref=e598]
+              - generic [ref=e601]:
+                - generic [ref=e602]:
+                  - paragraph [ref=e603]: Webhooks
+                  - img [ref=e604]
+                - paragraph [ref=e606]: Outbound event subscriptions, delivery logs, and retry policies.
+            - link "API keys Developer credentials, rotation, and usage quotas for public APIs." [ref=e607] [cursor=pointer]:
+              - /url: /admin/platform/api-keys
+              - img [ref=e609]
+              - generic [ref=e612]:
+                - generic [ref=e613]:
+                  - paragraph [ref=e614]: API keys
+                  - img [ref=e615]
+                - paragraph [ref=e617]: Developer credentials, rotation, and usage quotas for public APIs.
+            - link "Feature flags Progressive delivery, kill switches, and audience targeting for releases." [ref=e618] [cursor=pointer]:
+              - /url: /admin/platform/feature-flags
+              - img [ref=e620]
+              - generic [ref=e622]:
+                - generic [ref=e623]:
+                  - paragraph [ref=e624]: Feature flags
+                  - img [ref=e625]
+                - paragraph [ref=e627]: Progressive delivery, kill switches, and audience targeting for releases.
+            - link "Settings Global toggles, environment linkage, and environment-specific overrides." [ref=e628] [cursor=pointer]:
+              - /url: /admin/system/settings
+              - img [ref=e630]
+              - generic [ref=e633]:
+                - generic [ref=e634]:
+                  - paragraph [ref=e635]: Settings
+                  - img [ref=e636]
+                - paragraph [ref=e638]: Global toggles, environment linkage, and environment-specific overrides.
+            - link "Branding Logos, themes, and white-label chrome for tenant experiences." [ref=e639] [cursor=pointer]:
+              - /url: /admin/system/branding
+              - img [ref=e641]
+              - generic [ref=e647]:
+                - generic [ref=e648]:
+                  - paragraph [ref=e649]: Branding
+                  - img [ref=e650]
+                - paragraph [ref=e652]: Logos, themes, and white-label chrome for tenant experiences.
+            - link "Security & sessions MFA policies, session revocation, IP allowlists, and anomaly signals." [ref=e653] [cursor=pointer]:
+              - /url: /admin/system/security
+              - img [ref=e655]
+              - generic [ref=e659]:
+                - generic [ref=e660]:
+                  - paragraph [ref=e661]: Security & sessions
+                  - img [ref=e662]
+                - paragraph [ref=e664]: MFA policies, session revocation, IP allowlists, and anomaly signals.
+            - link "Jobs & maintenance Background workers, queues, safe-mode controls, and release windows." [ref=e665] [cursor=pointer]:
+              - /url: /admin/system/maintenance
+              - img [ref=e667]
+              - generic [ref=e669]:
+                - generic [ref=e670]:
+                  - paragraph [ref=e671]: Jobs & maintenance
+                  - img [ref=e672]
+                - paragraph [ref=e674]: Background workers, queues, safe-mode controls, and release windows.
+            - link "Compliance & data DSAR tooling, retention policies, and regulatory export packages." [ref=e675] [cursor=pointer]:
+              - /url: /admin/system/compliance
+              - img [ref=e677]
+              - generic [ref=e679]:
+                - generic [ref=e680]:
+                  - paragraph [ref=e681]: Compliance & data
+                  - img [ref=e682]
+                - paragraph [ref=e684]: DSAR tooling, retention policies, and regulatory export packages.
+            - link "Developer diagnostics Low-level traces, feature probes, and on-call escalation bundles." [ref=e685] [cursor=pointer]:
+              - /url: /admin/system/diagnostics
+              - img [ref=e687]
+              - generic [ref=e688]:
+                - generic [ref=e689]:
+                  - paragraph [ref=e690]: Developer diagnostics
+                  - img [ref=e691]
+                - paragraph [ref=e693]: Low-level traces, feature probes, and on-call escalation bundles.
