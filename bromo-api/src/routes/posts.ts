@@ -1845,8 +1845,23 @@ postsRouter.get(
         ? new mongoose.Types.ObjectId(userId)
         : userId;
 
-      /** Posts grid = feed posts only; Reels tab sends type=reel (separate tab in the app). */
-      const typeFilter = type === "reel" ? { type: "reel" as const } : { type: "post" as const };
+      const sortParam = String(req.query.sort ?? "latest").toLowerCase();
+      const sortSpec: Record<string, 1 | -1> =
+        sortParam === "oldest"
+          ? { createdAt: 1 }
+          : sortParam === "views"
+            ? { viewsCount: -1, createdAt: -1 }
+            : sortParam === "likes"
+              ? { likesCount: -1, createdAt: -1 }
+              : { createdAt: -1 };
+
+      /** Posts grid = feed posts only; Reels tab sends type=reel; `all` merges posts + reels. */
+      const typeFilter =
+        type === "reel"
+          ? { type: "reel" as const }
+          : type === "all"
+            ? { type: { $in: ["post", "reel"] as const } }
+            : { type: "post" as const };
 
       const [posts, follows] = await Promise.all([
         Post.find({
@@ -1854,7 +1869,7 @@ postsRouter.get(
           ...typeFilter,
           ...listVisibility,
         })
-          .sort({ createdAt: -1 })
+          .sort(sortSpec)
           .skip(skip)
           .limit(PAGE_SIZE)
           .populate("authorId", AUTHOR_SELECT)

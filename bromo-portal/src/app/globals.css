@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root,
+:root[data-theme="dark"] {
+  --background: #000000;
+  --foreground: #ffffff;
+  --foreground-muted: rgba(255, 255, 255, 0.55);
+  --foreground-subtle: rgba(255, 255, 255, 0.38);
+  --surface: #111111;
+  --surface-high: #1c1c1c;
+  --card: #161616;
+  --border: #2a2a2a;
+  --hairline: rgba(255, 255, 255, 0.08);
+  --accent: #ff4d6d;
+  --accent-dim: rgba(255, 77, 109, 0.15);
+  --accent-foreground: #ffffff;
+  --muted: #1a1a1a;
+  --ring: #ff4d6d;
+  --success: #22c55e;
+  --warning: #eab308;
+  --destructive: #ef4444;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-high: var(--surface-high);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--accent-dim);
+  color: var(--foreground);
+}
+
+@keyframes gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 12s ease infinite;
+}
+
+/* ── Dashboard: depth + premium surfaces ─────────────────────────── */
+.dash-canvas {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 90% 55% at 10% -15%, rgba(255, 77, 109, 0.14), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 95% 20%, rgba(139, 92, 246, 0.1), transparent 50%),
+    radial-gradient(ellipse 50% 35% at 50% 100%, rgba(255, 77, 109, 0.06), transparent 45%);
+}
+
+.dash-glass {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 50%,
+    rgba(0, 0, 0, 0.15) 100%
+  );
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 24px 48px -24px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(12px);
+}
+
+.dash-sidebar-surface {
+  background: linear-gradient(180deg, rgba(18, 18, 20, 0.96) 0%, rgba(10, 10, 12, 0.98) 100%);
+  box-shadow: 4px 0 48px -12px rgba(0, 0, 0, 0.55);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}

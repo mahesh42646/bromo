@@ -846,36 +846,19 @@ export function ProfileScreen() {
             </Pressable>
 
             {userPosts.map(post => (
-              <View key={post._id} style={styles.gridTile}>
-                <Pressable
-                  onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
-                  style={styles.gridTileMain}>
+              <Pressable
+                key={post._id}
+                onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
+                style={styles.gridTile}>
+                <View style={styles.gridTileMain}>
                   <Image source={{uri: postThumbnailUri(post)}} style={styles.gridImg} />
                   {(post.type === 'reel' || post.mediaType === 'video') && (
                     <View style={styles.reelIcon}>
                       <Play size={12} color={palette.foreground} fill={palette.foreground} />
                     </View>
                   )}
-                </Pressable>
-                <View style={[styles.gridProRow, {backgroundColor: 'rgba(0,0,0,0.78)', borderTopColor: palette.glass}]}>
-                  <Pressable
-                    style={styles.gridProBtn}
-                    onPress={() =>
-                      parentNavigate(navigation, 'PromoteCampaign', {
-                        contentId: post._id,
-                        contentType: post.type === 'reel' ? 'reel' : 'post',
-                      })
-                    }>
-                    <Text style={[styles.gridProBtnText, {color: palette.primary}]}>Boost</Text>
-                  </Pressable>
-                  <View style={[styles.gridProDivider, {backgroundColor: palette.glassMid}]} />
-                  <Pressable
-                    style={styles.gridProBtn}
-                    onPress={() => parentNavigate(navigation, 'ContentInsights', {focusPostId: post._id})}>
-                    <Text style={[styles.gridProBtnText, {color: palette.primary}]}>Insights</Text>
-                  </Pressable>
                 </View>
-              </View>
+              </Pressable>
             ))}
           </View>
         )}
@@ -891,13 +874,7 @@ export function ProfileScreen() {
         <View style={{height: 32}} />
       </ScrollView>
 
-      {/* Floating lock/public indicator */}
-      <Pressable
-        style={[styles.privacyFab, {backgroundColor: `${palette.primary}18`, borderColor: `${palette.primary}30`}]}
-        onPress={() => parentNavigate(navigation, 'PrivacySettings')}>
-        <Lock size={12} color={palette.primary} />
-        <Text style={[styles.privacyFabText, {color: palette.primary}]}>Public</Text>
-      </Pressable>
+   
     </ThemedSafeScreen>
   );
 }
@@ -1113,27 +1090,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
-  },
-  gridProRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 26,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  gridProBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 5,
-  },
-  gridProBtnText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  gridProDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 14,
   },
   reelIcon: {
     position: 'absolute',

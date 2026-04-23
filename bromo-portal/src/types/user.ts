@@ -1,0 +1,20 @@
+export type DbUser = {
+  _id: string;
+  firebaseUid: string;
+  email: string;
+  username: string;
+  displayName: string;
+  emailVerified: boolean;
+  profilePicture: string;
+  bio: string;
+  phone: string;
+  website: string;
+  provider: "email" | "google";
+  isActive: boolean;
+  onboardingComplete: boolean;
+  isPrivate: boolean;
+  followersCount: number;
+  followingCount: number;
+  postsCount: number;
+  storeId?: string | null;
+};
