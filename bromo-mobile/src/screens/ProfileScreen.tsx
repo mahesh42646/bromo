@@ -54,7 +54,7 @@ import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {postThumbnailUri} from '../lib/postMediaDisplay';
+import {ProfileGridMedia} from '../components/profile/ProfileGridMedia';
 import {resetToAuth} from '../navigation/rootNavigation';
 import {getUserGridStats, getUserPosts, type Post, type UserGridStats} from '../api/postsApi';
 import {getWallet} from '../api/walletApi';
@@ -851,7 +851,7 @@ export function ProfileScreen() {
                 onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
                 style={styles.gridTile}>
                 <View style={styles.gridTileMain}>
-                  <Image source={{uri: postThumbnailUri(post)}} style={styles.gridImg} />
+                  <ProfileGridMedia post={post} style={styles.gridImg} />
                   {(post.type === 'reel' || post.mediaType === 'video') && (
                     <View style={styles.reelIcon}>
                       <Play size={12} color={palette.foreground} fill={palette.foreground} />

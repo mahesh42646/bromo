@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Clapperboard, FileImage, Film, LayoutGrid, Layers, Play } from "lucide-react";
+import { ContentViewerModal } from "@/components/dashboard/content-viewer-modal";
 import { DraftCaptionEditor } from "@/components/dashboard/draft-caption-editor";
+import { GridMediaPreview } from "@/components/dashboard/grid-media-preview";
+import { useContentLibraryFeed } from "@/hooks/use-content-library-feed";
 import { publicMediaUrl } from "@/lib/media-url";
-import type { PortalPost, UserPostsApiResponse } from "@/types/post";
+import type { PortalPost } from "@/types/post";
 
 type Tab = "all" | "post" | "reel" | "drafts";
 type Sort = "latest" | "oldest" | "views" | "likes";
@@ -19,50 +21,6 @@ type DraftRow = {
   updatedAt?: string;
 };
 
-function postThumbUrl(p: PortalPost): string {
-  const t = p.thumbnailUrl?.trim();
-  if (p.mediaType === "video" && t) return publicMediaUrl(t) ?? "";
-  if (t) return publicMediaUrl(t) ?? "";
-  return publicMediaUrl(p.mediaUrl) ?? "";
-}
-
-function GridThumb({ post, label }: { post: PortalPost; label: string }) {
-  const [failed, setFailed] = useState(false);
-  const u = postThumbUrl(post);
-  const video = post.mediaType === "video";
-  const rawPlay = publicMediaUrl(post.hlsMasterUrl) ?? publicMediaUrl(post.mediaUrl);
-  const playNonHls = rawPlay && !rawPlay.includes(".m3u8") ? rawPlay : null;
-
-  if (video && (failed || !u) && playNonHls) {
-    return (
-      <video
-        src={playNonHls}
-        muted
-        playsInline
-        preload="metadata"
-        className="pointer-events-none h-full w-full object-cover"
-        aria-hidden
-      />
-    );
-  }
-  if (!u || failed) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-[var(--surface)] text-[var(--foreground-subtle)]">
-        <Film className="size-8 opacity-40" />
-      </div>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={u}
-      alt={label}
-      className="h-full w-full object-cover"
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
 function sortDrafts(rows: DraftRow[], sort: Sort): DraftRow[] {
   const copy = [...rows];
   copy.sort((a, b) => {
@@ -74,6 +32,12 @@ function sortDrafts(rows: DraftRow[], sort: Sort): DraftRow[] {
   return copy;
 }
 
+function itemAlt(p: PortalPost): string {
+  const c = p.caption?.trim();
+  if (c) return c.slice(0, 72);
+  return `${p.type} preview`;
+}
+
 export function ContentLibraryClient({
   userId,
   searchHint,
@@ -83,78 +47,42 @@ export function ContentLibraryClient({
 }) {
   const [tab, setTab] = useState<Tab>("all");
   const [sort, setSort] = useState<Sort>("latest");
-  const [posts, setPosts] = useState<PortalPost[]>([]);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [viewerPost, setViewerPost] = useState<PortalPost | null>(null);
+
+  const { posts, loading, loadingMore, hasMore, error, sentinelRef } = useContentLibraryFeed(userId, tab, sort);
 
   const loadDrafts = useCallback(async () => {
-    setLoading(true);
+    setDraftLoading(true);
     try {
       const res = await fetch("/api/portal/drafts", { cache: "no-store" });
       const data = (await res.json().catch(() => ({}))) as { drafts?: DraftRow[] };
       setDrafts(Array.isArray(data.drafts) ? data.drafts : []);
-      setHasMore(false);
     } finally {
-      setLoading(false);
+      setDraftLoading(false);
     }
   }, []);
 
-  const loadPosts = useCallback(
-    async (t: Tab, pageNum: number, sortKey: Sort, append: boolean) => {
-      if (t === "drafts") return;
-      setLoading(true);
-      try {
-        const type = t === "all" ? "all" : t;
-        const q = new URLSearchParams({
-          userId,
-          type,
-          page: String(pageNum),
-          sort: sortKey,
-        });
-        const res = await fetch(`/api/portal/user-posts?${q}`, { cache: "no-store" });
-        const raw = (await res.json().catch(() => ({}))) as UserPostsApiResponse;
-        if (!res.ok) {
-          setPosts((p) => (append ? p : []));
-          setHasMore(false);
-          return;
-        }
-        const next = raw.posts ?? [];
-        setPosts((p) => (append ? [...p, ...next] : next));
-        setHasMore(Boolean(raw.hasMore));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [userId],
-  );
-
   useEffect(() => {
-    setPage(1);
-    if (tab === "drafts") {
-      void loadDrafts();
-      return;
-    }
-    void loadPosts(tab, 1, sort, false);
-  }, [tab, sort, loadDrafts, loadPosts]);
+    if (tab === "drafts") void loadDrafts();
+  }, [tab, loadDrafts]);
 
-  const loadMore = () => {
-    if (tab === "drafts" || !hasMore || loading) return;
-    const next = page + 1;
-    setPage(next);
-    void loadPosts(tab, next, sort, true);
-  };
-
-  const draftList = sort === "oldest" || sort === "latest" ? sortDrafts(drafts, sort) : sortDrafts(drafts, "latest");
+  const draftList =
+    sort === "oldest" || sort === "latest" ? sortDrafts(drafts, sort) : sortDrafts(drafts, "latest");
 
   return (
     <div className="space-y-6">
+      <ContentViewerModal
+        post={viewerPost}
+        currentUserId={userId}
+        onClose={() => setViewerPost(null)}
+      />
+
       {searchHint?.trim() ? (
         <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-[var(--foreground-muted)]">
           Search from the top bar:{" "}
-          <span className="font-medium text-[var(--foreground)]">&quot;{searchHint.trim()}&quot;</span> — match items
-          below in this library.
+          <span className="font-medium text-[var(--foreground)]">&quot;{searchHint.trim()}&quot;</span>
         </p>
       ) : null}
 
@@ -200,112 +128,98 @@ export function ContentLibraryClient({
           </label>
         ) : (
           <p className="text-xs text-[var(--foreground-subtle)]">
-            Drafts are ordered by last update. Capture and upload from the Bromo app; polish captions here.
+            Drafts: edit captions here; capture stays in the Bromo app.
           </p>
         )}
       </div>
 
-      {loading && (tab === "drafts" ? drafts.length === 0 : posts.length === 0) ? (
+      {error ? (
+        <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">{error}</p>
+      ) : null}
+
+      {tab === "drafts" && draftLoading && drafts.length === 0 ? (
+        <p className="text-sm text-[var(--foreground-muted)]">Loading…</p>
+      ) : null}
+      {tab !== "drafts" && loading && posts.length === 0 ? (
         <p className="text-sm text-[var(--foreground-muted)]">Loading…</p>
       ) : null}
 
       {tab === "drafts" ? (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {draftList.map((d) => {
-            const thumb = publicMediaUrl(d.thumbnailUri);
-            return (
-              <li
-                key={d._id}
-                className="overflow-hidden rounded-2xl border border-[var(--hairline)] bg-[var(--card)]"
-              >
-                <div className="relative aspect-video bg-[var(--surface)]">
-                  {thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={thumb} alt="" className="size-full object-cover" />
-                  ) : (
-                    <div className="flex size-full items-center justify-center text-[var(--foreground-subtle)]">
-                      <Film className="size-10 opacity-30" />
-                    </div>
-                  )}
-                  <span className="absolute left-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
-                    {d.type ?? "draft"}
-                  </span>
-                </div>
-                <div className="space-y-3 p-4">
-                  <div className="text-xs text-[var(--foreground-muted)]">
-                    {d.mediaType ?? "media"} ·{" "}
-                    {d.updatedAt ? new Date(d.updatedAt).toLocaleString() : "—"}
-                  </div>
-                  <DraftCaptionEditor draftId={d._id} caption={d.caption ?? ""} />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {posts.map((p) => (
-            <li
-              key={p._id}
-              className="overflow-hidden rounded-2xl border border-[var(--hairline)] bg-[var(--card)]"
-            >
-              <Link href={`/dashboard/promotions?contentId=${encodeURIComponent(p._id)}`} className="block">
-                <div className="relative aspect-video bg-black">
-                  <GridThumb
-                    post={p}
-                    label={p.caption?.trim() ? p.caption.trim().slice(0, 80) : `${p.type} thumbnail`}
-                  />
-                  {(p.type === "reel" || p.mediaType === "video") && (
-                    <span className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-black/60">
-                      <Play className="size-3.5 fill-white text-white" />
+        <div className="space-y-6">
+          <ul className="grid grid-cols-3 gap-1 lg:grid-cols-6">
+            {draftList.map((d) => {
+              const thumb = publicMediaUrl(d.thumbnailUri);
+              return (
+                <li key={d._id} className="flex flex-col gap-1">
+                  <div className="relative aspect-square overflow-hidden rounded-lg border border-[var(--hairline)] bg-[var(--surface)]">
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumb} alt="" className="size-full object-cover" />
+                    ) : (
+                      <div className="flex size-full items-center justify-center text-[var(--foreground-subtle)]">
+                        <Film className="size-8 opacity-30" />
+                      </div>
+                    )}
+                    <span className="absolute left-1 top-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-bold uppercase text-white">
+                      {d.type ?? "draft"}
                     </span>
-                  )}
-                  <span className="absolute left-2 top-2 rounded-md bg-black/65 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
-                    {p.type}
+                  </div>
+                  <p className="line-clamp-2 text-[10px] leading-tight text-[var(--foreground-muted)]">
+                    {d.caption?.trim() || "Draft"}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+          {draftList.length > 0 ? (
+            <div className="space-y-4 rounded-2xl border border-[var(--hairline)] bg-[var(--card)] p-4">
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">Caption edits</h3>
+              <ul className="space-y-4">
+                {draftList.map((d) => (
+                  <li key={`edit-${d._id}`}>
+                    <p className="mb-1 font-mono text-[10px] text-[var(--foreground-subtle)]">{d._id}</p>
+                    <DraftCaptionEditor draftId={d._id} caption={d.caption ?? ""} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <ul className="grid grid-cols-3 gap-1 lg:grid-cols-6">
+          {posts.map((p) => (
+            <li key={p._id} className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => setViewerPost(p)}
+                className="group relative block aspect-square overflow-hidden rounded-lg border border-[var(--hairline)] bg-black text-left"
+              >
+                <GridMediaPreview post={p} alt={itemAlt(p)} className="size-full object-cover transition group-hover:opacity-95" />
+                {(p.type === "reel" || p.mediaType === "video") && (
+                  <span className="pointer-events-none absolute right-1 top-1 flex size-6 items-center justify-center rounded-full bg-black/65">
+                    <Play className="size-3 fill-white text-white" />
                   </span>
-                </div>
-              </Link>
-              <div className="space-y-2 p-4 text-sm">
-                <p className="line-clamp-2 text-[var(--foreground)]">{p.caption?.trim() || "No caption"}</p>
-                <div className="flex flex-wrap gap-3 text-xs text-[var(--foreground-muted)]">
-                  <span>{p.viewsCount != null ? `${p.viewsCount} views` : "— views"}</span>
-                  <span>{p.likesCount != null ? `${p.likesCount} likes` : "— likes"}</span>
-                  {p.createdAt ? (
-                    <time dateTime={p.createdAt}>{new Date(p.createdAt).toLocaleDateString()}</time>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <Link
-                    href={`/dashboard/promotions?contentId=${encodeURIComponent(p._id)}&contentType=${p.type === "reel" ? "reel" : "post"}`}
-                    className="text-xs font-semibold text-[var(--accent)] hover:underline"
-                  >
-                    Promote
-                  </Link>
-                  <span className="text-[var(--foreground-subtle)]">·</span>
-                  <span className="text-xs text-[var(--foreground-subtle)]">Open in app for full editor</span>
-                </div>
-              </div>
+                )}
+              </button>
+              <p className="line-clamp-2 text-[10px] leading-tight text-[var(--foreground-muted)]">
+                {p.caption?.trim() || p.type}
+              </p>
             </li>
           ))}
         </ul>
       )}
 
-      {tab === "drafts" && !loading && drafts.length === 0 ? (
-        <p className="text-sm text-[var(--foreground-muted)]">No drafts yet. Start from the Bromo app.</p>
+      {tab !== "drafts" && hasMore ? <div ref={sentinelRef} className="h-3 w-full shrink-0" aria-hidden /> : null}
+
+      {tab === "drafts" && !draftLoading && drafts.length === 0 ? (
+        <p className="text-sm text-[var(--foreground-muted)]">No drafts yet.</p>
       ) : null}
       {tab !== "drafts" && !loading && posts.length === 0 ? (
         <p className="text-sm text-[var(--foreground-muted)]">Nothing in this filter yet.</p>
       ) : null}
 
-      {hasMore && tab !== "drafts" ? (
-        <button
-          type="button"
-          onClick={loadMore}
-          disabled={loading}
-          className="w-full rounded-2xl border border-[var(--hairline)] py-3 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface)] disabled:opacity-50"
-        >
-          {loading ? "Loading…" : "Load more"}
-        </button>
+      {loadingMore && tab !== "drafts" ? (
+        <p className="text-center text-xs text-[var(--foreground-muted)]">Loading more…</p>
       ) : null}
     </div>
   );

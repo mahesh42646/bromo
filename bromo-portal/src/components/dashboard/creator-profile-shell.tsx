@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   AlignJustify,
   BadgeCheck,
   BarChart2,
+  Bell,
   Bookmark,
   Camera,
   ChevronLeft,
@@ -14,23 +17,33 @@ import {
   Film,
   Globe,
   Grid3X3,
+  Info,
+  KeyRound,
   Link2,
   Lock,
-  Megaphone,
+  LogOut,
   PenSquare,
   Play,
   Plus,
   Share2,
+  Shield,
   ShoppingBag,
+  Sliders,
+  Smartphone,
   Store,
   TrendingUp,
+  UserPlus,
   X,
+  Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { site } from "@/config/site";
+import { ContentViewerModal } from "@/components/dashboard/content-viewer-modal";
+import { GridMediaPreview } from "@/components/dashboard/grid-media-preview";
 import { useDashboardLogout } from "@/hooks/use-dashboard-logout";
+import { useProfileGridFeed } from "@/hooks/use-profile-grid-feed";
 import { publicMediaUrl } from "@/lib/media-url";
-import type { PortalPost, UserPostsApiResponse } from "@/types/post";
+import type { PortalPost } from "@/types/post";
 import type { DbUser } from "@/types/user";
 
 export type ProfileGridStats = {
@@ -47,19 +60,6 @@ function fmtWalletCoins(n: number): string {
   return String(n);
 }
 
-function postThumbnailSrc(post: PortalPost): string {
-  const thumb = post.thumbnailUrl?.trim();
-  if (post.mediaType === "video" && thumb) return publicMediaUrl(thumb) ?? "";
-  if (thumb) return publicMediaUrl(thumb) ?? "";
-  return publicMediaUrl(post.mediaUrl) ?? "";
-}
-
-function resolvePlaybackSrc(post: PortalPost): string | null {
-  const hls = post.hlsMasterUrl?.trim();
-  if (hls) return publicMediaUrl(hls);
-  return publicMediaUrl(post.mediaUrl);
-}
-
 function gridItemAlt(post: PortalPost, fallback: string): string {
   const c = post.caption?.trim();
   if (c) return c.length > 80 ? `${c.slice(0, 80)}…` : c;
@@ -68,114 +68,62 @@ function gridItemAlt(post: PortalPost, fallback: string): string {
 
 type GridTab = "posts" | "reels" | "saved";
 
-function tabToApiType(tab: GridTab): string {
-  if (tab === "reels") return "reel";
-  if (tab === "saved") return "saved";
-  return "post";
-}
-
-type AnalyticsPayload = {
-  viewsCount?: number;
-  impressionsCount?: number;
-  likesCount?: number;
-  commentsCount?: number;
-  sharesCount?: number;
-  reachRate?: number;
-  engagementRate?: number;
-};
-
-function HlsVideo({ src, className }: { src: string; className?: string }) {
-  const ref = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const video = ref.current;
-    if (!video || !src) return;
-    let cancelled = false;
-    let hls: import("hls.js").default | null = null;
-
-    const run = async () => {
-      const isHls = src.includes(".m3u8");
-      if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
-        video.src = src;
-        return;
-      }
-      if (isHls) {
-        const { default: Hls } = await import("hls.js");
-        if (cancelled) return;
-        if (Hls.isSupported()) {
-          hls = new Hls({ enableWorker: true });
-          hls.loadSource(src);
-          hls.attachMedia(video);
-        } else {
-          video.src = src;
-        }
-        return;
-      }
-      video.src = src;
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-      hls?.destroy();
-      video.removeAttribute("src");
-      video.load();
-    };
-  }, [src]);
-
-  return <video ref={ref} className={className} controls playsInline />;
-}
-
-function ProfileGridThumb({ post, label }: { post: PortalPost; label: string }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const thumb = postThumbnailSrc(post);
-  const videoSrc = resolvePlaybackSrc(post);
-  const isVideo = post.mediaType === "video";
-  const fallbackMp4 = publicMediaUrl(post.mediaUrl);
-  const rawVideo = videoSrc ?? fallbackMp4;
-  const videoSrcNonHls = rawVideo && !rawVideo.includes(".m3u8") ? rawVideo : null;
-
-  if (isVideo && (imgFailed || !thumb) && videoSrcNonHls) {
-    return (
-      <video
-        src={videoSrcNonHls}
-        muted
-        playsInline
-        preload="metadata"
-        className="pointer-events-none size-full object-cover"
-        aria-hidden
-      />
-    );
-  }
-
-  if (imgFailed && (!videoSrcNonHls || !isVideo)) {
-    return (
-      <div
-        className="flex size-full items-center justify-center bg-white/10 text-white/40"
-        aria-hidden
-      >
-        <Film className="size-7 opacity-50" />
+function SettingsDrawerRow({
+  icon: Icon,
+  label,
+  sublabel,
+  accent,
+  href,
+  onClick,
+  onClose,
+}: {
+  icon: LucideIcon;
+  label: string;
+  sublabel?: string;
+  accent: string;
+  href?: string;
+  onClick?: () => void;
+  onClose: () => void;
+}) {
+  const content = (
+    <div className="flex items-center gap-3">
+      <div className={`flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] ${accent}`}>
+        <Icon className="size-[18px]" strokeWidth={2} />
       </div>
-    );
-  }
-
-  const src = thumb || (isVideo ? videoSrc : "") || "";
-  if (!src) {
-    return (
-      <div className="flex size-full items-center justify-center bg-white/10" aria-hidden>
-        <Film className="size-7 text-white/35" />
+      <div className="min-w-0 flex-1 text-left">
+        <div className="text-[13px] font-semibold text-white">{label}</div>
+        {sublabel ? <div className="mt-0.5 text-[11px] leading-snug text-white/45">{sublabel}</div> : null}
       </div>
+      <ChevronRight className="size-4 shrink-0 text-white/35" />
+    </div>
+  );
+  const cls =
+    "block w-full rounded-xl px-2 py-2.5 transition hover:bg-white/[0.07] active:bg-white/[0.04]";
+  if (href?.startsWith("http://") || href?.startsWith("https://")) {
+    return (
+      <a href={href} className={cls} onClick={onClose} target="_blank" rel="noopener noreferrer">
+        {content}
+      </a>
     );
   }
-
+  if (href) {
+    return (
+      <Link href={href} className={cls} onClick={onClose}>
+        {content}
+      </Link>
+    );
+  }
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- CDN / API media URLs
-    <img
-      src={src}
-      alt={label}
-      className="size-full object-cover"
-      onError={() => setImgFailed(true)}
-    />
+    <button
+      type="button"
+      className={`${cls} text-left`}
+      onClick={() => {
+        onClose();
+        onClick?.();
+      }}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -193,15 +141,16 @@ export function CreatorProfileShell({
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [gridTab, setGridTab] = useState<GridTab>("reels");
-  const [posts, setPosts] = useState<PortalPost[]>([]);
-  const [postsLoading, setPostsLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [preview, setPreview] = useState<PortalPost | null>(null);
-  const [insightsPostId, setInsightsPostId] = useState<string | null>(null);
-  const [insights, setInsights] = useState<AnalyticsPayload | null>(null);
-  const [insightsLoading, setInsightsLoading] = useState(false);
-  const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [viewerPost, setViewerPost] = useState<PortalPost | null>(null);
+
+  const {
+    posts,
+    postsLoading,
+    postsLoadingMore,
+    hasMore,
+    postsError,
+    sentinelRef,
+  } = useProfileGridFeed(user._id, gridTab);
 
   const displayName = user.displayName?.trim() || user.username || "You";
   const username = user.username?.trim() || "you";
@@ -226,45 +175,6 @@ export function CreatorProfileShell({
   useEffect(() => {
     void fetchWallet();
   }, [fetchWallet]);
-
-  const loadPosts = useCallback(async (tab: GridTab, pageNum: number, append: boolean) => {
-    setPostsLoading(true);
-    try {
-      const type = tabToApiType(tab);
-      const q = new URLSearchParams({
-        userId: user._id,
-        type,
-        page: String(pageNum),
-      });
-      const res = await fetch(`/api/portal/user-posts?${q}`, { cache: "no-store" });
-      const raw = (await res.json().catch(() => ({}))) as UserPostsApiResponse & { message?: string };
-      if (!res.ok) {
-        setPosts((prev) => (append ? prev : []));
-        setHasMore(false);
-        return;
-      }
-      const next = raw.posts ?? [];
-      setPosts((prev) => (append ? [...prev, ...next] : next));
-      setHasMore(Boolean(raw.hasMore));
-    } catch {
-      setPosts((prev) => (append ? prev : []));
-      setHasMore(false);
-    } finally {
-      setPostsLoading(false);
-    }
-  }, [user._id]);
-
-  useEffect(() => {
-    setPage(1);
-    void loadPosts(gridTab, 1, false);
-  }, [gridTab, loadPosts]);
-
-  const loadMore = () => {
-    if (!hasMore || postsLoading) return;
-    const next = page + 1;
-    setPage(next);
-    void loadPosts(gridTab, next, true);
-  };
 
   const openEdit = () => {
     setMenuOpen(false);
@@ -300,40 +210,6 @@ export function CreatorProfileShell({
     const href = /^https?:\/\//i.test(w) ? w : `https://${w}`;
     window.open(href, "_blank", "noopener,noreferrer");
   };
-
-  useEffect(() => {
-    if (!insightsPostId) {
-      setInsights(null);
-      setInsightsError(null);
-      return;
-    }
-    let cancelled = false;
-    setInsightsLoading(true);
-    setInsightsError(null);
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/portal/post-analytics?postId=${encodeURIComponent(insightsPostId)}`,
-          { cache: "no-store" },
-        );
-        const data = (await res.json().catch(() => ({}))) as AnalyticsPayload & { message?: string };
-        if (cancelled) return;
-        if (!res.ok) {
-          setInsights(null);
-          setInsightsError(data.message ?? "Could not load insights");
-          return;
-        }
-        setInsights(data);
-      } catch {
-        if (!cancelled) setInsightsError("Could not load insights");
-      } finally {
-        if (!cancelled) setInsightsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [insightsPostId]);
 
   const proSubtitle =
     gridStats.totalViews != null &&
@@ -519,6 +395,10 @@ export function CreatorProfileShell({
           })}
         </div>
 
+        {postsError ? (
+          <p className="py-4 text-center text-xs text-rose-400/90">{postsError}</p>
+        ) : null}
+
         {postsLoading && posts.length === 0 ? (
           <div className="py-10 text-center text-sm text-white/45">Loading…</div>
         ) : (
@@ -536,13 +416,14 @@ export function CreatorProfileShell({
               <div key={post._id} className="box-border w-1/3 p-px">
                 <button
                   type="button"
-                  onClick={() => setPreview(post)}
+                  onClick={() => setViewerPost(post)}
                   className="relative block w-full aspect-square overflow-hidden bg-white/5"
                   aria-label={gridItemAlt(post, "Open post preview")}
                 >
-                  <ProfileGridThumb
+                  <GridMediaPreview
                     post={post}
-                    label={gridItemAlt(post, `${post.type === "reel" ? "Reel" : "Post"} thumbnail`)}
+                    alt={gridItemAlt(post, `${post.type === "reel" ? "Reel" : "Post"} thumbnail`)}
+                    className="pointer-events-none size-full object-cover"
                   />
                   {(post.type === "reel" || post.mediaType === "video") && (
                     <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded bg-black/55">
@@ -552,6 +433,9 @@ export function CreatorProfileShell({
                 </button>
               </div>
             ))}
+            {hasMore ? (
+              <div ref={sentinelRef} className="h-px w-full shrink-0 basis-full" aria-hidden />
+            ) : null}
           </div>
         )}
 
@@ -563,18 +447,10 @@ export function CreatorProfileShell({
           </div>
         ) : null}
 
-        {hasMore && !postsLoading ? (
-          <button
-            type="button"
-            onClick={loadMore}
-            className="mt-4 w-full rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/5"
-          >
-            Load more
-          </button>
+        {postsLoadingMore ? (
+          <p className="mt-3 text-center text-xs text-white/40">Loading more…</p>
         ) : null}
       </div>
-
-   
 
       {menuOpen ? (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/60" role="presentation">
@@ -609,177 +485,168 @@ export function CreatorProfileShell({
                 <div className="truncate text-sm text-white/45">@{username}</div>
               </div>
             </div>
-            <nav className="flex flex-col gap-1 overflow-y-auto p-3 text-sm">
-              <Link
-                href="/dashboard"
-                className="rounded-lg px-3 py-2.5 hover:bg-white/10"
-                onClick={() => setMenuOpen(false)}
-              >
-                Overview
-              </Link>
-              <Link
-                href="/dashboard/content"
-                className="rounded-lg px-3 py-2.5 hover:bg-white/10"
-                onClick={() => setMenuOpen(false)}
-              >
-                Content
-              </Link>
-              <Link
-                href="/dashboard/store"
-                className="rounded-lg px-3 py-2.5 hover:bg-white/10"
-                onClick={() => setMenuOpen(false)}
-              >
-                Store
-              </Link>
-              <Link
-                href="/dashboard/promotions"
-                className="rounded-lg px-3 py-2.5 hover:bg-white/10"
-                onClick={() => setMenuOpen(false)}
-              >
-                Promotions
-              </Link>
-              <Link
-                href="/dashboard/notifications"
-                className="rounded-lg px-3 py-2.5 hover:bg-white/10"
-                onClick={() => setMenuOpen(false)}
-              >
-                Notifications
-              </Link>
-              <button type="button" onClick={openEdit} className="rounded-lg px-3 py-2.5 text-left hover:bg-white/10">
-                Edit profile
-              </button>
-              <button
-                type="button"
-                onClick={() => void logout()}
-                className="rounded-lg px-3 py-2.5 text-left text-rose-400 hover:bg-white/10"
-              >
-                Log out
-              </button>
+            <nav className="flex flex-col gap-4 overflow-y-auto p-3 text-sm">
+              <div>
+                <p className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-white/35">
+                  Creator tools
+                </p>
+                <div className="flex flex-col gap-0.5">
+                  <SettingsDrawerRow
+                    icon={Zap}
+                    label="Creator Dashboard"
+                    sublabel="Stats, earnings, and tools"
+                    accent="text-amber-400"
+                    href="/dashboard"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                  <SettingsDrawerRow
+                    icon={BarChart2}
+                    label="Professional Dashboard"
+                    sublabel="Wallet, promotions, insights"
+                    accent="text-sky-400"
+                    href="/dashboard/promotions"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                  <SettingsDrawerRow
+                    icon={BadgeCheck}
+                    label="Get Verification Badge"
+                    sublabel="Confirm email in the Bromo app"
+                    accent="text-pink-400"
+                    href="/dashboard/profile"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-white/35">Settings</p>
+                <div className="flex flex-col gap-0.5">
+                  <SettingsDrawerRow
+                    icon={Bell}
+                    label="Notification settings"
+                    accent="text-white/80"
+                    href="/dashboard/notifications"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                  <SettingsDrawerRow
+                    icon={Shield}
+                    label="Account privacy"
+                    sublabel="Public or private — profile editor"
+                    accent="text-white/80"
+                    href="/dashboard/profile"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                  <SettingsDrawerRow
+                    icon={Sliders}
+                    label="Content preferences"
+                    accent="text-white/80"
+                    href="/dashboard/content"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                  <SettingsDrawerRow
+                    icon={Film}
+                    label="Media quality"
+                    sublabel="Upload & playback — content library"
+                    accent="text-white/80"
+                    href="/dashboard/content"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-white/35">Account</p>
+                <div className="flex flex-col gap-0.5">
+                  <SettingsDrawerRow
+                    icon={Activity}
+                    label="Your activity"
+                    sublabel="Overview & content performance"
+                    accent="text-white/80"
+                    href="/dashboard"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                  <SettingsDrawerRow
+                    icon={Smartphone}
+                    label="Devices and sessions"
+                    sublabel="Secured via your Bromo login"
+                    accent="text-white/80"
+                    href="/dashboard/profile"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                  <SettingsDrawerRow
+                    icon={KeyRound}
+                    label="Permissions"
+                    sublabel="Camera, location — manage in the app"
+                    accent="text-white/80"
+                    href="/dashboard/profile"
+                    onClose={() => setMenuOpen(false)}
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-white/35">More info</p>
+                <SettingsDrawerRow
+                  icon={Info}
+                  label={`About ${site.name}`}
+                  sublabel="Marketing site & support"
+                  accent="text-white/80"
+                  href="https://bromo.app"
+                  onClose={() => setMenuOpen(false)}
+                />
+              </div>
+              <div className="border-t border-white/10 pt-2">
+                <SettingsDrawerRow
+                  icon={UserPlus}
+                  label="Add another account"
+                  sublabel="You will be logged out of this portal session"
+                  accent="text-sky-400"
+                  onClose={() => setMenuOpen(false)}
+                  onClick={() => {
+                    if (typeof window !== "undefined" && window.confirm("Log out to use another account?")) {
+                      void logout();
+                    }
+                  }}
+                />
+                <SettingsDrawerRow
+                  icon={PenSquare}
+                  label="Edit profile"
+                  accent="text-white/80"
+                  onClose={() => setMenuOpen(false)}
+                  onClick={openEdit}
+                />
+                <SettingsDrawerRow
+                  icon={ShoppingBag}
+                  label="Store"
+                  accent="text-white/80"
+                  href="/dashboard/store"
+                  onClose={() => setMenuOpen(false)}
+                />
+                <SettingsDrawerRow
+                  icon={Clapperboard}
+                  label="Content library"
+                  accent="text-white/80"
+                  href="/dashboard/content"
+                  onClose={() => setMenuOpen(false)}
+                />
+                <button
+                  type="button"
+                  className="mt-1 flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left text-rose-400 transition hover:bg-rose-500/10"
+                  onClick={() => void logout()}
+                >
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-rose-500/15">
+                    <LogOut className="size-[18px]" strokeWidth={2} />
+                  </div>
+                  <span className="text-[13px] font-semibold">Log out</span>
+                </button>
+              </div>
             </nav>
           </div>
         </div>
       ) : null}
 
-      {preview ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          role="presentation"
-        >
-          <button
-            type="button"
-            className="absolute inset-0"
-            aria-label="Close preview"
-            onClick={() => setPreview(null)}
-          />
-          <div className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl bg-black shadow-2xl">
-            <button
-              type="button"
-              onClick={() => setPreview(null)}
-              className="absolute right-2 top-2 z-20 rounded-full bg-black/70 p-1.5 text-white hover:bg-black/90"
-              aria-label="Close"
-            >
-              <X className="size-5" />
-            </button>
-            {preview.mediaType === "video" ? (
-              (() => {
-                const src = resolvePlaybackSrc(preview);
-                return src ? (
-                  <HlsVideo src={src} className="aspect-[9/16] w-full bg-black object-contain" />
-                ) : null;
-              })()
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={postThumbnailSrc(preview)}
-                alt={gridItemAlt(preview, "Post")}
-                className="max-h-[80vh] w-full object-contain"
-              />
-            )}
-            {preview.caption?.trim() ? (
-              <p className="border-t border-white/10 p-3 text-sm text-white/80">{preview.caption.trim()}</p>
-            ) : null}
-            <div className="flex gap-2 border-t border-white/10 p-3">
-              <Link
-                href={`/dashboard/promotions?contentId=${encodeURIComponent(preview._id)}&contentType=${preview.type === "reel" ? "reel" : "post"}`}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-pink-500/20 py-2.5 text-sm font-semibold text-pink-300 hover:bg-pink-500/30"
-              >
-                <Megaphone className="size-4" />
-                Promote
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  setPreview(null);
-                  setInsightsPostId(preview._id);
-                }}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-white/20 py-2.5 text-sm font-semibold text-white/90 hover:bg-white/10"
-              >
-                <BarChart2 className="size-4" />
-                Insights
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {insightsPostId ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center" role="presentation">
-          <button
-            type="button"
-            className="absolute inset-0"
-            aria-label="Close insights"
-            onClick={() => setInsightsPostId(null)}
-          />
-          <div className="relative z-10 w-full max-w-[430px] rounded-t-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl sm:rounded-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-bold">
-                <BarChart2 className="size-4 text-pink-500" />
-                Insights
-              </div>
-              <button
-                type="button"
-                onClick={() => setInsightsPostId(null)}
-                className="rounded-lg p-1.5 hover:bg-white/10"
-                aria-label="Close"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-            {insightsLoading ? (
-              <p className="text-sm text-white/50">Loading…</p>
-            ) : insightsError ? (
-              <p className="text-sm text-rose-400">{insightsError}</p>
-            ) : insights ? (
-              <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-lg bg-white/5 p-3">
-                  <dt className="text-white/45">Views</dt>
-                  <dd className="text-lg font-bold tabular-nums">{insights.viewsCount ?? 0}</dd>
-                </div>
-                <div className="rounded-lg bg-white/5 p-3">
-                  <dt className="text-white/45">Impressions</dt>
-                  <dd className="text-lg font-bold tabular-nums">{insights.impressionsCount ?? 0}</dd>
-                </div>
-                <div className="rounded-lg bg-white/5 p-3">
-                  <dt className="text-white/45">Likes</dt>
-                  <dd className="text-lg font-bold tabular-nums">{insights.likesCount ?? 0}</dd>
-                </div>
-                <div className="rounded-lg bg-white/5 p-3">
-                  <dt className="text-white/45">Comments</dt>
-                  <dd className="text-lg font-bold tabular-nums">{insights.commentsCount ?? 0}</dd>
-                </div>
-                <div className="rounded-lg bg-white/5 p-3">
-                  <dt className="text-white/45">Reach %</dt>
-                  <dd className="text-lg font-bold tabular-nums">{insights.reachRate ?? 0}</dd>
-                </div>
-                <div className="rounded-lg bg-white/5 p-3">
-                  <dt className="text-white/45">Engagement %</dt>
-                  <dd className="text-lg font-bold tabular-nums">{insights.engagementRate ?? 0}</dd>
-                </div>
-              </dl>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <ContentViewerModal
+        post={viewerPost}
+        currentUserId={user._id}
+        onClose={() => setViewerPost(null)}
+      />
     </div>
   );
 

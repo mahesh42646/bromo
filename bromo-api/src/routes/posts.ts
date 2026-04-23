@@ -2551,9 +2551,15 @@ postsRouter.delete(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
+      const postId = String(req.params.id);
       const comment = await Comment.findById(req.params.commentId);
       if (!comment || !comment.isActive) return res.status(404).json({ message: "Comment not found" });
-      if (String(comment.authorId) !== String(user._id)) {
+      if (String(comment.postId) !== postId) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      const post = await Post.findById(postId).select("authorId").lean();
+      const isPostOwner = post != null && String(post.authorId) === String(user._id);
+      if (!isPostOwner && String(comment.authorId) !== String(user._id)) {
         return res.status(403).json({ message: "Not authorized" });
       }
       comment.isActive = false;
