@@ -153,13 +153,7 @@ export function LandingPage() {
         </div>
         <div className="relative mx-auto grid max-w-6xl gap-12 px-4 lg:grid-cols-2 lg:items-center sm:px-6">
           <div>
-            <motion.p
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--accent)]"
-            >
-              Social · video · commerce
-            </motion.p>
+         
             <motion.h1
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}

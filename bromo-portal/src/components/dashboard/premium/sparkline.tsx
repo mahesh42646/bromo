@@ -20,22 +20,30 @@ function pointsFromSeed(seed: string, n: number): number[] {
 }
 
 type Props = {
+  /** When set, draws from real samples (e.g. monthly counts). */
+  values?: number[];
+  /** Fallback decorative path when `values` is omitted (legacy). */
   seed: string;
   color: string;
   className?: string;
 };
 
-export function Sparkline({ seed, color, className }: Props) {
+export function Sparkline({ values, seed, color, className }: Props) {
   const gid = useId().replace(/:/g, "");
   const { lineD, areaD } = useMemo(() => {
-    const vals = pointsFromSeed(seed, 14);
     const w = 100;
     const h = 32;
+    let vals: number[];
+    if (values != null && values.length > 0) {
+      vals = values.map((v) => Number(v) || 0);
+    } else {
+      vals = pointsFromSeed(seed, 14);
+    }
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     const norm = vals.map((v) => (max === min ? 0.5 : (v - min) / (max - min)));
     const xy = norm.map((v, i) => {
-      const x = (i / (norm.length - 1)) * w;
+      const x = vals.length <= 1 ? w / 2 : (i / (norm.length - 1)) * w;
       const y = h - v * (h - 4) - 2;
       return [x, y] as const;
     });
@@ -43,7 +51,7 @@ export function Sparkline({ seed, color, className }: Props) {
     const last = xy[xy.length - 1]!;
     const areaD = `${lineD} L ${last[0]} ${h} L 0 ${h} Z`;
     return { lineD, areaD };
-  }, [seed]);
+  }, [seed, values]);
 
   return (
     <svg viewBox="0 0 100 32" className={className} preserveAspectRatio="none" aria-hidden>

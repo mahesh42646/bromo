@@ -24,7 +24,8 @@ export function ContentMixCard({ postCount, reelCount, draftCount }: Props) {
       <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--foreground-subtle)]">Mix</p>
       <h3 className="mt-2 text-lg font-semibold tracking-tight">Content distribution</h3>
       <p className="mt-1 text-sm text-[var(--foreground-muted)]">
-        Posts vs reels vs drafts on your account — sized by volume.
+        Live counts from the API: profile grid posts and reels, plus every draft saved to your account (including
+        story drafts). Bubble size reflects share of the total.
       </p>
       <div className="relative mt-8 flex min-h-[200px] flex-1 items-center justify-center">
         <div className="relative h-48 w-full max-w-[240px]">
@@ -66,15 +67,18 @@ export function ContentMixCard({ postCount, reelCount, draftCount }: Props) {
           />
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs">
+      <div className="mt-4 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs tabular-nums">
         <span className="flex items-center gap-1.5 text-[var(--foreground-muted)]">
-          <span className="size-2 rounded-full bg-[#ff4d6d]" /> Posts {postCount}
+          <span className="size-2 shrink-0 rounded-full bg-[#ff4d6d]" aria-hidden />
+          Posts <span className="font-medium text-[var(--foreground)]">{postCount}</span>
         </span>
         <span className="flex items-center gap-1.5 text-[var(--foreground-muted)]">
-          <span className="size-2 rounded-full bg-[#a855f7]" /> Reels {reelCount}
+          <span className="size-2 shrink-0 rounded-full bg-[#a855f7]" aria-hidden />
+          Reels <span className="font-medium text-[var(--foreground)]">{reelCount}</span>
         </span>
         <span className="flex items-center gap-1.5 text-[var(--foreground-muted)]">
-          <span className="size-2 rounded-full bg-[#f97316]" /> Drafts {draftCount}
+          <span className="size-2 shrink-0 rounded-full bg-[#f97316]" aria-hidden />
+          Drafts <span className="font-medium text-[var(--foreground)]">{draftCount}</span>
         </span>
       </div>
       <Link

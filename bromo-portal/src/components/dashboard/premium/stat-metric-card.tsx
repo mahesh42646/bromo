@@ -15,6 +15,8 @@ type Props = {
   icon: LucideIcon;
   sparkSeed: string;
   sparkColor: string;
+  /** Monthly (or sequential) counts from the API for the mini chart. */
+  sparkValues?: number[];
   highlight?: boolean;
   delay?: number;
 };
@@ -27,6 +29,7 @@ export function StatMetricCard({
   icon: Icon,
   sparkSeed,
   sparkColor,
+  sparkValues,
   highlight,
   delay = 0,
 }: Props) {
@@ -56,7 +59,7 @@ export function StatMetricCard({
           <p className="mt-4 text-3xl font-semibold tabular-nums tracking-tight sm:text-[2rem]">{value}</p>
           <p className="mt-1 line-clamp-2 text-xs text-[var(--foreground-subtle)]">{hint}</p>
           <div className="mt-4 h-8 w-full opacity-90">
-            <Sparkline seed={sparkSeed} color={sparkColor} className="h-full w-full" />
+            <Sparkline values={sparkValues} seed={sparkSeed} color={sparkColor} className="h-full w-full" />
           </div>
           <ArrowUpRight className="absolute right-4 top-4 size-4 text-[var(--foreground-subtle)] opacity-0 transition-opacity group-hover:opacity-100" />
         </div>

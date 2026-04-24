@@ -1,4 +1,3 @@
-"use client";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -59,72 +58,165 @@ export default async function StorePage() {
 
   if (!store) {
     return (
-      <div className="space-y-10">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Bromo Store</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--foreground-muted)]">
-            A storefront on Bromo is built for the same depth you expect from large marketplaces: rich catalog,
-            variants, local discovery, and promotions tied to your reels. Today we focus on offline or self-managed
-            fulfillment; when you are ready for delivery partners, we flip on shipping, couriers, and inventory sync.
-          </p>
+      <div className="space-y-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Store admin dashboard</h1>
+            <p className="mt-1 max-w-3xl text-sm text-[var(--foreground-muted)]">
+              No store is connected yet. Set up your storefront once, add products, and start receiving buyer leads in
+              Bromo. Delivery is optional; your team can close orders offline via calls, chat, or direct visits.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/store/setup"
+              className="inline-flex items-center rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--accent-foreground)]"
+            >
+              Create store in dashboard
+            </Link>
+            <Link
+              href="/store"
+              target="_blank"
+              className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-semibold hover:bg-[var(--surface)]"
+            >
+              View public store page
+              <ArrowUpRight className="size-3.5" />
+            </Link>
+          </div>
         </div>
 
-        <section className="grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardTitle>How it works</CardTitle>
-            <div className="mt-2 space-y-3 text-sm text-[var(--foreground-muted)]">
-              <p>
-                Create your store once in the Bromo app — upload branding, set categories, and publish products with
-                photos taken on device. Fans discover you through reels, chat, and the store tab.
-              </p>
-              <p>
-                Start with pickup, meetups, or WhatsApp handoffs. When you enable delivery later, the same SKUs power
-                nationwide shipping without rebuilding your catalog.
-              </p>
-            </div>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <a
-                href={site.appStoreUrl}
-                className="inline-flex items-center justify-center rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--accent-foreground)]"
-              >
-                Get the iOS app
-              </a>
-              <a
-                href={site.playStoreUrl}
-                className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-semibold hover:bg-[var(--surface)]"
-              >
-                Get the Android app
-              </a>
-            </div>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Card>
+            <CardTitle>
+              <span className="text-sm text-[var(--foreground-muted)]">Store status</span>
+            </CardTitle>
+            <p className="mt-2 text-2xl font-semibold">Not created</p>
+            <p className="mt-1 text-xs text-[var(--foreground-muted)]">Create your store profile to unlock catalog and leads</p>
           </Card>
+          <Card>
+            <CardTitle>
+              <span className="text-sm text-[var(--foreground-muted)]">Catalog readiness</span>
+            </CardTitle>
+            <p className="mt-2 text-2xl font-semibold">0 products</p>
+            <p className="mt-1 text-xs text-[var(--foreground-muted)]">Add products with price, MOQ, and media</p>
+          </Card>
+          <Card>
+            <CardTitle>
+              <span className="text-sm text-[var(--foreground-muted)]">Lead inbox</span>
+            </CardTitle>
+            <p className="mt-2 text-2xl font-semibold">Locked</p>
+            <p className="mt-1 text-xs text-[var(--foreground-muted)]">Goes live after store setup is complete</p>
+          </Card>
+          <Card>
+            <CardTitle>
+              <span className="text-sm text-[var(--foreground-muted)]">Public storefront</span>
+            </CardTitle>
+            <p className="mt-2 text-2xl font-semibold">Draft</p>
+            <p className="mt-1 text-xs text-[var(--foreground-muted)]">Publish profile to appear in app discovery</p>
+          </Card>
+        </section>
 
-          <div className="space-y-4 rounded-2xl border border-[var(--hairline)] bg-[var(--card)] p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
-              Roadmap
-            </h2>
-            <ul className="space-y-3 text-sm text-[var(--foreground-muted)]">
-              <li className="flex gap-2">
-                <Package className="mt-0.5 size-4 shrink-0 text-[var(--accent)]" />
-                Multi-SKU bundles & limited drops
-              </li>
-              <li className="flex gap-2">
-                <Truck className="mt-0.5 size-4 shrink-0 text-[var(--accent)]" />
-                Courier integrations & rate shopping
-              </li>
-              <li className="flex gap-2">
-                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[var(--accent)]" />
-                Fraud checks & verified payouts
-              </li>
-            </ul>
+        <section className="rounded-2xl border border-[var(--hairline)] bg-[var(--card)] p-6">
+          <h2 className="text-lg font-semibold">Admin onboarding controls</h2>
+          <p className="mt-2 text-sm text-[var(--foreground-muted)]">
+            Complete these admin actions to launch your store operations dashboard.
+          </p>
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+              <CardTitle>
+                <span className="flex items-center gap-2 text-base">
+                  <StoreIcon className="size-4 text-[var(--accent)]" />
+                  1) Create store profile
+                </span>
+              </CardTitle>
+              <CardDescription>Set business name, category, description, city, phone, and working hours.</CardDescription>
+              <Link
+                href="/dashboard/store/setup"
+                className="mt-4 inline-flex w-fit rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface)]"
+              >
+                Open setup form
+              </Link>
+            </Card>
+
+            <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+              <CardTitle>
+                <span className="flex items-center gap-2 text-base">
+                  <Package className="size-4 text-[var(--accent)]" />
+                  2) Add products
+                </span>
+              </CardTitle>
+              <CardDescription>Add SKUs, pricing slabs, MOQ, variants, and product photos.</CardDescription>
+              <Link
+                href="/dashboard/store/products"
+                className="mt-4 inline-flex w-fit rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface)]"
+              >
+                Open product manager
+              </Link>
+            </Card>
+
+            <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+              <CardTitle>
+                <span className="flex items-center gap-2 text-base">
+                  <Handshake className="size-4 text-[var(--accent)]" />
+                  3) Enable lead flow
+                </span>
+              </CardTitle>
+              <CardDescription>Set inquiry owner, response SLA, and callback preferences for your team.</CardDescription>
+              <p className="mt-4 text-xs text-[var(--foreground-muted)]">Recommended SLA: first response under 30 minutes.</p>
+            </Card>
+
+            <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+              <CardTitle>
+                <span className="flex items-center gap-2 text-base">
+                  <Globe className="size-4 text-[var(--accent)]" />
+                  4) Publish public page
+                </span>
+              </CardTitle>
+              <CardDescription>Your store page becomes visible in Bromo search and product discovery.</CardDescription>
+              <Link
+                href="/store"
+                target="_blank"
+                className="mt-4 inline-flex w-fit rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface)]"
+              >
+                Preview storefront
+              </Link>
+            </Card>
+
+            <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+              <CardTitle>
+                <span className="flex items-center gap-2 text-base">
+                  <MessageSquare className="size-4 text-[var(--accent)]" />
+                  5) Handle inquiries
+                </span>
+              </CardTitle>
+              <CardDescription>Manage buyer messages, call requests, quotations, and follow-up reminders.</CardDescription>
+              <p className="mt-4 text-xs text-[var(--foreground-muted)]">Pipeline: New → Contacted → Negotiating → Won/Lost.</p>
+            </Card>
+
+            <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+              <CardTitle>
+                <span className="flex items-center gap-2 text-base">
+                  <BarChart3 className="size-4 text-[var(--accent)]" />
+                  6) Track performance
+                </span>
+              </CardTitle>
+              <CardDescription>Measure product views, inquiry rate, response time, and conversion to offline sales.</CardDescription>
+              <Link
+                href="/dashboard/promotions"
+                className="mt-4 inline-flex w-fit rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface)]"
+              >
+                Open promotion tools
+              </Link>
+            </Card>
           </div>
         </section>
 
         <section className="rounded-2xl border border-dashed border-[var(--hairline)] bg-[var(--surface)]/60 p-8 text-center">
           <Sparkles className="mx-auto size-10 text-[var(--accent)]" />
-          <h2 className="mt-4 text-lg font-semibold">Set up your store</h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm text-[var(--foreground-muted)]">
-            You have not created a store on this account yet. Launch it from the app — then tune copy, hours, and
-            featured products here as the dashboard grows.
+          <h2 className="mt-4 text-lg font-semibold">After store creation, full admin dashboard unlocks here</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm text-[var(--foreground-muted)]">
+            Once your store exists, this page automatically switches to live admin mode with catalog metrics, lead inbox,
+            CRM controls, promotion center, and a direct public-store link.
           </p>
         </section>
       </div>
@@ -187,22 +279,30 @@ export default async function StorePage() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
-          <CardTitle className="text-sm text-[var(--foreground-muted)]">Leads today</CardTitle>
+          <CardTitle>
+            <span className="text-sm text-[var(--foreground-muted)]">Leads today</span>
+          </CardTitle>
           <p className="mt-2 text-2xl font-semibold">{leadsToday}</p>
           <p className="mt-1 text-xs text-[var(--foreground-muted)]">New customer inquiries received today</p>
         </Card>
         <Card>
-          <CardTitle className="text-sm text-[var(--foreground-muted)]">Open inquiries</CardTitle>
+          <CardTitle>
+            <span className="text-sm text-[var(--foreground-muted)]">Open inquiries</span>
+          </CardTitle>
           <p className="mt-2 text-2xl font-semibold">{openInquiries}</p>
           <p className="mt-1 text-xs text-[var(--foreground-muted)]">Waiting for first response or follow-up</p>
         </Card>
         <Card>
-          <CardTitle className="text-sm text-[var(--foreground-muted)]">Listed products</CardTitle>
+          <CardTitle>
+            <span className="text-sm text-[var(--foreground-muted)]">Listed products</span>
+          </CardTitle>
           <p className="mt-2 text-2xl font-semibold">{listedProducts}</p>
           <p className="mt-1 text-xs text-[var(--foreground-muted)]">Live catalog items visible in app search</p>
         </Card>
         <Card>
-          <CardTitle className="text-sm text-[var(--foreground-muted)]">Avg response time</CardTitle>
+          <CardTitle>
+            <span className="text-sm text-[var(--foreground-muted)]">Avg response time</span>
+          </CardTitle>
           <p className="mt-2 text-2xl font-semibold">{avgResponseMins}m</p>
           <p className="mt-1 text-xs text-[var(--foreground-muted)]">Target: respond under 30 minutes</p>
         </Card>
@@ -279,11 +379,13 @@ export default async function StorePage() {
         </p>
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Package className="size-4 text-[var(--accent)]" />
-              Catalog management
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <Package className="size-4 text-[var(--accent)]" />
+                Catalog management
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Add products, variants, MOQ, price ranges, product tags, and media galleries.
             </CardDescription>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -303,11 +405,13 @@ export default async function StorePage() {
           </Card>
 
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Handshake className="size-4 text-[var(--accent)]" />
-              Lead management
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <Handshake className="size-4 text-[var(--accent)]" />
+                Lead management
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Track fresh leads, qualified buyers, pending callbacks, and lost opportunities.
             </CardDescription>
             <div className="mt-4 text-xs text-[var(--foreground-muted)]">
@@ -316,11 +420,13 @@ export default async function StorePage() {
           </Card>
 
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <MessageSquare className="size-4 text-[var(--accent)]" />
-              Inquiry inbox
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <MessageSquare className="size-4 text-[var(--accent)]" />
+                Inquiry inbox
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Centralize WhatsApp, call-back requests, and product question threads from shoppers.
             </CardDescription>
             <div className="mt-4 text-xs text-[var(--foreground-muted)]">
@@ -329,11 +435,13 @@ export default async function StorePage() {
           </Card>
 
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <BarChart3 className="size-4 text-[var(--accent)]" />
-              Insights & analytics
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <BarChart3 className="size-4 text-[var(--accent)]" />
+                Insights & analytics
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Monitor profile views, product clicks, lead sources, and conversion trends.
             </CardDescription>
             <div className="mt-4 text-xs text-[var(--foreground-muted)]">
@@ -342,11 +450,13 @@ export default async function StorePage() {
           </Card>
 
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Users className="size-4 text-[var(--accent)]" />
-              Team & permissions
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <Users className="size-4 text-[var(--accent)]" />
+                Team & permissions
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Assign role-based access for owner, catalog manager, sales, and support staff.
             </CardDescription>
             <div className="mt-4 text-xs text-[var(--foreground-muted)]">
@@ -355,11 +465,13 @@ export default async function StorePage() {
           </Card>
 
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <UserCheck className="size-4 text-[var(--accent)]" />
-              Customer CRM
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <UserCheck className="size-4 text-[var(--accent)]" />
+                Customer CRM
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Save repeat buyers, maintain notes, and prioritize high-intent customer segments.
             </CardDescription>
             <div className="mt-4 text-xs text-[var(--foreground-muted)]">
@@ -368,11 +480,13 @@ export default async function StorePage() {
           </Card>
 
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <BellRing className="size-4 text-[var(--accent)]" />
-              Alerts & automation
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <BellRing className="size-4 text-[var(--accent)]" />
+                Alerts & automation
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Trigger reminders for unanswered leads, low-stock signals, and campaign windows.
             </CardDescription>
             <div className="mt-4 text-xs text-[var(--foreground-muted)]">
@@ -381,11 +495,13 @@ export default async function StorePage() {
           </Card>
 
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Wallet className="size-4 text-[var(--accent)]" />
-              Commercial settings
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <Wallet className="size-4 text-[var(--accent)]" />
+                Commercial settings
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Set payment terms, minimum order values, quote validity, and credit preferences.
             </CardDescription>
             <div className="mt-4 text-xs text-[var(--foreground-muted)]">
@@ -394,11 +510,13 @@ export default async function StorePage() {
           </Card>
 
           <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CreditCard className="size-4 text-[var(--accent)]" />
-              Promotions & visibility
+            <CardTitle>
+              <span className="flex items-center gap-2 text-base">
+                <CreditCard className="size-4 text-[var(--accent)]" />
+                Promotions & visibility
+              </span>
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription>
               Promote premium products, featured categories, and seasonal campaigns.
             </CardDescription>
             <div className="mt-4 flex flex-wrap gap-2">

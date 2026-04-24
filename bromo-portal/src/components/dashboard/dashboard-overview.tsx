@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Bell, LineChart, Sparkles, Store } from "lucide-react";
 import { ContentMixCard } from "@/components/dashboard/premium/content-mix-card";
 import { StatMetricCard } from "@/components/dashboard/premium/stat-metric-card";
-import { ViewsTrendChart } from "@/components/dashboard/premium/views-trend-chart";
+import { ViewsTrendChart, type ChartRangeOption } from "@/components/dashboard/premium/views-trend-chart";
 import { cn } from "@/lib/cn";
 
 export type OverviewStats = {
@@ -13,10 +13,26 @@ export type OverviewStats = {
   postCount: number;
   reelCount: number;
   totalViews: number;
+  totalImpressions: number;
   draftCount: number;
   promoCount: number;
   unreadCount: number;
   hasStore: boolean;
+  /** Sparklines: `YYYY-MM` UTC, oldest → newest (24 months). */
+  monthsUtc: string[];
+  viewsByMonth: number[];
+  impressionsByMonth: number[];
+  gridPublishedByMonth: number[];
+  draftsCreatedByMonth: number[];
+  promotionsCreatedByMonth: number[];
+  notificationsReceivedByMonth: number[];
+  /** Main performance chart (range selected under Performance). */
+  chartRange: ChartRangeOption;
+  chartBucket: "day" | "month";
+  chartKeys: string[];
+  chartViews: number[];
+  chartImpressions: number[];
+  chartPublished: number[];
 };
 
 export function DashboardOverview({ stats }: { stats: OverviewStats }) {
@@ -29,7 +45,19 @@ export function DashboardOverview({ stats }: { stats: OverviewStats }) {
           transition={{ duration: 0.5, delay: 0.05 }}
           className={cn("dash-glass lg:col-span-2 rounded-[1.75rem] ring-1 ring-white/[0.07]")}
         >
-          <ViewsTrendChart totalViews={stats.totalViews} />
+          <ViewsTrendChart
+            chartRange={stats.chartRange}
+            chartBucket={stats.chartBucket}
+            chartKeys={stats.chartKeys}
+            chartViews={stats.chartViews}
+            chartImpressions={stats.chartImpressions}
+            chartPublished={stats.chartPublished}
+            totalViews={stats.totalViews}
+            totalImpressions={stats.totalImpressions}
+            gridTotal={stats.gridTotal}
+            sparklineMonthsUtc={stats.monthsUtc}
+            sparklineViewsByMonth={stats.viewsByMonth}
+          />
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -54,6 +82,7 @@ export function DashboardOverview({ stats }: { stats: OverviewStats }) {
           icon={Sparkles}
           sparkSeed="grid"
           sparkColor="#ff4d6d"
+          sparkValues={stats.gridPublishedByMonth}
           delay={0.08}
         />
         <StatMetricCard
@@ -64,6 +93,7 @@ export function DashboardOverview({ stats }: { stats: OverviewStats }) {
           icon={Sparkles}
           sparkSeed="drafts"
           sparkColor="#f97316"
+          sparkValues={stats.draftsCreatedByMonth}
           delay={0.12}
         />
         <StatMetricCard
@@ -74,6 +104,7 @@ export function DashboardOverview({ stats }: { stats: OverviewStats }) {
           icon={LineChart}
           sparkSeed="promo"
           sparkColor="#a855f7"
+          sparkValues={stats.promotionsCreatedByMonth}
           highlight
           delay={0.16}
         />
@@ -81,10 +112,11 @@ export function DashboardOverview({ stats }: { stats: OverviewStats }) {
           href="/dashboard/notifications"
           label="Unread"
           value={stats.unreadCount}
-          hint="Triage alerts"
+          hint="Sparkline: notifications received per month"
           icon={Bell}
           sparkSeed="notif"
           sparkColor="#22c55e"
+          sparkValues={stats.notificationsReceivedByMonth}
           delay={0.2}
         />
       </div>
@@ -128,7 +160,7 @@ export function DashboardOverview({ stats }: { stats: OverviewStats }) {
             the mobile app — this surface is tuned for focus.
           </p>
           <Link href="/" className="mt-6 inline-flex text-sm font-medium text-[var(--accent)] hover:underline">
-            ← Back to marketing site
+            ← Back to home
           </Link>
         </motion.div>
       </div>
