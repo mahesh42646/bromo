@@ -19,9 +19,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Slider from '@react-native-community/slider';
 import Video, { ViewType } from 'react-native-video';
 import {
-  ChevronLeft,
-  Crop,
-  Lock,
+  ChevronLeft,  Crop,  Lock,
   Music2,
   Pause,
   Plus,
