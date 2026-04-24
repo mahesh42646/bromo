@@ -1901,6 +1901,51 @@ postsRouter.get(
   },
 );
 
+// ── GET /posts/user/:userId/trash ───────────────────────────────────
+postsRouter.get(
+  "/user/:userId/trash",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const dbUser = req.dbUser;
+      const userId = String(req.params.userId ?? "").trim();
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const skip = (page - 1) * PAGE_SIZE;
+      if (!dbUser || String(dbUser._id) !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const authorIdFilter = mongoose.Types.ObjectId.isValid(userId)
+        ? new mongoose.Types.ObjectId(userId)
+        : userId;
+      const rows = await Post.find({
+        authorId: authorIdFilter,
+        isDeleted: true,
+      })
+        .sort({ deletedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(PAGE_SIZE)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean();
+      const out = rows.map((p) =>
+        normalizePost(
+          p as unknown as Record<string, unknown>,
+          new Set<string>(),
+          new Set<string>(),
+          String(dbUser._id),
+        ),
+      );
+      return res.json({
+        posts: out,
+        page,
+        hasMore: rows.length === PAGE_SIZE,
+      });
+    } catch (err) {
+      console.error("[posts] trash list error:", err);
+      return res.status(500).json({ message: "Failed to fetch trash" });
+    }
+  },
+);
+
 // ── GET /posts/:id/why ──────────────────────────────────────────────
 postsRouter.get(
   "/:id/why",
@@ -2152,6 +2197,64 @@ postsRouter.delete(
     } catch (err) {
       console.error("[posts] delete error:", err);
       return res.status(500).json({ message: "Failed to delete post" });
+    }
+  },
+);
+
+// ── POST /posts/:id/restore ─────────────────────────────────────────
+postsRouter.post(
+  "/:id/restore",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const post = await Post.findById(req.params.id);
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      if (String(post.authorId) !== String(user._id)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (!post.isDeleted) {
+        return res.status(400).json({ message: "Post is not in trash" });
+      }
+      post.isDeleted = false;
+      post.isActive = true;
+      post.deletedAt = undefined;
+      await post.save();
+      if (authorPostsCountWasBumped(post)) {
+        await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
+      }
+      return res.json({ message: "Post restored" });
+    } catch (err) {
+      console.error("[posts] restore error:", err);
+      return res.status(500).json({ message: "Failed to restore post" });
+    }
+  },
+);
+
+// ── DELETE /posts/:id/permanent ─────────────────────────────────────
+postsRouter.delete(
+  "/:id/permanent",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const post = await Post.findById(req.params.id);
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      if (String(post.authorId) !== String(user._id)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (!post.isDeleted) {
+        return res.status(400).json({ message: "Move content to trash first" });
+      }
+      await Promise.all([
+        Comment.updateMany({ postId: post._id }, { $set: { isActive: false } }),
+        Like.deleteMany({ targetType: "post", targetId: post._id }),
+      ]);
+      await Post.deleteOne({ _id: post._id });
+      return res.json({ message: "Post permanently deleted" });
+    } catch (err) {
+      console.error("[posts] permanent delete error:", err);
+      return res.status(500).json({ message: "Failed to permanently delete post" });
     }
   },
 );

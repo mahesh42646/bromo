@@ -6,7 +6,7 @@ import type { PortalPost } from "@/types/post";
 
 const PREFETCH_ENABLED = true;
 
-type LibTab = "all" | "post" | "reel" | "drafts";
+type LibTab = "all" | "post" | "reel" | "drafts" | "trash";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -44,7 +44,7 @@ async function fetchPageWithBackoff(args: {
 
 export function useContentLibraryFeed(userId: string, tab: LibTab, sort: string) {
   const apiType = useMemo(() => (tab === "all" ? "all" : tab), [tab]);
-  const enabled = tab !== "drafts";
+  const enabled = tab !== "drafts" && tab !== "trash";
 
   const [items, setItems] = useState<PortalPost[]>([]);
   const [page, setPage] = useState(1);

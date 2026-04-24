@@ -1,6 +1,26 @@
+"use client";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Package, Truck, MapPin, Phone, ShieldCheck, Sparkles, Store as StoreIcon } from "lucide-react";
+import {
+  ArrowUpRight,
+  BarChart3,
+  BellRing,
+  ClipboardList,
+  CreditCard,
+  Globe,
+  Handshake,
+  MapPin,
+  MessageSquare,
+  Package,
+  Phone,
+  ShieldCheck,
+  Sparkles,
+  Store as StoreIcon,
+  Truck,
+  UserCheck,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { site } from "@/config/site";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { apiWithAuth, fetchMeServer } from "@/lib/server-api";
@@ -118,6 +138,24 @@ export default async function StorePage() {
   const phone = String(store.phone ?? "—");
   const hasDelivery = Boolean(store.hasDelivery);
   const isActive = store.isActive !== false;
+  const leadsToday = Number(store.leadsToday ?? 0);
+  const openInquiries = Number(store.openInquiries ?? 0);
+  const listedProducts = Number(store.productCount ?? 0);
+  const avgResponseMins = Number(store.avgResponseMins ?? 45);
+  const publicStorePath = String(store.publicUrl ?? store.slug ?? "").trim();
+  const publicStoreHref = publicStorePath.startsWith("http")
+    ? publicStorePath
+    : publicStorePath
+      ? `/store/${publicStorePath.replace(/^\/+/, "")}`
+      : "/store";
+  const storeSetupChecklist = [
+    "Store branding, logo, banner, and category",
+    "Product listings with photos, variants, and pricing",
+    "Business hours, location pin, and contact channels",
+    "Lead response SLA and inquiry routing owner",
+    "Policies: returns, warranty, and documentation",
+    "Trust signals: GST/registration, verified badges, testimonials",
+  ];
 
   return (
     <div className="space-y-8">
@@ -128,15 +166,49 @@ export default async function StorePage() {
             {isActive ? "Live on Bromo" : "Inactive"} · {category}
           </p>
         </div>
-        <Link
-          href="/dashboard/promotions"
-          className="rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--accent-foreground)]"
-        >
-          Promote catalog
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={publicStoreHref}
+            target="_blank"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-semibold hover:bg-[var(--surface)]"
+          >
+            <Globe className="size-4" />
+            View public store
+            <ArrowUpRight className="size-3.5" />
+          </Link>
+          <Link
+            href="/dashboard/promotions"
+            className="rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--accent-foreground)]"
+          >
+            Promote catalog
+          </Link>
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardTitle className="text-sm text-[var(--foreground-muted)]">Leads today</CardTitle>
+          <p className="mt-2 text-2xl font-semibold">{leadsToday}</p>
+          <p className="mt-1 text-xs text-[var(--foreground-muted)]">New customer inquiries received today</p>
+        </Card>
+        <Card>
+          <CardTitle className="text-sm text-[var(--foreground-muted)]">Open inquiries</CardTitle>
+          <p className="mt-2 text-2xl font-semibold">{openInquiries}</p>
+          <p className="mt-1 text-xs text-[var(--foreground-muted)]">Waiting for first response or follow-up</p>
+        </Card>
+        <Card>
+          <CardTitle className="text-sm text-[var(--foreground-muted)]">Listed products</CardTitle>
+          <p className="mt-2 text-2xl font-semibold">{listedProducts}</p>
+          <p className="mt-1 text-xs text-[var(--foreground-muted)]">Live catalog items visible in app search</p>
+        </Card>
+        <Card>
+          <CardTitle className="text-sm text-[var(--foreground-muted)]">Avg response time</CardTitle>
+          <p className="mt-2 text-2xl font-semibold">{avgResponseMins}m</p>
+          <p className="mt-1 text-xs text-[var(--foreground-muted)]">Target: respond under 30 minutes</p>
+        </Card>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-3">
         <Card>
           <CardTitle>
             <span className="flex items-center gap-2">
@@ -180,24 +252,170 @@ export default async function StorePage() {
             it enabled on your tenant.
           </div>
         </Card>
+
+        <Card>
+          <CardTitle>
+            <span className="flex items-center gap-2">
+              <ClipboardList className="size-5 text-[var(--accent)]" />
+              Store setup checklist
+            </span>
+          </CardTitle>
+          <ul className="mt-3 space-y-2 text-sm text-[var(--foreground-muted)]">
+            {storeSetupChecklist.map((item) => (
+              <li key={item} className="flex gap-2">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-400" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
       </div>
 
       <section className="rounded-2xl border border-[var(--hairline)] bg-[var(--card)] p-6">
-        <h2 className="text-lg font-semibold">Catalog & operations</h2>
+        <h2 className="text-lg font-semibold">Store owner control center</h2>
         <p className="mt-2 text-sm text-[var(--foreground-muted)]">
-          Heavy photo uploads, variant edits, and stock counts stay in the Bromo app where the camera and offline queues
-          live. This dashboard will add bulk CSV, analytics, and staff roles as we scale the commerce control plane.
+          This panel is designed for IndiaMART-style commerce where Bromo drives discovery and lead generation while
+          store owners close orders offline through calls, chat, and local visits.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <a
-            href={site.appStoreUrl}
-            className="inline-flex rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium hover:bg-[var(--surface)]"
-          >
-            Open store in app
-          </a>
-          <Link href="/dashboard/content" className="inline-flex rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium hover:bg-[var(--surface)]">
-            Tie reels to SKUs
-          </Link>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Package className="size-4 text-[var(--accent)]" />
+              Catalog management
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Add products, variants, MOQ, price ranges, product tags, and media galleries.
+            </CardDescription>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a
+                href={site.appStoreUrl}
+                className="inline-flex rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface)]"
+              >
+                Manage in app
+              </a>
+              <Link
+                href="/dashboard/content"
+                className="inline-flex rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface)]"
+              >
+                Link reels to SKUs
+              </Link>
+            </div>
+          </Card>
+
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Handshake className="size-4 text-[var(--accent)]" />
+              Lead management
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Track fresh leads, qualified buyers, pending callbacks, and lost opportunities.
+            </CardDescription>
+            <div className="mt-4 text-xs text-[var(--foreground-muted)]">
+              Recommended stages: New → Contacted → Negotiating → Won/Lost.
+            </div>
+          </Card>
+
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="size-4 text-[var(--accent)]" />
+              Inquiry inbox
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Centralize WhatsApp, call-back requests, and product question threads from shoppers.
+            </CardDescription>
+            <div className="mt-4 text-xs text-[var(--foreground-muted)]">
+              Enable canned replies, price sheet templates, and follow-up reminders.
+            </div>
+          </Card>
+
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <BarChart3 className="size-4 text-[var(--accent)]" />
+              Insights & analytics
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Monitor profile views, product clicks, lead sources, and conversion trends.
+            </CardDescription>
+            <div className="mt-4 text-xs text-[var(--foreground-muted)]">
+              Compare organic discovery vs promoted listings to tune budget.
+            </div>
+          </Card>
+
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users className="size-4 text-[var(--accent)]" />
+              Team & permissions
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Assign role-based access for owner, catalog manager, sales, and support staff.
+            </CardDescription>
+            <div className="mt-4 text-xs text-[var(--foreground-muted)]">
+              Restrict sensitive edits like payouts, brand profile, and store visibility.
+            </div>
+          </Card>
+
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UserCheck className="size-4 text-[var(--accent)]" />
+              Customer CRM
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Save repeat buyers, maintain notes, and prioritize high-intent customer segments.
+            </CardDescription>
+            <div className="mt-4 text-xs text-[var(--foreground-muted)]">
+              Build tags like wholesale, retail, reseller, and enterprise.
+            </div>
+          </Card>
+
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <BellRing className="size-4 text-[var(--accent)]" />
+              Alerts & automation
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Trigger reminders for unanswered leads, low-stock signals, and campaign windows.
+            </CardDescription>
+            <div className="mt-4 text-xs text-[var(--foreground-muted)]">
+              Keep response time healthy with SLA-based escalation rules.
+            </div>
+          </Card>
+
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Wallet className="size-4 text-[var(--accent)]" />
+              Commercial settings
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Set payment terms, minimum order values, quote validity, and credit preferences.
+            </CardDescription>
+            <div className="mt-4 text-xs text-[var(--foreground-muted)]">
+              Offline settlement supported by direct merchant communication.
+            </div>
+          </Card>
+
+          <Card className="border-[var(--hairline)] bg-[var(--surface)]/50">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CreditCard className="size-4 text-[var(--accent)]" />
+              Promotions & visibility
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Promote premium products, featured categories, and seasonal campaigns.
+            </CardDescription>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href="/dashboard/promotions"
+                className="inline-flex rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface)]"
+              >
+                Open promotions
+              </Link>
+              <Link
+                href="/dashboard/content"
+                className="inline-flex rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface)]"
+              >
+                Create campaign reel
+              </Link>
+            </div>
+          </Card>
         </div>
       </section>
     </div>

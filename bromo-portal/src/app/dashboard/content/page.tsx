@@ -22,15 +22,16 @@ export default async function ContentPage({
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Content library</h1>
         <p className="mt-1 text-sm text-[var(--foreground-muted)]">
-          Published posts, reels, and drafts in one place. Upload and transcode still happen in the Bromo app; organize,
-          sort, and tune metadata here.
+          Published posts, reels, stories, drafts, and trash in one place. Use desktop upload and detailed controls for
+          tagging, privacy, preview, and bulk management.
         </p>
       </div>
 
       <Card>
         <CardTitle>Workflow</CardTitle>
         <CardDescription>
-          Shoot in the app → review below → promote from the campaigns workspace when you are ready to scale reach.
+          Create from web or app → review in modal → manage comments/insights/boost → recover from trash or purge
+          permanently with bulk actions.
         </CardDescription>
         <Link
           href="/dashboard/promotions"
