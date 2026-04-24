@@ -280,3 +280,5 @@ function safeUnlinkRaw(relPath: string): void {
     console.warn("[mediaWorker] raw cleanup failed:", e);
   }
 }
+
+
