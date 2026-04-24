@@ -12,6 +12,12 @@ export type ClientEditMetaV2 = {
   trimStartByAsset?: Record<string, number>;
   trimEndByAsset?: Record<string, number>;
   playbackSpeed?: number;
+  poll?: {
+    enabled?: boolean;
+    question?: string;
+    options?: string[];
+    votes?: number[];
+  };
   textOverlays?: TextOverlayPacked[];
   stickers?: StickerPacked[];
   layoutRef?: {w: number; h: number};

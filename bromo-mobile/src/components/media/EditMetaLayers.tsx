@@ -47,12 +47,14 @@ export function EditMetaLayers({clientEditMeta, assetIndex = 0}: Props) {
 
   const texts = meta.textOverlays ?? [];
   const stickers = meta.stickers ?? [];
+  const poll = meta.poll;
 
   if (
     fid === 'normal' &&
     stacks.length === 0 &&
     texts.length === 0 &&
     stickers.length === 0 &&
+    !poll?.enabled &&
     adjust.brightness === 0 &&
     adjust.contrast === 0 &&
     adjust.saturation === 0 &&
@@ -132,6 +134,58 @@ export function EditMetaLayers({clientEditMeta, assetIndex = 0}: Props) {
           </View>
         );
       })}
+
+      {poll?.enabled && poll.options?.length ? (
+        <View
+          style={{
+            position: 'absolute',
+            left: 14,
+            right: 14,
+            bottom: 14,
+            borderRadius: 14,
+            padding: 12,
+            backgroundColor: 'rgba(0,0,0,0.58)',
+          }}>
+          {poll.question ? (
+            <Text
+              style={{
+                color: '#fff',
+                fontSize: 12,
+                fontWeight: '900',
+                marginBottom: 8,
+              }}>
+              {poll.question}
+            </Text>
+          ) : null}
+          {poll.options.slice(0, 4).map((option, index) => (
+            <View
+              key={`${option}_${index}`}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: index === 0 ? 0 : 6,
+              }}>
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 26,
+                  borderRadius: 8,
+                  justifyContent: 'center',
+                  paddingHorizontal: 10,
+                  backgroundColor: index === 0 ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.1)',
+                }}>
+                <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}} numberOfLines={1}>
+                  {option}
+                </Text>
+              </View>
+              <Text style={{color: '#fff', fontSize: 10, fontWeight: '900'}}>
+                {poll.votes?.[index] ?? 0}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }

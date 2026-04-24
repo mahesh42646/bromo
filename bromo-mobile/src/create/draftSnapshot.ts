@@ -31,6 +31,7 @@ export function packEditMetaForUpload(d: CreateDraftState): string {
     trimStartByAsset: d.trimStartByAsset,
     trimEndByAsset: d.trimEndByAsset,
     playbackSpeed: d.playbackSpeed,
+    poll: d.poll,
     textOverlays: d.textOverlays.map(o => ({
       ...o,
       xPct: (o.x / W) * 100,

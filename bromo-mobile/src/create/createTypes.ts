@@ -32,10 +32,9 @@ export type StickerPlacement = {
 
 export type PollState = {
   enabled: boolean;
-  optionA: string;
-  optionB: string;
-  votesA: number;
-  votesB: number;
+  question: string;
+  options: string[];
+  votes: number[];
 };
 
 export type AudioTrack = { id: string; title: string; artist: string };

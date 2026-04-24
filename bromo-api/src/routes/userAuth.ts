@@ -106,13 +106,14 @@ userAuthRouter.post("/forgot-password", async (req, res) => {
 });
 
 // ── GET /me ───────────────────────────────────────────────────────
+/** Always load from DB — do not return LRU-cached `req.dbUser` (stale storeId, counts, etc.). */
 userAuthRouter.get(
   "/me",
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const fb = req.firebaseUser!;
-      const user = req.dbUser;
+      const user = await User.findOne({ firebaseUid: fb.uid });
 
       if (!user) {
         return res.status(404).json({

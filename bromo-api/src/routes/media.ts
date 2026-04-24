@@ -235,6 +235,13 @@ mediaRouter.post(
       ? Number(body.durationMs)
       : undefined;
 
+    const scheduledForRaw = typeof body.scheduledFor === "string" ? body.scheduledFor.trim() : "";
+    const scheduledFor = scheduledForRaw ? new Date(scheduledForRaw) : undefined;
+    const isScheduled =
+      scheduledFor instanceof Date &&
+      !Number.isNaN(scheduledFor.getTime()) &&
+      scheduledFor.getTime() > Date.now();
+
     let clientEditMeta: Record<string, unknown> | undefined;
     if (body.clientEditMeta && typeof body.clientEditMeta === "string") {
       try {
@@ -257,7 +264,9 @@ mediaRouter.post(
     }
 
     const storyExpiresAt =
-      postType === "story" ? new Date(Date.now() + 24 * 60 * 60 * 1000) : undefined;
+      postType === "story" && !isScheduled
+        ? new Date(Date.now() + 24 * 60 * 60 * 1000)
+        : undefined;
     const feedCategory =
       postType === "story" ? "general" : normalizeFeedCategory(body.feedCategory);
 
@@ -284,6 +293,7 @@ mediaRouter.post(
       ...(settings ? { settings } : {}),
       ...(typeof durationMs === "number" ? { durationMs } : {}),
       ...(clientEditMeta ? { clientEditMeta } : {}),
+      ...(isScheduled ? { scheduledFor } : {}),
       feedCategory,
       expiresAt: storyExpiresAt,
       processingStatus: "pending",

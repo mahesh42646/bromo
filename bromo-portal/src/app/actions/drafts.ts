@@ -13,7 +13,7 @@ export async function updateDraftCaption(
   const caption = String(formData.get("caption") ?? "").trim();
   if (!id) return { ok: false, message: "Missing draft" };
 
-  const res = await apiWithAuth(`/drafts/${id}`, {
+  const res = await apiWithAuth(`/drafts/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify({ caption }),
   });

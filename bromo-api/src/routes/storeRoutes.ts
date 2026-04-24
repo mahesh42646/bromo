@@ -3,7 +3,11 @@ import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
 import { randomBytes } from "node:crypto";
-import { requireVerifiedUser, type FirebaseAuthedRequest } from "../middleware/firebaseAuth.js";
+import {
+  invalidateCachedUid,
+  requireVerifiedUser,
+  type FirebaseAuthedRequest,
+} from "../middleware/firebaseAuth.js";
 import { Store } from "../models/Store.js";
 import { StoreProduct } from "../models/StoreProduct.js";
 import { User } from "../models/User.js";
@@ -88,9 +92,22 @@ storeRouter.get("/featured", async (req: FirebaseAuthedRequest, res: Response) =
 /** GET /stores/mine — own store (requires auth) */
 storeRouter.get("/mine", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
   try {
-    const store = await Store.findOne({ owner: req.dbUser!._id });
+    const uid = req.dbUser!._id;
+    let store = await Store.findOne({ owner: uid });
+    if (!store && req.dbUser!.storeId) {
+      const linked = await Store.findById(req.dbUser!.storeId);
+      if (linked && String(linked.owner) === String(uid)) {
+        store = linked;
+      }
+    }
     if (!store) return res.status(404).json({ message: "No store found" });
-    res.json({ store: toStoreView(store, String(req.dbUser!._id)) });
+
+    if (!req.dbUser!.storeId || String(req.dbUser!.storeId) !== String(store._id)) {
+      await User.findByIdAndUpdate(uid, { storeId: store._id });
+      if (req.firebaseUser?.uid) invalidateCachedUid(req.firebaseUser.uid);
+    }
+
+    res.json({ store: toStoreView(store, String(uid)) });
   } catch {
     res.status(500).json({ message: "Server error" });
   }
@@ -198,6 +215,7 @@ storeRouter.post(
 
       // Save storeId on user
       await User.findByIdAndUpdate(req.dbUser!._id, { storeId: store._id });
+      invalidateCachedUid(req.firebaseUser!.uid);
 
       res.status(201).json({ store });
     } catch (err) {

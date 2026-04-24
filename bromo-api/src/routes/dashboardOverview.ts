@@ -1,5 +1,5 @@
 import { Router, type Response } from "express";
-import mongoose from "mongoose";
+import mongoose, { type PipelineStage } from "mongoose";
 import {
   requireFirebaseToken,
   type FirebaseAuthedRequest,
@@ -25,6 +25,7 @@ const PROFILE_OR_SAVED_POST = {
 
 const SPARKLINE_MONTHS = 24;
 const ALL_TIME_MONTH_CAP = 120;
+const DASHBOARD_BUCKET_DATE_FIELD = "__dashboardBucketDate";
 
 function utcMonthKey(y: number, m: number): string {
   return `${y}-${String(m).padStart(2, "0")}`;
@@ -101,6 +102,33 @@ function enumerateUtcMonthsClosed(minY: number, minM: number, maxY: number, maxM
   return keys;
 }
 
+function addDashboardBucketDateStage(): PipelineStage.AddFields {
+  return {
+    $addFields: {
+      [DASHBOARD_BUCKET_DATE_FIELD]: {
+        $ifNull: [
+          {
+            $convert: {
+              input: "$createdAt",
+              to: "date",
+              onError: null,
+              onNull: null,
+            },
+          },
+          {
+            $convert: {
+              input: "$_id",
+              to: "date",
+              onError: "$$NOW",
+              onNull: "$$NOW",
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
 export function parseChartRange(raw: unknown): ChartRange {
   const s = String(raw ?? "")
     .trim()
@@ -141,15 +169,18 @@ async function buildPerformanceChart(
 
     const rows = await Post.aggregate([
       {
+        $match: matchGrid,
+      },
+      addDashboardBucketDateStage(),
+      {
         $match: {
-          ...matchGrid,
-          createdAt: { $gte: start, $lt: endExclusive },
+          [DASHBOARD_BUCKET_DATE_FIELD]: { $gte: start, $lt: endExclusive },
         },
       },
       {
         $group: {
           _id: {
-            $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "UTC" },
+            $dateToString: { format: "%Y-%m-%d", date: `$${DASHBOARD_BUCKET_DATE_FIELD}`, timezone: "UTC" },
           },
           views: { $sum: { $ifNull: ["$viewsCount", 0] } },
           impressions: { $sum: { $ifNull: ["$impressionsCount", 0] } },
@@ -173,11 +204,12 @@ async function buildPerformanceChart(
     const { keys } = lastNUtcMonthKeys(12);
     const rows = await Post.aggregate([
       { $match: matchGrid },
+      addDashboardBucketDateStage(),
       {
         $group: {
           _id: {
-            y: { $year: { date: "$createdAt", timezone: "UTC" } },
-            m: { $month: { date: "$createdAt", timezone: "UTC" } },
+            y: { $year: { date: `$${DASHBOARD_BUCKET_DATE_FIELD}`, timezone: "UTC" } },
+            m: { $month: { date: `$${DASHBOARD_BUCKET_DATE_FIELD}`, timezone: "UTC" } },
           },
           views: { $sum: { $ifNull: ["$viewsCount", 0] } },
           impressions: { $sum: { $ifNull: ["$impressionsCount", 0] } },
@@ -203,11 +235,12 @@ async function buildPerformanceChart(
 
   const rows = await Post.aggregate([
     { $match: matchGrid },
+    addDashboardBucketDateStage(),
     {
       $group: {
         _id: {
-          y: { $year: { date: "$createdAt", timezone: "UTC" } },
-          m: { $month: { date: "$createdAt", timezone: "UTC" } },
+          y: { $year: { date: `$${DASHBOARD_BUCKET_DATE_FIELD}`, timezone: "UTC" } },
+          m: { $month: { date: `$${DASHBOARD_BUCKET_DATE_FIELD}`, timezone: "UTC" } },
         },
         views: { $sum: { $ifNull: ["$viewsCount", 0] } },
         impressions: { $sum: { $ifNull: ["$impressionsCount", 0] } },
@@ -335,11 +368,12 @@ dashboardOverviewRouter.get(
         ]),
         Post.aggregate([
           { $match: matchGrid },
+          addDashboardBucketDateStage(),
           {
             $group: {
               _id: {
-                y: { $year: { date: "$createdAt", timezone: "UTC" } },
-                m: { $month: { date: "$createdAt", timezone: "UTC" } },
+                y: { $year: { date: `$${DASHBOARD_BUCKET_DATE_FIELD}`, timezone: "UTC" } },
+                m: { $month: { date: `$${DASHBOARD_BUCKET_DATE_FIELD}`, timezone: "UTC" } },
               },
               views: { $sum: { $ifNull: ["$viewsCount", 0] } },
               impressions: { $sum: { $ifNull: ["$impressionsCount", 0] } },

@@ -1,6 +1,6 @@
 import { Router, type Response } from "express";
 import { requireVerifiedUser, type FirebaseAuthedRequest } from "../middleware/firebaseAuth.js";
-import { requireAdminToken, type AuthedRequest } from "../middleware/authBearer.js";
+import { resolveActiveAdminFromRequest } from "../middleware/authBearer.js";
 import { Wallet } from "../models/Wallet.js";
 import { WalletLedger } from "../models/WalletLedger.js";
 import { User } from "../models/User.js";
@@ -35,16 +35,16 @@ walletRouter.get("/", requireVerifiedUser, async (req: FirebaseAuthedRequest, re
 // ─── POST /wallet/topup — dummy top-up (dev / admin only) ────────────────────
 // Protected by dev flag (NODE_ENV !== production) OR admin token
 walletRouter.post("/topup", async (req, res: Response) => {
-  // In production: require admin token; in dev: allow any verified user or admin
-  const isDev = process.env.NODE_ENV !== "production";
+  const allowDevTopup =
+    process.env.NODE_ENV !== "production" &&
+    process.env.ALLOW_DEV_WALLET_TOPUP === "1";
 
   let userId: mongoose.Types.ObjectId | null = null;
 
-  if (isDev) {
-    // Dev: accept userId in body + optional Firebase token
+  if (allowDevTopup) {
     const { userId: rawUid, coins } = req.body as { userId?: string; coins?: number };
     if (!rawUid || !mongoose.Types.ObjectId.isValid(rawUid)) {
-      res.status(400).json({ message: "userId required in dev mode" });
+      res.status(400).json({ message: "userId required" });
       return;
     }
     userId = new mongoose.Types.ObjectId(rawUid);
@@ -55,20 +55,9 @@ walletRouter.post("/topup", async (req, res: Response) => {
     return;
   }
 
-  // Production: admin token required
-  // We re-use requireAdminToken logic inline
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
-    res.status(401).json({ message: "Admin token required in production" });
-    return;
-  }
-
-  // Try admin token validation
-  const { verifyAdminToken } = await import("../utils/jwt.js");
-  try {
-    verifyAdminToken(header.slice(7));
-  } catch {
-    res.status(401).json({ message: "Invalid admin token" });
+  const admin = await resolveActiveAdminFromRequest(req);
+  if (!admin) {
+    res.status(401).json({ message: "Active admin token required in production" });
     return;
   }
 
@@ -92,6 +81,11 @@ walletRouter.post("/topup", async (req, res: Response) => {
 
 // ─── POST /wallet/self-topup — authenticated user buys coins (dummy gateway) ─
 walletRouter.post("/self-topup", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DUMMY_SELF_TOPUP !== "1") {
+    res.status(403).json({ message: "Self top-up requires a payment provider in production" });
+    return;
+  }
+
   const { coins, packageId } = req.body as { coins?: number; packageId?: string };
   const PACKAGES: Record<string, number> = {
     starter: 500,

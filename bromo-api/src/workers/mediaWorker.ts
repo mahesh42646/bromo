@@ -155,21 +155,30 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
   );
 
   if (job.postDraftId) {
-    const existing = await Post.findById(job.postDraftId).select("type expiresAt").lean();
+    const existing = await Post.findById(job.postDraftId).select("type expiresAt scheduledFor").lean();
+    const scheduledFor =
+      existing?.scheduledFor instanceof Date
+        ? existing.scheduledFor
+        : existing?.scheduledFor
+          ? new Date(existing.scheduledFor as Date)
+          : undefined;
+    const activateNow = !scheduledFor || Number.isNaN(scheduledFor.getTime()) || scheduledFor.getTime() <= Date.now();
     const readyPatch: Record<string, unknown> = {
       processingStatus: "ready",
       hlsMasterUrl: masterUrl,
       mediaUrl: mezzanineUrl,
-      isActive: true,
+      isActive: activateNow,
     };
-    if (existing?.type === "story" && !existing.expiresAt) {
+    if (activateNow && existing?.type === "story" && !existing.expiresAt) {
       readyPatch.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     }
     await Post.updateOne({ _id: job.postDraftId }, { $set: readyPatch });
 
-    await broadcastActivatedPost(String(job.postDraftId));
+    if (activateNow) {
+      await broadcastActivatedPost(String(job.postDraftId));
+    }
 
-    if (existing?.type === "post" || existing?.type === "reel") {
+    if (activateNow && (existing?.type === "post" || existing?.type === "reel")) {
       await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
         console.warn("[mediaWorker] postsCount increment failed:", e),
       );
@@ -198,20 +207,29 @@ async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
   );
 
   if (job.postDraftId) {
-    const existing = await Post.findById(job.postDraftId).select("type expiresAt").lean();
+    const existing = await Post.findById(job.postDraftId).select("type expiresAt scheduledFor").lean();
+    const scheduledFor =
+      existing?.scheduledFor instanceof Date
+        ? existing.scheduledFor
+        : existing?.scheduledFor
+          ? new Date(existing.scheduledFor as Date)
+          : undefined;
+    const activateNow = !scheduledFor || Number.isNaN(scheduledFor.getTime()) || scheduledFor.getTime() <= Date.now();
     const readyPatch: Record<string, unknown> = {
       processingStatus: "ready",
       mediaUrl: imageUrl,
-      isActive: true,
+      isActive: activateNow,
     };
-    if (existing?.type === "story" && !existing.expiresAt) {
+    if (activateNow && existing?.type === "story" && !existing.expiresAt) {
       readyPatch.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     }
     await Post.updateOne({ _id: job.postDraftId }, { $set: readyPatch });
 
-    await broadcastActivatedPost(String(job.postDraftId));
+    if (activateNow) {
+      await broadcastActivatedPost(String(job.postDraftId));
+    }
 
-    if (existing?.type === "post" || existing?.type === "reel") {
+    if (activateNow && (existing?.type === "post" || existing?.type === "reel")) {
       await User.findByIdAndUpdate(job.userId, { $inc: { postsCount: 1 } }).catch((e) =>
         console.warn("[mediaWorker] postsCount increment failed:", e),
       );

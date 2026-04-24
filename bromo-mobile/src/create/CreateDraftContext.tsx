@@ -53,10 +53,9 @@ type Draft = CreateDraftState;
 
 const initialPoll: PollState = {
   enabled: false,
-  optionA: 'Yes',
-  optionB: 'No',
-  votesA: 0,
-  votesB: 0,
+  question: '',
+  options: ['Yes', 'No'],
+  votes: [0, 0],
 };
 
 const initialDraft: Draft = {
@@ -266,7 +265,25 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
   }, []);
 
   const setPoll = useCallback((p: Partial<PollState>) => {
-    setDraft(d => ({...d, poll: {...d.poll, ...p}}));
+    setDraft(d => {
+      const options = Array.isArray(p.options)
+        ? p.options.map(o => `${o ?? ''}`.trim()).filter(Boolean)
+        : d.poll.options;
+      const votesBase = Array.isArray(p.votes) ? p.votes : d.poll.votes;
+      const votes = options.map((_, index) => {
+        const raw = votesBase[index];
+        return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+      });
+      return {
+        ...d,
+        poll: {
+          ...d.poll,
+          ...p,
+          options,
+          votes,
+        },
+      };
+    });
   }, []);
 
   const votePoll = useCallback((choice: 'a' | 'b') => {
@@ -274,8 +291,12 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
       ...d,
       poll: {
         ...d.poll,
-        votesA: choice === 'a' ? d.poll.votesA + 1 : d.poll.votesA,
-        votesB: choice === 'b' ? d.poll.votesB + 1 : d.poll.votesB,
+        votes: d.poll.votes.map((count, index) => {
+          if ((choice === 'a' && index === 0) || (choice === 'b' && index === 1)) {
+            return count + 1;
+          }
+          return count;
+        }),
       },
     }));
   }, []);

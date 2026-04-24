@@ -4,7 +4,7 @@ import { User } from "../models/User.js";
 import { Admin } from "../models/Admin.js";
 import { Post } from "../models/Post.js";
 import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
-import { requireAdminToken, type AuthedRequest } from "../middleware/authBearer.js";
+import { requireAdminToken, requireSuperAdminToken, type AuthedRequest } from "../middleware/authBearer.js";
 import { emitPostDelete } from "../services/socketService.js";
 import { deleteLocalFilesForMediaUrls } from "../utils/uploadFiles.js";
 import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
@@ -12,6 +12,16 @@ import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 const router = Router();
 
 const POST_AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
+
+async function wouldRemoveLastActiveSuperAdmin(adminId: string): Promise<boolean> {
+  const target = await Admin.findById(adminId).select("role isActive").lean<{
+    role: "super_admin" | "admin";
+    isActive: boolean;
+  }>();
+  if (!target || target.role !== "super_admin" || !target.isActive) return false;
+  const activeSuperAdmins = await Admin.countDocuments({ role: "super_admin", isActive: true });
+  return activeSuperAdmins <= 1;
+}
 
 /* ── Platform users ───────────────────────────────────────────────────── */
 
@@ -293,7 +303,7 @@ router.post("/posts/:postId/restore", requireAdminToken, async (req: AuthedReque
 
 /* ── Admin accounts ──────────────────────────────────────────────────── */
 
-router.get("/admins", requireAdminToken, async (_req: AuthedRequest, res) => {
+router.get("/admins", requireSuperAdminToken, async (_req: AuthedRequest, res) => {
   try {
     const admins = await Admin.find().select("-passwordHash -__v").sort({ createdAt: 1 }).lean();
     return res.json(admins);
@@ -303,12 +313,18 @@ router.get("/admins", requireAdminToken, async (_req: AuthedRequest, res) => {
   }
 });
 
-router.patch("/admins/:id", requireAdminToken, async (req: AuthedRequest, res) => {
+router.patch("/admins/:id", requireSuperAdminToken, async (req: AuthedRequest, res) => {
   try {
     const { isActive, role } = req.body as { isActive?: boolean; role?: string };
     const update: { isActive?: boolean; role?: string } = {};
     if (typeof isActive === "boolean") update.isActive = isActive;
     if (role === "admin" || role === "super_admin") update.role = role;
+
+    const removesSuperAdmin =
+      update.isActive === false || update.role === "admin";
+    if (removesSuperAdmin && (await wouldRemoveLastActiveSuperAdmin(String(req.params.id)))) {
+      return res.status(409).json({ message: "Cannot remove the last active super admin" });
+    }
 
     const admin = await Admin.findByIdAndUpdate(
       req.params.id,

@@ -171,7 +171,12 @@ export function DraftsScreen() {
         selectedAudio: rec.music ? {id: 'x', title: rec.music, artist: ''} : null,
         textOverlays: [],
         stickers: [],
-        poll: {enabled: false, optionA: 'Yes', optionB: 'No', votesA: 0, votesB: 0},
+        poll: {
+          enabled: false,
+          question: '',
+          options: ['Yes', 'No'],
+          votes: [0, 0],
+        },
         visibility: rec.settings?.closeFriendsOnly ? 'close_friends' : 'public',
         advanced: {
           commentsOff: Boolean(rec.settings?.commentsOff),

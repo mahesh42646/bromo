@@ -85,6 +85,7 @@ export interface PostDoc extends Document {
   mediaJobId?: Types.ObjectId;
   /** Home / explore bucket (post + reel). Default general. */
   feedCategory: string;
+  scheduledFor?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -139,6 +140,7 @@ const postSchema = new Schema<PostDoc>(
     processingError: { type: String },
     mediaJobId: { type: Schema.Types.ObjectId, ref: "MediaJob" },
     feedCategory: { type: String, default: "general", index: true },
+    scheduledFor: { type: Date, default: undefined, index: true },
   },
   { timestamps: true },
 );
@@ -158,5 +160,6 @@ postSchema.index({ feedCategory: 1, isActive: 1, isDeleted: 1, _id: -1 });
 postSchema.index({ type: 1, feedCategory: 1, trendingScore: -1, createdAt: -1 });
 postSchema.index({ mediaJobId: 1 }, { sparse: true });
 postSchema.index({ processingStatus: 1, authorId: 1 }, { sparse: true });
+postSchema.index({ scheduledFor: 1, isActive: 1, isDeleted: 1 });
 
 export const Post = mongoose.model<PostDoc>("Post", postSchema);

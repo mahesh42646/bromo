@@ -57,7 +57,18 @@ async function runBillingCycle(): Promise<void> {
       const campaign = await PromotionCampaign.findById(campaignId).lean();
       if (!campaign) continue;
 
-      const rates = campaignLogs.map((log) => {
+      const claimedLogs = [];
+      for (const log of campaignLogs) {
+        const claimed = await ContentDeliveryLog.findOneAndUpdate(
+          { _id: log._id, billingCategory: "promoted", billed: false },
+          { $set: { billed: true, coinsCharged: 0 } },
+          { new: false },
+        ).lean();
+        if (claimed) claimedLogs.push(log);
+      }
+      if (claimedLogs.length === 0) continue;
+
+      const rates = claimedLogs.map((log) => {
         const k = (log as { deliveryKind?: string }).deliveryKind;
         return k === "cta_click" ? RATE_CARD.click : RATE_CARD.impression;
       });
@@ -73,9 +84,6 @@ async function runBillingCycle(): Promise<void> {
           { _id: campaignId, status: "active" },
           { $set: { status: "completed" } },
         );
-        // Mark logs as billed (zero charge)
-        const logIds = campaignLogs.map((l) => l._id);
-        await ContentDeliveryLog.updateMany({ _id: { $in: logIds } }, { billed: true, coinsCharged: 0 });
         continue;
       }
 
@@ -86,7 +94,7 @@ async function runBillingCycle(): Promise<void> {
         "promotion_spend",
         "Promotion",
         campaign._id as mongoose.Types.ObjectId,
-        { campaignId, events: campaignLogs.length },
+        { campaignId, events: claimedLogs.length },
         idempotencyKey,
       );
 
@@ -113,15 +121,15 @@ async function runBillingCycle(): Promise<void> {
 
       // Split charge across logs by weight (impression vs CTA click)
       let remaining = actualCharge;
-      for (let i = 0; i < campaignLogs.length; i++) {
-        const log = campaignLogs[i]!;
+      for (let i = 0; i < claimedLogs.length; i++) {
+        const log = claimedLogs[i]!;
         const weight = rates[i] ?? RATE_CARD.impression;
-        const isLast = i === campaignLogs.length - 1;
+        const isLast = i === claimedLogs.length - 1;
         const share = isLast ? remaining : Math.max(0, Math.round((actualCharge * weight) / totalToCharge));
         remaining -= share;
         await ContentDeliveryLog.updateOne(
           { _id: log._id },
-          { billed: true, coinsCharged: share },
+          { coinsCharged: share },
         );
       }
     }

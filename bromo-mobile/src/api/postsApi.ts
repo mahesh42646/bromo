@@ -93,6 +93,7 @@ export type Post = {
   deletedAt?: string;
   /** Home feed bucket (post/reel). */
   feedCategory?: string;
+  scheduledFor?: string;
   /** Story-only: overlays and background color */
   storyMeta?: StoryMeta;
   /** Story tray: whether the current user has finished this segment (server). */
@@ -322,6 +323,7 @@ export async function createPost(data: {
   durationMs?: number;
   storyMeta?: StoryMeta;
   feedCategory?: string;
+  scheduledFor?: string;
   /** JSON string of edit metadata (filters, trim, overlays). */
   clientEditMeta?: string;
 }): Promise<{post: Post}> {
@@ -545,6 +547,7 @@ export type UploadMediaAsyncMeta = {
   locationMeta?: PostLocationMeta | null;
   settings?: PostUploadSettings | null;
   durationMs?: number;
+  scheduledFor?: string;
   /** JSON string: filters, trim, overlays (see packEditMetaForUpload). */
   clientEditMeta?: string;
 };
@@ -565,6 +568,9 @@ function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
   }
   if (typeof meta.durationMs === 'number' && !Number.isNaN(meta.durationMs)) {
     form.append('durationMs', String(Math.round(meta.durationMs)));
+  }
+  if (meta.scheduledFor?.trim()) {
+    form.append('scheduledFor', meta.scheduledFor);
   }
   if (meta.clientEditMeta?.trim()) {
     form.append('clientEditMeta', meta.clientEditMeta);

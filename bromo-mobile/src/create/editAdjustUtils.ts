@@ -5,13 +5,23 @@ export function adjustOverlayStyle(adjustments: AdjustmentState): ViewStyle {
   const b = adjustments.brightness;
   const c = adjustments.contrast;
   const fade = adjustments.fade;
-  const bright =
-    b >= 0
-      ? `rgba(255,255,255,${Math.min(0.52, b * 0.45)})`
-      : `rgba(0,0,0,${Math.min(0.52, -b * 0.45)})`;
+  if (Math.abs(b) < 0.02 && Math.abs(c) < 0.02 && fade < 0.02) {
+    return {backgroundColor: 'transparent', opacity: 0};
+  }
+  const whiteAlpha =
+    b > 0
+      ? Math.min(0.44, b * 0.34 + Math.max(0, -c) * 0.1 + fade * 0.18)
+      : Math.min(0.32, Math.max(0, -c) * 0.18 + fade * 0.2);
+  const blackAlpha =
+    b < 0
+      ? Math.min(0.48, -b * 0.38 + Math.max(0, c) * 0.12)
+      : Math.min(0.3, Math.max(0, c) * 0.24);
   return {
-    backgroundColor: bright,
-    opacity: Math.max(0.22, Math.min(1, 0.75 + c * 0.2 - fade * 0.1)),
+    backgroundColor:
+      blackAlpha > whiteAlpha
+        ? `rgba(0,0,0,${blackAlpha})`
+        : `rgba(255,255,255,${whiteAlpha})`,
+    opacity: 1,
   };
 }
 
@@ -28,10 +38,10 @@ export function warmthOverlayStyle(adjustments: AdjustmentState): ViewStyle | nu
 
 export function saturationOverlayStyle(adjustments: AdjustmentState): ViewStyle | null {
   const s = adjustments.saturation;
-  if (Math.abs(s) < 0.03) return null;
+  if (Math.abs(s) < 0.02) return null;
   return {
-    backgroundColor: s > 0 ? 'rgba(255,60,140,0.14)' : 'rgba(60,140,255,0.12)',
-    opacity: Math.min(1, 0.55 + Math.abs(s) * 0.35),
+    backgroundColor: s > 0 ? 'rgba(255,72,120,0.22)' : 'rgba(72,138,255,0.18)',
+    opacity: Math.min(1, 0.2 + Math.abs(s) * 0.28),
   };
 }
 

@@ -2057,6 +2057,7 @@ postsRouter.post(
         durationMs,
         storyMeta,
         feedCategory: feedCategoryRaw,
+        scheduledFor: scheduledForRaw,
         clientEditMeta: clientEditMetaRaw,
       } = req.body as {
         type: "post" | "reel" | "story";
@@ -2074,8 +2075,18 @@ postsRouter.post(
         durationMs?: number;
         storyMeta?: { bgColor?: string; overlays?: unknown[] };
         feedCategory?: string;
+        scheduledFor?: string;
         clientEditMeta?: string | Record<string, unknown>;
       };
+
+      const scheduledFor =
+        typeof scheduledForRaw === "string" && scheduledForRaw.trim()
+          ? new Date(scheduledForRaw)
+          : undefined;
+      const isScheduled =
+        scheduledFor instanceof Date &&
+        !Number.isNaN(scheduledFor.getTime()) &&
+        scheduledFor.getTime() > Date.now();
 
       let clientEditMeta: Record<string, unknown> | undefined;
       if (clientEditMetaRaw != null) {
@@ -2103,7 +2114,10 @@ postsRouter.post(
         return res.status(400).json({ message: "Reels must use video media (not HEIC/photos)." });
       }
 
-      const expiresAt = type === "story" ? new Date(Date.now() + 24 * 60 * 60 * 1000) : undefined;
+      const expiresAt =
+        type === "story" && !isScheduled
+          ? new Date(Date.now() + 24 * 60 * 60 * 1000)
+          : undefined;
       // Wall posts + stories default to friends-only in discover; reels stay discoverable (general unless set).
       const feedCategory =
         type === "story"
@@ -2141,11 +2155,13 @@ postsRouter.post(
         ...(clientEditMeta ? { clientEditMeta } : {}),
         expiresAt,
         isDeleted: false,
+        ...(isScheduled ? { scheduledFor } : {}),
+        ...(isScheduled ? { isActive: false } : {}),
         feedCategory,
         ...(type === "story" && storyMeta ? { storyMeta } : {}),
       });
 
-      if (type === "post" || type === "reel") {
+      if (!isScheduled && (type === "post" || type === "reel")) {
         await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
       }
 

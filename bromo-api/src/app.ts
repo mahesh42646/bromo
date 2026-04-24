@@ -55,6 +55,7 @@ import { placesRouter } from "./routes/places.js";
 import { storeRouter } from "./routes/storeRoutes.js";
 import { dashboardOverviewRouter } from "./routes/dashboardOverview.js";
 import { startPromotionBillingWorker } from "./workers/promotionBillingWorker.js";
+import { startScheduledPostWorker } from "./workers/scheduledPostWorker.js";
 import { initFirebase } from "./config/firebase.js";
 
 export function createApp() {
@@ -171,6 +172,7 @@ export function createApp() {
 
   // Start background workers
   startPromotionBillingWorker();
+  startScheduledPostWorker();
 
   return app;
 }

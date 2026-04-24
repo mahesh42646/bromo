@@ -258,6 +258,10 @@ promotionsRouter.post("/:id/log-delivery", requireVerifiedUser, async (req: Fire
     res.status(400).json({ message: "surface and contentAuthorId required" });
     return;
   }
+  if (!mongoose.Types.ObjectId.isValid(contentAuthorId)) {
+    res.status(400).json({ message: "invalid contentAuthorId" });
+    return;
+  }
 
   const deliveryKind = kind === "cta_click" ? "cta_click" : "impression";
 

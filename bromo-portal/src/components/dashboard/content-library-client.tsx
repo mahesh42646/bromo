@@ -146,7 +146,7 @@ export function ContentLibraryClient({
     tagsCsv: string;
     location: string;
     feedCategory: string;
-    audioSource: "original" | "mute" | "bromo";
+    audioSource: "original" | "mute" | "library";
     audioTrack: string;
     filterPreset: string;
     trimStartMs: number;

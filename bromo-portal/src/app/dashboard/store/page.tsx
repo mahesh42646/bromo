@@ -32,14 +32,29 @@ export default async function StorePage() {
   const user = await fetchMeServer();
   if (!user) return null;
 
-  const res = await apiWithAuth("/stores/mine");
-  const json = res.ok ? await res.json().catch(() => null) : null;
-  const store =
+  const mineRes = await apiWithAuth("/stores/mine");
+  const json = mineRes.ok ? await mineRes.json().catch(() => null) : null;
+  let store =
     json && typeof json === "object" && json !== null && "store" in json
       ? (json as { store: Record<string, unknown> }).store
       : null;
 
-  if (!res.ok && res.status === 403) {
+  if (!store && user.storeId && mineRes.status === 404) {
+    const sid = encodeURIComponent(String(user.storeId));
+    const byId = await apiWithAuth(`/stores/${sid}`);
+    if (byId.ok) {
+      const j2 = await byId.json().catch(() => null);
+      const s =
+        j2 && typeof j2 === "object" && j2 !== null && "store" in j2
+          ? (j2 as { store: Record<string, unknown> }).store
+          : null;
+      if (s && String(s.owner ?? "") === String(user._id)) {
+        store = s;
+      }
+    }
+  }
+
+  if (!mineRes.ok && mineRes.status === 403) {
     return (
       <div className="space-y-8">
         <div>
