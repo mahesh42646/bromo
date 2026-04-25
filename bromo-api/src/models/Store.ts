@@ -16,6 +16,15 @@ export const STORE_CATEGORIES = [
 
 export type StoreCategory = (typeof STORE_CATEGORIES)[number];
 
+export const STORE_PLAN_IDS = ["none", "basic", "premium", "gold"] as const;
+export type StorePlanId = (typeof STORE_PLAN_IDS)[number];
+
+export const STORE_PLAN_STATUSES = ["inactive", "pending", "active", "expired"] as const;
+export type StorePlanStatus = (typeof STORE_PLAN_STATUSES)[number];
+
+export const STORE_VERIFIED_BADGES = ["none", "standard", "premium", "gold"] as const;
+export type StoreVerifiedBadge = (typeof STORE_VERIFIED_BADGES)[number];
+
 export interface StoreDoc extends Document {
   owner: mongoose.Types.ObjectId;
   name: string;
@@ -38,6 +47,20 @@ export interface StoreDoc extends Document {
   ratingCount: number;
   tags: string[];
   favoritedBy: mongoose.Types.ObjectId[];
+  subscription: {
+    planId: StorePlanId;
+    status: StorePlanStatus;
+    badge: StoreVerifiedBadge;
+    amountInr: number;
+    startsAt: Date | null;
+    endsAt: Date | null;
+    lastOrderId: string;
+    lastPaymentId: string;
+    pendingPlanId: Exclude<StorePlanId, "none"> | null;
+    pendingOrderId: string;
+    pendingAmountInr: number;
+    pendingCreatedAt: Date | null;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -72,6 +95,20 @@ const storeSchema = new Schema<StoreDoc>(
     ratingCount: { type: Number, default: 0 },
     tags: [{ type: String, trim: true }],
     favoritedBy: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    subscription: {
+      planId: { type: String, enum: STORE_PLAN_IDS, default: "none" },
+      status: { type: String, enum: STORE_PLAN_STATUSES, default: "inactive" },
+      badge: { type: String, enum: STORE_VERIFIED_BADGES, default: "none" },
+      amountInr: { type: Number, default: 0 },
+      startsAt: { type: Date, default: null },
+      endsAt: { type: Date, default: null },
+      lastOrderId: { type: String, default: "" },
+      lastPaymentId: { type: String, default: "" },
+      pendingPlanId: { type: String, enum: ["basic", "premium", "gold"], default: null },
+      pendingOrderId: { type: String, default: "" },
+      pendingAmountInr: { type: Number, default: 0 },
+      pendingCreatedAt: { type: Date, default: null },
+    },
   },
   { timestamps: true },
 );

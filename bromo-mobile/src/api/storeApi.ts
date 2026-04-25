@@ -27,6 +27,34 @@ export const STORE_CATEGORIES: StoreCategory[] = [
   'Other',
 ];
 
+export type StorePlanId = 'basic' | 'premium' | 'gold';
+
+export type StorePlan = {
+  id: StorePlanId;
+  title: string;
+  monthlyPriceInr: number;
+  billedAs: string;
+  badge: 'standard' | 'premium' | 'gold';
+  sortBoost: number;
+  radiusKm: number;
+  features: string[];
+};
+
+export type StoreSubscription = {
+  planId: 'none' | StorePlanId;
+  status: 'inactive' | 'pending' | 'active' | 'expired';
+  badge: 'none' | 'standard' | 'premium' | 'gold';
+  amountInr: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  lastOrderId: string;
+  lastPaymentId: string;
+  pendingPlanId: StorePlanId | null;
+  pendingOrderId: string;
+  pendingAmountInr: number;
+  pendingCreatedAt: string | null;
+};
+
 export type Store = {
   _id: string;
   owner: string;
@@ -48,6 +76,8 @@ export type Store = {
   tags: string[];
   isFavorited?: boolean;
   distance?: number;
+  subscription: StoreSubscription;
+  activePlan?: StorePlan | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -92,6 +122,9 @@ export type StoresFilter = {
   maxDistance?: number;
   q?: string;
   category?: string;
+  minRating?: number;
+  plan?: StorePlanId;
+  sortBy?: 'nearest' | 'popular' | 'rating' | 'newest';
   page?: number;
 };
 
@@ -104,6 +137,9 @@ export async function listStores(filter: StoresFilter = {}): Promise<{stores: St
   if (filter.maxDistance != null) params.set('maxDistance', String(filter.maxDistance));
   if (filter.q) params.set('q', filter.q);
   if (filter.category) params.set('category', filter.category);
+  if (filter.minRating != null) params.set('minRating', String(filter.minRating));
+  if (filter.plan) params.set('plan', filter.plan);
+  if (filter.sortBy) params.set('sortBy', filter.sortBy);
   if (filter.page) params.set('page', String(filter.page));
 
   const res = await fetch(`${apiBase()}/stores?${params.toString()}`);
@@ -115,6 +151,59 @@ export async function getFeaturedStores(): Promise<Store[]> {
   const res = await fetch(`${apiBase()}/stores/featured`);
   if (!res.ok) return [];
   return (await res.json()).stores ?? [];
+}
+
+export async function getStorePlans(): Promise<StorePlan[]> {
+  const res = await fetch(`${apiBase()}/stores/plans`);
+  if (!res.ok) return [];
+  return (await res.json()).plans ?? [];
+}
+
+export async function getMyStoreSubscription(): Promise<{
+  subscription: StoreSubscription;
+  activePlan: StorePlan | null;
+  plans: StorePlan[];
+}> {
+  const res = await authorizedFetch(`${apiBase()}/stores/mine/subscription`);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'Failed to load subscription');
+  return res.json();
+}
+
+export async function createStoreSubscriptionCheckout(planId: StorePlanId): Promise<{
+  checkout: {
+    provider: 'razorpay_simulated';
+    orderId: string;
+    amountInr: number;
+    currency: 'INR';
+    merchantName: string;
+    plan: StorePlan;
+    prefill: {name: string; email: string; contact: string};
+  };
+  store: Store;
+}> {
+  const res = await authorizedFetch(`${apiBase()}/stores/mine/subscription/checkout`, {
+    method: 'POST',
+    body: JSON.stringify({planId}),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.message ?? 'Failed to start checkout');
+  return body;
+}
+
+export async function verifyStoreSubscriptionPayment(orderId: string, paymentId: string): Promise<{
+  ok: true;
+  message: string;
+  subscription: StoreSubscription;
+  activePlan: StorePlan;
+  store: Store;
+}> {
+  const res = await authorizedFetch(`${apiBase()}/stores/mine/subscription/verify`, {
+    method: 'POST',
+    body: JSON.stringify({orderId, paymentId}),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.message ?? 'Payment verification failed');
+  return body;
 }
 
 export type CreateStorePayload = {

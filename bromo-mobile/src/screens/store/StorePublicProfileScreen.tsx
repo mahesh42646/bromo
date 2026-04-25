@@ -23,9 +23,10 @@ import {
   Phone,
   Package,
   Navigation,
-  Share2,
   Star,
   Eye,
+  BadgeCheck,
+  Crown,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
@@ -55,7 +56,7 @@ export function StorePublicProfileScreen() {
         setStore(s);
         setProducts(p);
         setFavorited(s.isFavorited ?? false);
-      } catch (e) {
+      } catch {
         Alert.alert('Error', 'Failed to load store');
         navigation.goBack();
       } finally {
@@ -98,6 +99,15 @@ export function StorePublicProfileScreen() {
 
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = activeCategory === 'All' ? products : products.filter(p => p.category === activeCategory);
+  const verifiedBadge = store?.subscription?.status === 'active' ? store.subscription.badge : 'none';
+  const verifiedColor =
+    verifiedBadge === 'gold'
+      ? '#d4a837'
+      : verifiedBadge === 'premium'
+        ? '#3b82f6'
+        : verifiedBadge === 'standard'
+          ? palette.success
+          : palette.foregroundSubtle;
 
   if (loading) {
     return (
@@ -166,6 +176,14 @@ export function StorePublicProfileScreen() {
               <View style={[s.deliveryTag, {backgroundColor: `${palette.success}20`, borderColor: `${palette.success}40`}]}>
                 <Truck size={10} color={palette.success} />
                 <Text style={{color: palette.success, fontSize: 9, fontWeight: '800'}}>DELIVERY</Text>
+              </View>
+            )}
+            {verifiedBadge !== 'none' && (
+              <View style={[s.deliveryTag, {backgroundColor: `${verifiedColor}20`, borderColor: `${verifiedColor}40`}]}>
+                {verifiedBadge === 'gold' ? <Crown size={10} color={verifiedColor} /> : <BadgeCheck size={10} color={verifiedColor} />}
+                <Text style={{color: verifiedColor, fontSize: 9, fontWeight: '800', textTransform: 'uppercase'}}>
+                  {verifiedBadge}
+                </Text>
               </View>
             )}
           </View>
