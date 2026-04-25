@@ -18,6 +18,35 @@ export async function getLocalFileSizeBytes(uri: string): Promise<number | null>
   }
 }
 
+/** nginx often returns 413 as HTML; multer returns JSON — use for user-visible errors. */
+export function humanizeMediaUploadError(
+  status: number,
+  rawBody: string,
+  parsed?: {message?: string},
+): string {
+  const jsonMsg =
+    parsed &&
+    typeof parsed.message === 'string' &&
+    parsed.message.trim().length > 0
+      ? parsed.message.trim()
+      : '';
+  if (jsonMsg && !jsonMsg.startsWith('<')) return jsonMsg;
+
+  const raw = rawBody ?? '';
+  if (
+    status === 413 ||
+    raw.includes('413 Request Entity Too Large') ||
+    /request entity too large/i.test(raw)
+  ) {
+    return 'Video is larger than the reverse proxy allows (HTTP 413). On the server, set nginx client_max_body_size to at least 650m for /media/ (see bromo-api/deploy/nginx-media-upload-snippet.conf), or trim/export a smaller clip.';
+  }
+  if (raw.trimStart().startsWith('<') || /<\/html>/i.test(raw)) {
+    return `Upload failed (HTTP ${status}). The server returned HTML instead of JSON — usually a proxy limit or gateway error.`;
+  }
+  const clipped = raw.trim().slice(0, 280);
+  return clipped || `Upload failed (HTTP ${status})`;
+}
+
 export type PostUploadSettings = {
   commentsOff?: boolean;
   hideLikes?: boolean;
@@ -536,20 +565,26 @@ export async function uploadMedia(
     body: form,
   });
 
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error((body as {message?: string}).message ?? 'Upload failed');
+  const raw = await res.text();
+  let body: Record<string, unknown> = {};
+  try {
+    body = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    body = {};
   }
-  const url = (body as {url?: unknown}).url;
+  if (!res.ok) {
+    throw new Error(humanizeMediaUploadError(res.status, raw, body as {message?: string}));
+  }
+  const url = body.url;
   if (typeof url !== 'string' || !url.trim()) {
     throw new Error('Upload succeeded but no file URL was returned. Try again or use MP4/MOV.');
   }
-  const mt = (body as {mediaType?: unknown}).mediaType;
-  const conv = (body as {converted?: unknown}).converted;
+  const mt = body.mediaType;
+  const conv = body.converted;
   return {
     url: url.trim(),
-    thumbnailUrl: typeof (body as {thumbnailUrl?: unknown}).thumbnailUrl === 'string'
-      ? (body as {thumbnailUrl: string}).thumbnailUrl.trim() || undefined
+    thumbnailUrl: typeof body.thumbnailUrl === 'string'
+      ? body.thumbnailUrl.trim() || undefined
       : undefined,
     mediaType: mt === 'video' || mt === 'image' ? mt : undefined,
     converted: typeof conv === 'boolean' ? conv : undefined,
@@ -575,10 +610,16 @@ export type UploadMediaAsyncMeta = {
   clientEditMeta?: string;
 };
 
+const MAX_ASYNC_FIELD_CHARS = 22_000;
+
+function clipField(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max);
+}
+
 function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
-  if (meta.caption) form.append('caption', meta.caption);
-  if (meta.location) form.append('location', meta.location);
-  if (meta.music) form.append('music', meta.music);
+  if (meta.caption) form.append('caption', clipField(meta.caption, MAX_ASYNC_FIELD_CHARS));
+  if (meta.location) form.append('location', clipField(meta.location, 500));
+  if (meta.music) form.append('music', clipField(meta.music, 500));
   if (meta.tags?.length) form.append('tags', meta.tags.join(','));
   if (meta.feedCategory && meta.feedCategory !== 'general') form.append('feedCategory', meta.feedCategory);
   if (meta.taggedUserIds?.length) form.append('taggedUserIds', meta.taggedUserIds.join(','));
@@ -596,7 +637,7 @@ function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
     form.append('scheduledFor', meta.scheduledFor);
   }
   if (meta.clientEditMeta?.trim()) {
-    form.append('clientEditMeta', meta.clientEditMeta);
+    form.append('clientEditMeta', meta.clientEditMeta.trim());
   }
 }
 
@@ -651,7 +692,7 @@ export async function uploadMediaAsync(
 
   if (onProgress) {
     const url = `${base}/media/upload-async?category=${encodeURIComponent(category)}`;
-    const {ok, body: text} = await postFormWithProgress(url, form, onProgress);
+    const {ok, status, body: text} = await postFormWithProgress(url, form, onProgress);
     const body = (() => {
       try {
         return JSON.parse(text) as Record<string, unknown>;
@@ -660,7 +701,9 @@ export async function uploadMediaAsync(
       }
     })();
     if (!ok) {
-      throw new Error((body.message as string | undefined) ?? (text.trim() || 'Async upload failed'));
+      throw new Error(
+        humanizeMediaUploadError(status, text, body as {message?: string}),
+      );
     }
     const jobId = body.jobId as string | undefined;
     const postId = body.postId as string | undefined;
@@ -677,9 +720,15 @@ export async function uploadMediaAsync(
     body: form,
   });
 
-  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+  const raw = await res.text();
+  let body: Record<string, unknown> = {};
+  try {
+    body = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    body = {};
+  }
   if (!res.ok) {
-    throw new Error((body.message as string | undefined) ?? 'Async upload failed');
+    throw new Error(humanizeMediaUploadError(res.status, raw, body as {message?: string}));
   }
 
   const jobId = body.jobId as string | undefined;
