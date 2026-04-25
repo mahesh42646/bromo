@@ -56,6 +56,9 @@ PODS:
     - FirebaseCore (~> 12.10.0)
   - FirebaseCoreInternal (12.10.0):
     - "GoogleUtilities/NSData+zlib (~> 8.1)"
+  - GoogleMaps (9.4.0):
+    - GoogleMaps/Maps (= 9.4.0)
+  - GoogleMaps/Maps (9.4.0)
   - GoogleSignIn (9.1.0):
     - AppAuth (~> 2.0)
     - AppCheckCore (~> 11.0)
@@ -1594,6 +1597,53 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-maps (1.27.2):
+    - react-native-maps/Maps (= 1.27.2)
+  - react-native-maps/Generated (1.27.2):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - react-native-maps/Maps (1.27.2):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - react-native-maps/Generated
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - react-native-netinfo (11.5.2):
     - hermes-engine
     - RCTRequired
@@ -1799,6 +1849,28 @@ PODS:
     - ReactNativeDependencies
     - Yoga
   - react-native-view-shot (4.0.3):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - react-native-webview (13.16.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2549,6 +2621,7 @@ DEPENDENCIES:
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - FirebaseAppCheckInterop
   - FirebaseAuthInterop
+  - GoogleMaps
   - GoogleUtilities
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
@@ -2592,11 +2665,13 @@ DEPENDENCIES:
   - "react-native-cameraroll (from `../node_modules/@react-native-camera-roll/camera-roll`)"
   - "react-native-geolocation (from `../node_modules/@react-native-community/geolocation`)"
   - react-native-image-picker (from `../node_modules/react-native-image-picker`)
+  - react-native-maps (from `../node_modules/react-native-maps`)
   - "react-native-netinfo (from `../node_modules/@react-native-community/netinfo`)"
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - "react-native-slider (from `../node_modules/@react-native-community/slider`)"
   - react-native-video (from `../node_modules/react-native-video`)
   - react-native-view-shot (from `../node_modules/react-native-view-shot`)
+  - react-native-webview (from `../node_modules/react-native-webview`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
   - React-oscompat (from `../node_modules/react-native/ReactCommon/oscompat`)
@@ -2654,6 +2729,7 @@ SPEC REPOS:
     - FirebaseCore
     - FirebaseCoreExtension
     - FirebaseCoreInternal
+    - GoogleMaps
     - GoogleSignIn
     - GoogleUtilities
     - GTMAppAuth
@@ -2749,6 +2825,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-community/geolocation"
   react-native-image-picker:
     :path: "../node_modules/react-native-image-picker"
+  react-native-maps:
+    :path: "../node_modules/react-native-maps"
   react-native-netinfo:
     :path: "../node_modules/@react-native-community/netinfo"
   react-native-safe-area-context:
@@ -2759,6 +2837,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-video"
   react-native-view-shot:
     :path: "../node_modules/react-native-view-shot"
+  react-native-webview:
+    :path: "../node_modules/react-native-webview"
   React-NativeModulesApple:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"
   React-networking:
@@ -2860,6 +2940,7 @@ SPEC CHECKSUMS:
   FirebaseCore: f4428e22415ea3b3eca652c2098413dabf2a23a9
   FirebaseCoreExtension: 3473a6ec16a91aee29fb75994a86c0220d2cddf3
   FirebaseCoreInternal: e7bbaeb00ab73011298f35ed223aa7371e212948
+  GoogleMaps: 0608099d4870cac8754bdba9b6953db543432438
   GoogleSignIn: fcee2257188d5eda57a5e2b6a715550ffff9206d
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
   GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238
@@ -2906,11 +2987,13 @@ SPEC CHECKSUMS:
   react-native-cameraroll: a727e850b3f441d22edc4b4be71513c26d93a2e2
   react-native-geolocation: b2fa81eb9f75c46b8e6e74ed9a4b56dab1523927
   react-native-image-picker: 4123dc2b15a0b6fc2f027e6cf94ae5f48c9ae9b0
+  react-native-maps: af78b37e4581e4c534ee6932e89e92d33b3d9db3
   react-native-netinfo: b71941e80630ec2db186ab770e1138e344208bd0
   react-native-safe-area-context: 90476586077446d5eab1d41ac3e767b016ac41d6
   react-native-slider: 93063b5034e5c8ae011aeb2d96d57866191e6d6b
   react-native-video: e35396683f37b5f7fd732d58a3a82cd75dec481d
   react-native-view-shot: 8853a6bacbf77899d550773a84986f251f509ffc
+  react-native-webview: b8dbc288f28a87766d7b1158ef185619768e3339
   React-NativeModulesApple: 5ba0903927f6b8d335a091700e9fda143980f819
   React-networking: ad2727500e93943a43da70d3b162454af151469c
   React-oscompat: ff26abf0ae3e3fdbe47b44224571e3fc7226a573
@@ -2957,6 +3040,6 @@ SPEC CHECKSUMS:
   VisionCamera: 7187b3dac1ff3071234ead959ce311875748e14f
   Yoga: 846fbe6f595136be802ad81d05688ff748839764
 
-PODFILE CHECKSUM: de761d09b1163df92c540edc216a8f623ac86b85
+PODFILE CHECKSUM: f7b2aa33447ef4195c682d33ef1c6290e56d9678
 
 COCOAPODS: 1.16.2

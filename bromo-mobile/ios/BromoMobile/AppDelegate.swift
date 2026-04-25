@@ -3,6 +3,7 @@ import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
 import FirebaseCore
+import GoogleMaps
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -16,6 +17,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     FirebaseApp.configure()
+    if let mapsApiKey = Bundle.main.object(forInfoDictionaryKey: "GoogleMapsAPIKey") as? String,
+       mapsApiKey.isEmpty == false {
+      GMSServices.provideAPIKey(mapsApiKey)
+    }
 
     let delegate = ReactNativeDelegate()
     let factory = RCTReactNativeFactory(delegate: delegate)

@@ -22,6 +22,8 @@ target 'BromoMobile' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  pod 'GoogleMaps'
+
   # FirebaseAuth is Swift and needs module maps from its Obj-C dependencies.
   # Apply modular_headers only to those specific pods — NOT globally.
   pod 'GoogleUtilities', :modular_headers => true
