@@ -1,10 +1,12 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   DeviceEventEmitter,
   Dimensions,
   Image,
+  Modal,
   Pressable,
   StatusBar,
   Text,
@@ -15,13 +17,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {ChevronLeft, Heart, Send, Share2} from 'lucide-react-native';
+import {ChevronLeft, Heart, MoreVertical, Send, Share2} from 'lucide-react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {useMessaging} from '../messaging/MessagingContext';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {markStorySeenPost, toggleLike, resolveVideoUrl, type StoryGroup} from '../api/postsApi';
+import {deletePost, markStorySeenPost, toggleLike, resolveVideoUrl, type StoryGroup} from '../api/postsApi';
 import {loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
 import {prefetchStoryVideoToDisk, resolveStoryVideoPlayUri} from '../lib/storyVideoCache';
 import {prefetchHlsSegments} from '../lib/hlsPrefetch';
@@ -86,6 +88,7 @@ export function StoryViewScreen() {
   const [liked, setLiked] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [showReply, setShowReply] = useState(false);
+  const [ownMenuOpen, setOwnMenuOpen] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
   const [storyDurationMs, setStoryDurationMs] = useState(STORY_DURATION_IMAGE_MS);
   /** null = resolving disk vs remote; avoids mounting the player on `https://` when a cache hit will use `file://`. */
@@ -385,6 +388,7 @@ export function StoryViewScreen() {
   const poster = postThumbnailUri(current) || undefined;
   const avatarUri = group.author.profilePicture ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}&size=64`;
+  const viewingOwnStories = Boolean(dbUser?._id && String(group.author._id) === String(dbUser._id));
 
   // Parse story overlays and bg color from storyMeta
   const storyMeta = (current as unknown as {storyMeta?: StoryMeta}).storyMeta;
@@ -395,6 +399,59 @@ export function StoryViewScreen() {
   return (
     <View style={{flex: 1, backgroundColor: '#000'}}>
       <StatusBar barStyle="light-content" hidden={false} backgroundColor="#000" />
+
+      <Modal visible={ownMenuOpen} transparent animationType="fade" onRequestClose={() => setOwnMenuOpen(false)}>
+        <Pressable
+          style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end'}}
+          onPress={() => setOwnMenuOpen(false)}>
+          <Pressable
+            onPress={e => e.stopPropagation()}
+            style={{
+              backgroundColor: palette.surface,
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              paddingBottom: Math.max(insets.bottom, 16),
+            }}>
+            <Pressable
+              style={{paddingVertical: 16, paddingHorizontal: 20}}
+              onPress={() => {
+                setOwnMenuOpen(false);
+                parentNavigate(navigation, 'CreateFlow', {editPostId: current._id});
+              }}>
+              <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '700'}}>Edit story</Text>
+              <Text style={{color: palette.foregroundMuted, fontSize: 12, marginTop: 4}}>
+                Caption, audience, comments, close friends…
+              </Text>
+            </Pressable>
+            <Pressable
+              style={{paddingVertical: 16, paddingHorizontal: 20, borderTopWidth: 1, borderTopColor: palette.border}}
+              onPress={() => {
+                setOwnMenuOpen(false);
+                Alert.alert(
+                  'Delete?',
+                  "Are you sure you want to delete? This can't be undone.",
+                  [
+                    {text: 'Cancel', style: 'cancel'},
+                    {
+                      text: 'Delete',
+                      style: 'destructive',
+                      onPress: () => {
+                        deletePost(current._id)
+                          .then(() => {
+                            DeviceEventEmitter.emit('bromo:storiesChanged');
+                            navigation.goBack();
+                          })
+                          .catch(e => Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'));
+                      },
+                    },
+                  ],
+                );
+              }}>
+              <Text style={{color: palette.destructive, fontSize: 16, fontWeight: '800'}}>Delete story</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* ── Media / Background ──────────────────────────────────────────── */}
       {isColorBg ? (
@@ -538,6 +595,11 @@ export function StoryViewScreen() {
         <Text style={{color: '#fff', fontWeight: '700', fontSize: 14, flex: 1}}>
           @{group.author.username}
         </Text>
+        {viewingOwnStories ? (
+          <Pressable onPress={() => setOwnMenuOpen(true)} hitSlop={12} style={{padding: 4}}>
+            <MoreVertical color="#fff" size={22} />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* ── Tap zones ───────────────────────────────────────────────────────── */}

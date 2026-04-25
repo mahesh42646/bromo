@@ -41,6 +41,8 @@ import {
   Sparkles,
   BarChart2,
   Megaphone,
+  Pencil,
+  Trash2,
   Volume2,
   VolumeX,
 } from 'lucide-react-native';
@@ -67,6 +69,7 @@ import {
   fetchPostWhy,
   reportPostStrict,
   votePostPoll,
+  deletePost,
   type Post,
 } from '../api/postsApi';
 import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
@@ -133,6 +136,7 @@ function ReelMoreSheet({
   reel,
   navigation,
   onRemoveFromFeed,
+  onReelDeleted,
   isOwnReel,
 }: {
   visible: boolean;
@@ -144,6 +148,7 @@ function ReelMoreSheet({
   reel: Post | null;
   navigation: Nav;
   onRemoveFromFeed: (postId: string) => void;
+  onReelDeleted?: (postId: string) => void;
   isOwnReel: boolean;
 }) {
   const groupStyle = {
@@ -261,6 +266,53 @@ function ReelMoreSheet({
                   }}>
                   <Megaphone size={20} color={palette.accent} />
                   <Text style={{color: palette.accent, fontSize: 15, fontWeight: '600', marginLeft: 8}}>Promote reel</Text>
+                </Pressable>
+                <Pressable
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 14,
+                    paddingVertical: 12,
+                    paddingHorizontal: 18,
+                  }}
+                  onPress={() => {
+                    onClose();
+                    parentNavigate(navigation, 'CreateFlow', {editPostId: reel._id});
+                  }}>
+                  <Pencil size={20} color={palette.foreground} />
+                  <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '600', marginLeft: 8}}>Edit reel</Text>
+                </Pressable>
+                <Pressable
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 14,
+                    paddingVertical: 12,
+                    paddingHorizontal: 18,
+                  }}
+                  onPress={() => {
+                    onClose();
+                    Alert.alert(
+                      'Delete?',
+                      "Are you sure you want to delete? This can't be undone.",
+                      [
+                        {text: 'Cancel', style: 'cancel'},
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: () => {
+                            deletePost(reel._id)
+                              .then(() => {
+                                onReelDeleted?.(reel._id);
+                              })
+                              .catch(e => Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'));
+                          },
+                        },
+                      ],
+                    );
+                  }}>
+                  <Trash2 size={20} color={palette.destructive} />
+                  <Text style={{color: palette.destructive, fontSize: 15, fontWeight: '600', marginLeft: 8}}>Delete reel</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -470,6 +522,7 @@ const ReelItem = React.memo(function ReelItem({
   maxBitRate,
   viewerAvatarUri,
   onRemoveFromFeed,
+  onReelDeleted,
   onFirstFrame,
 }: {
   item: Post;
@@ -486,6 +539,7 @@ const ReelItem = React.memo(function ReelItem({
   maxBitRate: number | null;
   viewerAvatarUri?: string;
   onRemoveFromFeed: (postId: string) => void;
+  onReelDeleted: (postId: string) => void;
   onFirstFrame: (postId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -908,6 +962,7 @@ const ReelItem = React.memo(function ReelItem({
         reel={item}
         navigation={navigation}
         onRemoveFromFeed={onRemoveFromFeed}
+        onReelDeleted={onReelDeleted}
         isOwnReel={isOwnReel}
       />
     </View>
@@ -1388,6 +1443,7 @@ export function ReelsScreen() {
               maxBitRate={maxBitRate}
               viewerAvatarUri={viewerAvatarUri}
               onRemoveFromFeed={removeReelFromFeed}
+              onReelDeleted={removeReelFromFeed}
               onFirstFrame={onReelFirstFrame}
             />
           );

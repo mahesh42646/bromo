@@ -14,13 +14,13 @@ import {
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BadgeCheck, Bookmark, ChevronLeft, Heart, MessageCircle, MoreHorizontal, Send, Volume2, VolumeX} from 'lucide-react-native';
+import {BadgeCheck, Bookmark, ChevronLeft, Heart, MessageCircle, MoreHorizontal, Pencil, Send, Trash2, Volume2, VolumeX} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {getPost, resolveVideoUrl, toggleLike, type Post, votePostPoll} from '../api/postsApi';
+import {deletePost, getPost, resolveVideoUrl, toggleLike, type Post, votePostPoll} from '../api/postsApi';
 import {EditMetaLayers} from '../components/media/EditMetaLayers';
 import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
@@ -97,6 +97,33 @@ export function PostDetailScreen() {
     parentNavigate(navigation, 'ContentInsights', {focusPostId: post._id});
   }, [navigation, post]);
 
+  const openEdit = useCallback(() => {
+    if (!post) return;
+    setMenuOpen(false);
+    parentNavigate(navigation, 'CreateFlow', {editPostId: post._id});
+  }, [navigation, post]);
+
+  const confirmDelete = useCallback(() => {
+    if (!post) return;
+    setMenuOpen(false);
+    Alert.alert(
+      'Delete?',
+      "Are you sure you want to delete? This can't be undone.",
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deletePost(post._id)
+              .then(() => navigation.goBack())
+              .catch(e => Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'));
+          },
+        },
+      ],
+    );
+  }, [navigation, post]);
+
   if (loading) {
     return (
       <ThemedSafeScreen>
@@ -155,6 +182,26 @@ export function PostDetailScreen() {
             </Pressable>
             <Pressable onPress={openBoost} style={{paddingVertical: 16, paddingHorizontal: 20}}>
               <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '700'}}>Boost post</Text>
+            </Pressable>
+            <Pressable
+              onPress={openEdit}
+              style={{
+                paddingVertical: 16,
+                paddingHorizontal: 20,
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: palette.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+              }}>
+              <Pencil size={20} color={palette.foreground} />
+              <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '700'}}>Edit</Text>
+            </Pressable>
+            <Pressable
+              onPress={confirmDelete}
+              style={{paddingVertical: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 10}}>
+              <Trash2 size={20} color={palette.destructive} />
+              <Text style={{color: palette.destructive, fontSize: 16, fontWeight: '700'}}>Delete</Text>
             </Pressable>
           </Pressable>
         </Pressable>

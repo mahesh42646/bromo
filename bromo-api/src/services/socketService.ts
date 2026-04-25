@@ -136,12 +136,18 @@ export function emitPostComment(postId: string, commentsCount: number, comment: 
   io?.emit("post:comment", {postId, commentsCount, comment});
 }
 
-export function emitPostDelete(postId: string): void {
-  io?.emit("post:delete", {postId});
+export type PostDeleteMeta = {authorId?: string; type?: string};
+
+export function emitPostDelete(postId: string, meta?: PostDeleteMeta): void {
+  io?.emit("post:delete", {postId, ...meta});
 }
 
 export function emitStoryNew(authorId: string): void {
   io?.emit("story:new", {authorId});
+}
+
+export function emitStoryDelete(authorId: string, storyPostId: string): void {
+  io?.emit("story:delete", {authorId, storyPostId});
 }
 
 export function emitLiveStart(streamId: string, userId: string, title: string): void {

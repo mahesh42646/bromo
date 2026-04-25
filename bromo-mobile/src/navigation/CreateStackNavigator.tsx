@@ -23,10 +23,12 @@ import type {CreateMode} from '@/create/createTypes';
 
 export type CreateStackParamList = {
   /** `bootstrapTs` changes each time the user opens create from the tab (+) or deep link — triggers a fresh draft + mode. */
-  CreateHub: {mode?: CreateMode; bootstrapTs?: number; remixSourcePostId?: string} | undefined;
+  CreateHub:
+    | {mode?: CreateMode; bootstrapTs?: number; remixSourcePostId?: string; editPostId?: string}
+    | undefined;
   MediaEditor: undefined;
   Composer: undefined;
-  ShareFinal: undefined;
+  ShareFinal: {editPostId?: string} | undefined;
   CameraSettings: undefined;
   Drafts: undefined;
   LivePreview: undefined;

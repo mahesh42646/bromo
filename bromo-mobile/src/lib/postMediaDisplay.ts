@@ -53,11 +53,22 @@ export function postThumbnailUri(post: ThumbPost): string {
   return media;
 }
 
-/** URI for small circular / grid previews: image URL, or playable video URL (HLS/MP4) for first frame. */
+/**
+ * URI for small previews (story rings, chips): prefer a static JPEG, else progressive MP4
+ * (`mediaUrl` / mezzanine). Avoid HLS here — paused masters often stay blank in tiny views.
+ */
 export function postPreviewPlayUri(post: ThumbPost): string {
   const img = postThumbnailUri(post);
   if (img && !isPlayableVideoUri(img)) return img;
   if (post.mediaType === 'video') {
+    const progressive = resolvedUploadMedia(post);
+    if (
+      progressive &&
+      isPlayableVideoUri(progressive) &&
+      !/\.m3u8(\?|$)/i.test(progressive)
+    ) {
+      return progressive;
+    }
     return resolveMediaUrl(resolveVideoUrl(post as Post, false));
   }
   return img || resolvedUploadMedia(post);

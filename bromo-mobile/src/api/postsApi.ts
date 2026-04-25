@@ -112,6 +112,8 @@ export type Post = {
   processingStatus?: ProcessingStatus;
   caption: string;
   location: string;
+  locationMeta?: PostLocationMeta;
+  settings?: PostUploadSettings;
   music: string;
   tags: string[];
   likesCount: number;
@@ -136,6 +138,22 @@ export type Post = {
   seenByMe?: boolean;
   /** v2 packed edit intent: filters, trim, speed, overlays, products, etc. (see `packEditMetaForUpload`). */
   clientEditMeta?: Record<string, unknown>;
+  /** From GET /posts/:id for edit — tagged users resolved server-side. */
+  taggedPreview?: Array<{
+    _id: string;
+    username: string;
+    displayName?: string;
+    profilePicture?: string;
+  }>;
+  /** From GET /posts/:id for edit — product rows for Share picker. */
+  productPreview?: Array<{
+    _id: string;
+    title: string;
+    imageUrl: string;
+    productUrl: string;
+    price: number;
+    currency: string;
+  }>;
   /** Injected sponsored post from PromotionCampaign (API). */
   isPromoted?: boolean;
   promotionId?: string;
@@ -393,6 +411,35 @@ export async function votePostPoll(
 export async function deletePost(id: string): Promise<void> {
   const res = await authedFetch(`/posts/${id}`, {method: 'DELETE'});
   if (!res.ok) throw new Error('Failed to delete post');
+}
+
+export type PostUpdatePayload = {
+  caption?: string;
+  location?: string;
+  locationMeta?: PostLocationMeta | null;
+  music?: string;
+  tags?: string[];
+  taggedUserIds?: string[];
+  productIds?: string[];
+  settings?: PostUploadSettings;
+  feedCategory?: string;
+  storyMeta?: StoryMeta;
+  /** Omit field to leave unchanged; send `null` to remove poll. */
+  poll?: {question: string; options: string[]} | null;
+  clientEditMeta?: Record<string, unknown>;
+};
+
+export async function updatePost(id: string, body: PostUpdatePayload): Promise<{post: Post}> {
+  const res = await authedFetch(`/posts/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as {message?: string};
+    throw new Error(j.message ?? 'Failed to update post');
+  }
+  return res.json() as Promise<{post: Post}>;
 }
 
 export async function toggleLike(postId: string): Promise<{liked: boolean; likesCount: number}> {

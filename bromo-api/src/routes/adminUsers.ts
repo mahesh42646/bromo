@@ -6,7 +6,7 @@ import { Post } from "../models/Post.js";
 import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 import { requireAdminToken, requireSuperAdminToken, type AuthedRequest } from "../middleware/authBearer.js";
 import { emitPostDelete } from "../services/socketService.js";
-import { deleteLocalFilesForMediaUrls } from "../utils/uploadFiles.js";
+import { hardDeletePostWithTrash } from "../services/postDeletion.js";
 import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 
 const router = Router();
@@ -245,12 +245,7 @@ router.delete("/posts/:postId", requireAdminToken, async (req: AuthedRequest, re
     if (!post) return res.status(404).json({ message: "Post not found" });
 
     if (permanent) {
-      deleteLocalFilesForMediaUrls([post.mediaUrl, post.thumbnailUrl]);
-      await Post.findByIdAndDelete(post._id);
-      if (!post.isDeleted && authorPostsCountWasBumped(post)) {
-        await User.findByIdAndUpdate(post.authorId, { $inc: { postsCount: -1 } });
-      }
-      emitPostDelete(String(post._id));
+      await hardDeletePostWithTrash(post);
       return res.json({ ok: true, mode: "permanent" });
     }
 

@@ -27,13 +27,6 @@ export function StoryRing({uri, size = 64, seen = false, style}: Props) {
   const r = outerSize / 2 - strokeW / 2 - ringPad * 0.15;
   const gradId = useMemo(() => `storyRingGrad_${Math.random().toString(36).slice(2, 11)}`, []);
   const resolved = uri ?? `https://i.pravatar.cc/${size}`;
-  const innerStyle = {
-    width: size,
-    height: size,
-    borderRadius: size / 2,
-    borderWidth: borderW,
-    borderColor: palette.background,
-  };
 
   return (
     <View
@@ -73,21 +66,31 @@ export function StoryRing({uri, size = 64, seen = false, style}: Props) {
           <Circle cx={cx} cy={cy} r={r} stroke={`url(#${gradId})`} strokeWidth={strokeW} fill="none" />
         </Svg>
       )}
-      {isPlayableVideoThumb(resolved) ? (
-        <Video
-          source={{uri: resolved}}
-          style={innerStyle}
-          resizeMode="cover"
-          paused
-          muted
-          repeat={false}
-          ignoreSilentSwitch="ignore"
-          disableFocus
-          playInBackground={false}
-        />
-      ) : (
-        <Image source={{uri: resolved}} style={innerStyle} />
-      )}
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          overflow: 'hidden',
+          borderWidth: borderW,
+          borderColor: palette.background,
+        }}>
+        {isPlayableVideoThumb(resolved) ? (
+          <Video
+            source={{uri: resolved}}
+            style={{width: size, height: size}}
+            resizeMode="cover"
+            paused
+            muted
+            repeat={false}
+            ignoreSilentSwitch="ignore"
+            disableFocus
+            playInBackground={false}
+          />
+        ) : (
+          <Image source={{uri: resolved}} style={{width: size, height: size}} resizeMode="cover" />
+        )}
+      </View>
     </View>
   );
 }

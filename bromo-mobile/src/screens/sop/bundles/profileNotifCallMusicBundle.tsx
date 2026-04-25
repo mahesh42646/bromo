@@ -11,6 +11,7 @@ import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {getNotifications, markAllRead, markRead, type AppNotification} from '../../../api/notificationsApi';
 import {getPost, getPostAnalytics, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
+import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
 import {useAuth} from '../../../context/AuthContext';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
@@ -179,10 +180,9 @@ export function ContentInsightsScreen() {
           {selected && selectedPost && (
             <View style={{margin: 14, padding: 14, backgroundColor: palette.input, borderRadius: 14, borderWidth: 1, borderColor: palette.border}}>
               <View style={{flexDirection: 'row', gap: 10, marginBottom: 12}}>
-                <Image
-                  source={{uri: selectedPost.thumbnailUrl ?? selectedPost.mediaUrl}}
-                  style={{width: 56, height: 56, borderRadius: 8, backgroundColor: palette.border}}
-                />
+                <View style={{width: 56, height: 56, borderRadius: 8, overflow: 'hidden', backgroundColor: palette.border}}>
+                  <ProfileGridMedia post={selectedPost} style={{width: 56, height: 56, borderRadius: 8}} />
+                </View>
                 <View style={{flex: 1}}>
                   <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 13}} numberOfLines={2}>
                     {selectedPost.caption || 'No caption'}
@@ -232,11 +232,7 @@ export function ContentInsightsScreen() {
                     borderWidth: 2,
                     borderColor: selected === post._id ? palette.primary : 'transparent',
                   }}>
-                  <Image
-                    source={{uri: post.thumbnailUrl ?? post.mediaUrl}}
-                    style={{width: '100%', height: '100%'}}
-                    resizeMode="cover"
-                  />
+                  <ProfileGridMedia post={post} style={{width: '100%', height: '100%'}} />
                   <View style={{
                     position: 'absolute', bottom: 4, left: 4,
                     flexDirection: 'row', alignItems: 'center', gap: 4,

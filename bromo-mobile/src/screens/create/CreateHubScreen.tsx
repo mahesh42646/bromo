@@ -185,6 +185,15 @@ export function CreateHubScreen() {
     useCallback(() => {
       const ts = route.params?.bootstrapTs;
       if (typeof ts !== 'number') return;
+      const editId = route.params?.editPostId?.trim();
+      if (editId) {
+        if (lastBootstrapTs.current === ts) return;
+        lastBootstrapTs.current = ts;
+        requestAnimationFrame(() => {
+          navigation.replace('ShareFinal', {editPostId: editId});
+        });
+        return;
+      }
       if (lastBootstrapTs.current === ts) return;
       lastBootstrapTs.current = ts;
       reset();
@@ -208,8 +217,10 @@ export function CreateHubScreen() {
           .catch(() => null);
       }
     }, [
+      navigation,
       reset,
       route.params?.bootstrapTs,
+      route.params?.editPostId,
       route.params?.mode,
       route.params?.remixSourcePostId,
       setMode,

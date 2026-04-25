@@ -87,7 +87,8 @@ function contentTypeAndCache(absPath: string): { contentType: string; cacheContr
   return { contentType: ct, cacheControl: "public, max-age=3600" };
 }
 
-function objectKeyForRel(relPosix: string): string {
+/** S3 object key for a file under `uploads/<relPosix>` (includes optional `S3_KEY_PREFIX`). */
+export function objectKeyForRel(relPosix: string): string {
   const clean = relPosix.replace(/^\/+/, "");
   const p = keyPrefix();
   return p ? `${p}/uploads/${clean}` : `uploads/${clean}`;

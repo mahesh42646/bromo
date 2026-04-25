@@ -81,3 +81,18 @@ export function deleteLocalFilesForMediaUrls(urls: (string | undefined | null)[]
     safeUnlinkUploadRelative(rel);
   }
 }
+
+/** Recursively remove a directory under `uploads/<dirRelPosix>` (POSIX slashes). */
+export function safeRmDirUploadRelative(dirRelPosix: string): void {
+  if (!dirRelPosix || dirRelPosix.includes("..")) return;
+  const absDir = path.join(UPLOAD_DIR, ...dirRelPosix.split("/"));
+  const resolvedDir = path.resolve(absDir);
+  if (!resolvedDir.startsWith(UPLOAD_DIR + path.sep)) return;
+  try {
+    if (fs.existsSync(resolvedDir) && fs.statSync(resolvedDir).isDirectory()) {
+      fs.rmSync(resolvedDir, { recursive: true, force: true });
+    }
+  } catch (e) {
+    console.warn("[uploadFiles] rm dir failed:", resolvedDir, e);
+  }
+}

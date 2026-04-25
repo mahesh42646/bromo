@@ -53,6 +53,8 @@ import {
   X,
   BarChart2,
   Megaphone,
+  Pencil,
+  Trash2,
 } from 'lucide-react-native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
@@ -76,6 +78,7 @@ import {
   reportPost,
   recordView,
   resolveVideoUrl,
+  deletePost,
   type Post,
   type StoryGroup,
 } from '../api/postsApi';
@@ -198,6 +201,7 @@ type PostCardProps = {
   post: Post;
   onLikeToggle: (postId: string) => void;
   onHide: (postId: string) => void;
+  onPostDeleted: (postId: string) => void;
   navigation: Nav;
   isVideoVisible?: boolean;
   isFeedItemVisible?: boolean;
@@ -207,6 +211,7 @@ const PostCard = React.memo(function PostCard({
   post,
   onLikeToggle,
   onHide,
+  onPostDeleted,
   navigation,
   isVideoVisible = false,
   isFeedItemVisible = false,
@@ -340,6 +345,38 @@ const PostCard = React.memo(function PostCard({
                 contentId: post._id,
                 contentType: promoteContentType,
               });
+            },
+          },
+          {
+            icon: <Pencil size={20} color={palette.foreground} />,
+            label: 'Edit',
+            onPress: () => {
+              setMenuOpen(false);
+              parentNavigate(navigation, 'CreateFlow', {editPostId: post._id});
+            },
+          },
+          {
+            icon: <Trash2 size={20} color={palette.destructive} />,
+            label: 'Delete',
+            danger: true,
+            onPress: () => {
+              setMenuOpen(false);
+              Alert.alert(
+                'Delete?',
+                "Are you sure you want to delete? This can't be undone.",
+                [
+                  {text: 'Cancel', style: 'cancel'},
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                      deletePost(post._id)
+                        .then(() => onPostDeleted(post._id))
+                        .catch(e => Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'));
+                    },
+                  },
+                ],
+              );
             },
           },
         ]
@@ -1207,6 +1244,7 @@ export function HomeScreen() {
 
   const handleHidePost = useCallback((postId: string) => {
     setPosts(prev => prev.filter(p => p._id !== postId));
+    setTrendingReels(prev => prev.filter(p => p._id !== postId));
   }, []);
 
   const toggleStoreLike = useCallback(async (store: BromoStore) => {
@@ -1293,6 +1331,18 @@ export function HomeScreen() {
     });
     const unsubDelete = socketService.on('post:delete', ({ postId }) => {
       setPosts(prev => prev.filter(p => p._id !== postId));
+      setTrendingReels(prev => prev.filter(p => p._id !== postId));
+      setStoryGroups(prev =>
+        prev
+          .map(g => ({ ...g, stories: g.stories.filter(s => s._id !== postId) }))
+          .filter(g => g.stories.length > 0),
+      );
+    });
+    const unsubStoryDel = socketService.on('story:delete', () => {
+      void clearStoriesFeedCache()
+        .then(() => loadStoriesFeedDeduped({ force: true }))
+        .then(s => setStoryGroups(s))
+        .catch(() => null);
     });
     const unsubComment = socketService.on('post:comment', ({ postId, commentsCount }) => {
       setPosts(prev =>
@@ -1338,6 +1388,7 @@ export function HomeScreen() {
     return () => {
       unsubLike();
       unsubDelete();
+      unsubStoryDel();
       unsubComment();
       unsubStory();
       unsubNew();
@@ -1916,6 +1967,7 @@ export function HomeScreen() {
                   post={item.post}
                   onLikeToggle={handleLikeToggle}
                   onHide={handleHidePost}
+                  onPostDeleted={handleHidePost}
                   navigation={navigation}
                   isVideoVisible={item.post.mediaType === 'video' && item.post._id === visiblePostId}
                   isFeedItemVisible={item.post._id === visibleFeedPostId}

@@ -18,7 +18,8 @@ import {
 import ViewShot from 'react-native-view-shot';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useRoute} from '@react-navigation/native';
+import type {RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import Video, {ViewType} from 'react-native-video';
 import {
@@ -70,10 +71,13 @@ import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import {
   createPost,
   getLocalFileSizeBytes,
+  getPost,
   MAX_UPLOAD_BYTES,
+  updatePost,
   uploadMedia,
   uploadMediaAsync,
 } from '../../api/postsApi';
+import {hydrateDraftFromPost} from '../../create/hydrateDraftFromPost';
 import {createDraft} from '../../api/draftsApi';
 import {searchUsers, type SuggestedUser} from '../../api/followApi';
 import {listProducts, type AffiliateProduct} from '../../api/productsApi';
@@ -662,6 +666,8 @@ function makeStyles(p: ThemePalette) {
 
 export function ShareScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProp<CreateStackParamList, 'ShareFinal'>>();
+  const editPostId = route.params?.editPostId?.trim();
   const {width: viewportW} = useWindowDimensions();
   const {palette} = useTheme();
   const styles = makeStyles(palette);
@@ -680,7 +686,10 @@ export function ShareScreen() {
     setFeedCategoryPreset,
     setFeedCategoryManual,
     setStoryOptions,
+    replaceDraft,
   } = useCreateDraft();
+
+  const [editHydrating, setEditHydrating] = useState(Boolean(editPostId));
 
   const previewShotRef = useRef<ViewShot>(null);
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({
@@ -726,6 +735,43 @@ export function ShareScreen() {
         : ['Yes', 'No'],
     enabled: draft.poll.enabled,
   }));
+
+  useEffect(() => {
+    if (!editPostId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const {post} = await getPost(editPostId);
+        if (!alive) return;
+        const next = hydrateDraftFromPost(post);
+        replaceDraft(next);
+        setCaptionLocal(next.caption);
+        setPollLocal({
+          question: next.poll.question,
+          options:
+            next.poll.options.length >= 2 ? [...next.poll.options] : ['Yes', 'No'],
+          enabled: next.poll.enabled,
+        });
+        setEditHydrating(false);
+      } catch {
+        if (!alive) return;
+        setEditHydrating(false);
+        Alert.alert('Could not load post', 'Try again.', [
+          {text: 'OK', onPress: () => navigation.goBack()},
+        ]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [editPostId, navigation, replaceDraft]);
+
+  useEffect(() => {
+    if (draft.mode !== 'story') return;
+    setCaptionLocal('');
+    setCaption('');
+    setHashtags([]);
+  }, [draft.mode, setCaption, setHashtags]);
 
   useEffect(() => {
     setCaptionLocal(draft.caption);
@@ -820,6 +866,10 @@ export function ShareScreen() {
   const previewBoxH = previewBoxW / aspect;
 
   const saveDraftNow = useCallback(async () => {
+    if (editPostId) {
+      Alert.alert('Drafts', 'Save as draft is only for new posts.');
+      return;
+    }
     if (!asset) {
       Alert.alert('No media', 'Add something to save.');
       return;
@@ -876,7 +926,7 @@ export function ShareScreen() {
     } finally {
       setBusy(null);
     }
-  }, [asset, closeAll, draft]);
+  }, [asset, closeAll, draft, editPostId]);
 
   const downloadExport = useCallback(async () => {
     if (!asset) return;
@@ -904,7 +954,9 @@ export function ShareScreen() {
         Alert.alert('No media', 'Please add a photo or video first.');
         return;
       }
-      if (asset.type === 'video') {
+      const isRemoteAsset =
+        asset.uri.startsWith('http://') || asset.uri.startsWith('https://');
+      if (asset.type === 'video' && !isRemoteAsset) {
         const sz = await getLocalFileSizeBytes(asset.uri);
         if (sz != null && sz > MAX_UPLOAD_BYTES) {
           Alert.alert(
@@ -918,6 +970,10 @@ export function ShareScreen() {
       }
 
       const scheduleIso = scheduledAt ?? draft.advanced.scheduledAt;
+      if (editPostId && scheduleIso) {
+        Alert.alert('Schedule', 'Editing does not support scheduling.');
+        return;
+      }
       if (scheduleIso) {
         const when = new Date(scheduleIso);
         if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
@@ -932,6 +988,84 @@ export function ShareScreen() {
       setBusy(scheduleIso ? 'schedule' : 'publish');
       setUploadProgress(0);
       try {
+        if (editPostId) {
+          const locationMeta = draft.location?.name
+            ? {
+                name: draft.location.name,
+                lat: draft.location.lat,
+                lng: draft.location.lng,
+                address: draft.location.address,
+                placeId: draft.location.placeId,
+              }
+            : undefined;
+          const settings = {
+            commentsOff: draft.advanced.commentsOff,
+            hideLikes: draft.advanced.hideLikeCount,
+            allowRemix: true,
+            closeFriendsOnly: draft.visibility === 'close_friends',
+          };
+          const captionBuilt =
+            draft.mode === 'story'
+              ? ''
+              : buildCaptionWithProducts(
+                  draft.caption,
+                  draft.hashtags,
+                  draft.products,
+                ) || '';
+          const feedCategoryForPatch =
+            draft.mode === 'story'
+              ? undefined
+              : draft.visibility === 'followers'
+              ? 'followers'
+              : slugFeedCategory(
+                  draft.feedCategoryManual,
+                  draft.feedCategoryPreset,
+                );
+          const pollBody =
+            draft.mode === 'post' || draft.mode === 'reel'
+              ? draft.poll.enabled &&
+                draft.poll.options.filter(Boolean).length >= 2
+                ? {
+                    question: draft.poll.question.trim(),
+                    options: draft.poll.options
+                      .map(o => o.trim())
+                      .filter(Boolean)
+                      .slice(0, 4),
+                  }
+                : null
+              : undefined;
+          let clientEditMeta: Record<string, unknown> | undefined;
+          try {
+            clientEditMeta = JSON.parse(
+              packEditMetaForUpload(draft),
+            ) as Record<string, unknown>;
+          } catch {
+            clientEditMeta = undefined;
+          }
+          await updatePost(editPostId, {
+            caption: captionBuilt,
+            location: draft.location?.name ?? '',
+            locationMeta: locationMeta ?? null,
+            music: draft.selectedAudio?.title ?? '',
+            tags: draft.tagged.map(t => t.username),
+            taggedUserIds: draft.tagged.map(t => t.id).filter(Boolean),
+            productIds: draft.products.map(p => p.id).filter(Boolean),
+            settings,
+            ...(typeof feedCategoryForPatch === 'string' &&
+            feedCategoryForPatch.length > 0
+              ? {feedCategory: feedCategoryForPatch}
+              : {}),
+            ...(pollBody !== undefined ? {poll: pollBody} : {}),
+            ...(clientEditMeta && Object.keys(clientEditMeta).length > 0
+              ? {clientEditMeta}
+              : {}),
+          });
+          toastOk('Saved');
+          Alert.alert('Saved', 'Your changes are live.', [
+            {text: 'OK', onPress: closeAll},
+          ]);
+          return;
+        }
         const uploadCategory: 'reels' | 'stories' | 'posts' =
           draft.mode === 'reel'
             ? 'reels'
@@ -939,11 +1073,13 @@ export function ShareScreen() {
             ? 'stories'
             : 'posts';
         const caption =
-          buildCaptionWithProducts(
-            draft.caption,
-            draft.hashtags,
-            draft.products,
-          ) || undefined;
+          draft.mode === 'story'
+            ? ''
+            : buildCaptionWithProducts(
+                draft.caption,
+                draft.hashtags,
+                draft.products,
+              ) || undefined;
         const feedCategory =
           draft.mode === 'story'
             ? undefined
@@ -1069,7 +1205,7 @@ export function ShareScreen() {
         setBusy(null);
       }
     },
-    [asset, closeAll, draft],
+    [asset, closeAll, draft, editPostId],
   );
 
   const visibilityOptions: {
@@ -1150,6 +1286,19 @@ export function ShareScreen() {
   }, [pollLocal, setPoll]);
 
   if (!asset) {
+    if (editPostId && editHydrating) {
+      return (
+        <ThemedSafeScreen style={styles.root}>
+          <View style={[styles.header, {justifyContent: 'center'}]}>
+            <Text style={styles.headerTitle}>Loading…</Text>
+          </View>
+          <View
+            style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
+            <ActivityIndicator size="large" color={palette.accent} />
+          </View>
+        </ThemedSafeScreen>
+      );
+    }
     return (
       <ThemedSafeScreen style={styles.root}>
         <View style={styles.header}>
@@ -1180,13 +1329,23 @@ export function ShareScreen() {
           <ChevronLeft size={26} color={palette.foreground} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          New {draft.mode === 'story' ? 'story' : draft.mode === 'reel' ? 'reel' : 'post'}
+          {editPostId
+            ? 'Edit'
+            : `New ${
+                draft.mode === 'story'
+                  ? 'story'
+                  : draft.mode === 'reel'
+                  ? 'reel'
+                  : 'post'
+              }`}
         </Text>
         <Pressable
           style={styles.shareBtn}
           onPress={() => publish(null)}
           disabled={busy !== null}>
-          <Text style={styles.shareBtnText}>Share</Text>
+          <Text style={styles.shareBtnText}>
+            {editPostId ? 'Save changes' : 'Share'}
+          </Text>
         </Pressable>
       </View>
 
@@ -1194,7 +1353,7 @@ export function ShareScreen() {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         keyboardShouldPersistTaps="handled">
-        {/* Compose row: small thumb + caption */}
+        {/* Compose row: small thumb + caption (stories: no caption) */}
         <View style={styles.composeRow}>
           <Pressable
             onPress={() => openSheet('preview')}
@@ -1222,28 +1381,42 @@ export function ShareScreen() {
               />
             )}
           </Pressable>
-          <View style={styles.composeInputWrap}>
-            <TextInput
-              value={captionLocal}
-              onChangeText={next => {
-                setCaptionLocal(next);
-                syncCaption(next);
-              }}
-              placeholder="Write a caption..."
-              placeholderTextColor={palette.placeholder}
-              multiline
-              style={styles.captionInput}
-            />
-            <View style={styles.composeMetaRow}>
-              <Text style={styles.composeMetaText}>
-                {asset.type === 'video' ? 'Video' : 'Photo'}
-                {draft.assets.length > 1
-                  ? ` · ${draft.assets.length} items`
-                  : ''}
-              </Text>
-              <Text style={styles.composeMetaText}>· Tap thumb to preview</Text>
+          {draft.mode === 'story' ? (
+            <View style={[styles.composeInputWrap, {justifyContent: 'center'}]}>
+              <View style={styles.composeMetaRow}>
+                <Text style={styles.composeMetaText}>
+                  {asset.type === 'video' ? 'Video' : 'Photo'}
+                  {draft.assets.length > 1
+                    ? ` · ${draft.assets.length} items`
+                    : ''}
+                </Text>
+                <Text style={styles.composeMetaText}>· Tap thumb to preview</Text>
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={styles.composeInputWrap}>
+              <TextInput
+                value={captionLocal}
+                onChangeText={next => {
+                  setCaptionLocal(next);
+                  syncCaption(next);
+                }}
+                placeholder="Write a caption..."
+                placeholderTextColor={palette.placeholder}
+                multiline
+                style={styles.captionInput}
+              />
+              <View style={styles.composeMetaRow}>
+                <Text style={styles.composeMetaText}>
+                  {asset.type === 'video' ? 'Video' : 'Photo'}
+                  {draft.assets.length > 1
+                    ? ` · ${draft.assets.length} items`
+                    : ''}
+                </Text>
+                <Text style={styles.composeMetaText}>· Tap thumb to preview</Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Action rows */}
@@ -1279,28 +1452,30 @@ export function ShareScreen() {
           styles={styles}
           palette={palette}
         />
-        <ActionListRow
-          icon={<MessageCircle size={18} color={palette.foreground} />}
-          label="Add poll"
-          value={
-            draft.poll.enabled && draft.poll.options.length >= 2
-              ? draft.poll.question || 'Active'
-              : undefined
-          }
-          onPress={() => {
-            setPollLocal({
-              question: draft.poll.question,
-              options:
-                draft.poll.options.length >= 2
-                  ? [...draft.poll.options]
-                  : ['Yes', 'No'],
-              enabled: draft.poll.enabled,
-            });
-            openSheet('poll');
-          }}
-          styles={styles}
-          palette={palette}
-        />
+        {(draft.mode === 'post' || draft.mode === 'reel') && (
+          <ActionListRow
+            icon={<MessageCircle size={18} color={palette.foreground} />}
+            label="Add poll"
+            value={
+              draft.poll.enabled && draft.poll.options.length >= 2
+                ? draft.poll.question || 'Active'
+                : undefined
+            }
+            onPress={() => {
+              setPollLocal({
+                question: draft.poll.question,
+                options:
+                  draft.poll.options.length >= 2
+                    ? [...draft.poll.options]
+                    : ['Yes', 'No'],
+                enabled: draft.poll.enabled,
+              });
+              openSheet('poll');
+            }}
+            styles={styles}
+            palette={palette}
+          />
+        )}
 
         {(draft.mode === 'post' || draft.mode === 'reel') && (
           <ActionListRow
@@ -1369,7 +1544,7 @@ export function ShareScreen() {
           <Pressable
             style={styles.footerSmallBtn}
             onPress={() => setScheduleOpen(true)}
-            disabled={busy !== null}>
+            disabled={busy !== null || Boolean(editPostId)}>
             <Calendar size={14} color={palette.foreground} />
             <Text style={styles.footerSmallText}>Schedule</Text>
           </Pressable>
@@ -1380,7 +1555,9 @@ export function ShareScreen() {
           disabled={busy !== null}>
           <Send size={18} color={palette.accentForeground} />
           <Text style={styles.primaryShareText}>
-            {draft.mode === 'story'
+            {editPostId
+              ? 'Save changes'
+              : draft.mode === 'story'
               ? 'Share story'
               : draft.mode === 'reel'
               ? 'Share reel'
@@ -2143,11 +2320,15 @@ export function ShareScreen() {
               ? 'Saving draft...'
               : busy === 'schedule'
               ? 'Scheduling...'
+              : editPostId
+              ? 'Saving...'
               : 'Posting...'}
           </Text>
           <Text style={styles.loaderSubtitle}>
             {busy === 'publish' || busy === 'schedule'
-              ? `Uploading ${Math.round(uploadProgress * 100)}%`
+              ? editPostId
+                ? 'Updating your post'
+                : `Uploading ${Math.round(uploadProgress * 100)}%`
               : 'Keeping your edits safe'}
           </Text>
         </View>

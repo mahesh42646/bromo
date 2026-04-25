@@ -8,7 +8,7 @@ import {
   requireVerifiedUser,
   type FirebaseAuthedRequest,
 } from "../middleware/firebaseAuth.js";
-import { Post } from "../models/Post.js";
+import { Post, type PostDoc } from "../models/Post.js";
 import { MediaJob } from "../models/MediaJob.js";
 import { StorySeen } from "../models/StorySeen.js";
 import { Like } from "../models/Like.js";
@@ -16,15 +16,16 @@ import { Comment } from "../models/Comment.js";
 import { PostPollVote } from "../models/PostPollVote.js";
 import { Follow } from "../models/Follow.js";
 import { User } from "../models/User.js";
+import { AffiliateProduct } from "../models/AffiliateProduct.js";
 import { createNotification, checkLikeMilestone } from "../models/Notification.js";
 import {
   emitPostNew,
   emitPostLike,
   emitPostComment,
-  emitPostDelete,
   emitStoryNew,
   emitNotification,
 } from "../services/socketService.js";
+import { hardDeletePostWithTrash } from "../services/postDeletion.js";
 import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 import {
   publicUrlForUploadRelative,
@@ -2029,6 +2030,48 @@ postsRouter.get(
         isLiked = !!like;
       }
 
+      const taggedIds = (post as { taggedUserIds?: mongoose.Types.ObjectId[] }).taggedUserIds ?? [];
+      let taggedPreview: Array<{
+        _id: string;
+        username: string;
+        displayName?: string;
+        profilePicture?: string;
+      }> = [];
+      if (taggedIds.length) {
+        const users = await User.find({ _id: { $in: taggedIds } })
+          .select("username displayName profilePicture")
+          .lean();
+        taggedPreview = users.map((u) => ({
+          _id: String(u._id),
+          username: typeof u.username === "string" ? u.username : "",
+          displayName: typeof u.displayName === "string" ? u.displayName : undefined,
+          profilePicture: typeof u.profilePicture === "string" ? u.profilePicture : undefined,
+        }));
+      }
+
+      const prodIds = (post as { productIds?: mongoose.Types.ObjectId[] }).productIds ?? [];
+      let productPreview: Array<{
+        _id: string;
+        title: string;
+        imageUrl: string;
+        productUrl: string;
+        price: number;
+        currency: string;
+      }> = [];
+      if (prodIds.length) {
+        const prods = await AffiliateProduct.find({ _id: { $in: prodIds } })
+          .select("title imageUrl productUrl price currency")
+          .lean();
+        productPreview = prods.map((doc) => ({
+          _id: String(doc._id),
+          title: doc.title,
+          imageUrl: doc.imageUrl,
+          productUrl: doc.productUrl,
+          price: Number(doc.price) || 0,
+          currency: typeof doc.currency === "string" ? doc.currency : "INR",
+        }));
+      }
+
       return res.json({
         post: {
           ...post,
@@ -2038,6 +2081,8 @@ postsRouter.get(
           isLiked,
           author: post.authorId,
           authorId: undefined,
+          taggedPreview,
+          productPreview,
         },
       });
     } catch (err) {
@@ -2164,7 +2209,7 @@ postsRouter.post(
         mediaUrl: mediaUrl ?? "color-bg",
         thumbnailUrl: thumbnailUrl ?? "",
         mediaType: mediaType ?? "image",
-        caption: caption?.trim() ?? "",
+        caption: type === "story" ? "" : (caption?.trim() ?? ""),
         location: location?.trim() ?? "",
         ...(locationMeta && locationMeta.name ? { locationMeta } : {}),
         music: music?.trim() ?? "",
@@ -2305,6 +2350,160 @@ postsRouter.post(
   },
 );
 
+// ── PATCH /posts/:id (owner — caption, visibility/settings, category, story meta) ──
+postsRouter.patch(
+  "/:id",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const id = String(req.params.id ?? "");
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid post id" });
+      }
+      const post = await Post.findById(id);
+      if (!post || !post.isActive || post.isDeleted) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      if (String(post.authorId) !== String(user._id)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const $set: Record<string, unknown> = {};
+      const $unset: Record<string, 1> = {};
+
+      if (typeof body.caption === "string") {
+        $set.caption =
+          post.type === "story" ? "" : body.caption.trim().slice(0, 2200);
+      }
+      if (typeof body.location === "string") {
+        $set.location = body.location.trim().slice(0, 300);
+      }
+      if (body.locationMeta === null) {
+        $set.locationMeta = undefined;
+      } else if (body.locationMeta && typeof body.locationMeta === "object") {
+        const lm = body.locationMeta as Record<string, unknown>;
+        $set.locationMeta = {
+          name: typeof lm.name === "string" ? lm.name.trim().slice(0, 200) : "",
+          lat: typeof lm.lat === "number" ? lm.lat : undefined,
+          lng: typeof lm.lng === "number" ? lm.lng : undefined,
+          address: typeof lm.address === "string" ? lm.address.trim().slice(0, 500) : undefined,
+          placeId: typeof lm.placeId === "string" ? lm.placeId.trim().slice(0, 128) : undefined,
+        };
+      }
+      if (typeof body.music === "string") {
+        $set.music = body.music.trim().slice(0, 200);
+      }
+      if (Array.isArray(body.tags)) {
+        $set.tags = body.tags
+          .map((t) => (typeof t === "string" ? t.trim().slice(0, 80) : ""))
+          .filter(Boolean)
+          .slice(0, 30);
+      }
+      if (body.settings && typeof body.settings === "object") {
+        const s = body.settings as Record<string, unknown>;
+        const nextSettings: Record<string, boolean> = {};
+        for (const k of ["commentsOff", "hideLikes", "allowRemix", "closeFriendsOnly"]) {
+          if (typeof s[k] === "boolean") nextSettings[k] = s[k] as boolean;
+        }
+        if (Object.keys(nextSettings).length > 0) {
+          const prev = (post.settings as Record<string, boolean> | undefined) ?? {};
+          $set.settings = { ...prev, ...nextSettings };
+        }
+      }
+      if (typeof body.feedCategory === "string" && (post.type === "post" || post.type === "reel")) {
+        $set.feedCategory = normalizeFeedCategory(body.feedCategory);
+      }
+      if (body.storyMeta && typeof body.storyMeta === "object" && post.type === "story") {
+        const sm = body.storyMeta as { bgColor?: unknown; overlays?: unknown };
+        const prev = (post.storyMeta as Record<string, unknown> | undefined) ?? {};
+        const merged: Record<string, unknown> = { ...prev };
+        if (typeof sm.bgColor === "string") merged.bgColor = sm.bgColor.trim().slice(0, 32);
+        if (Array.isArray(sm.overlays)) merged.overlays = sm.overlays;
+        $set.storyMeta = merged;
+      }
+
+      if (Array.isArray(body.taggedUserIds)) {
+        const safeTaggedUserIds = (body.taggedUserIds as unknown[])
+          .filter((x) => typeof x === "string" && mongoose.Types.ObjectId.isValid(x))
+          .slice(0, 20)
+          .map((x) => new mongoose.Types.ObjectId(x as string));
+        $set.taggedUserIds = safeTaggedUserIds;
+      }
+
+      if (Array.isArray(body.productIds)) {
+        const safeProductIds = (body.productIds as unknown[])
+          .filter((x) => typeof x === "string" && mongoose.Types.ObjectId.isValid(x))
+          .slice(0, 6)
+          .map((x) => new mongoose.Types.ObjectId(x as string));
+        $set.productIds = safeProductIds;
+      }
+
+      if ("poll" in body) {
+        if (body.poll === null && (post.type === "post" || post.type === "reel")) {
+          $unset.poll = 1;
+        } else if (body.poll && typeof body.poll === "object" && (post.type === "post" || post.type === "reel")) {
+          const sanitized = sanitizePollInput(body.poll);
+          if (sanitized) {
+            const prev = post.poll;
+            const sameOpts =
+              prev &&
+              prev.options.length === sanitized.options.length &&
+              prev.options.every((opt, i) => opt === sanitized.options[i]);
+            const votes =
+              sameOpts && Array.isArray(prev.votes) && prev.votes.length === sanitized.options.length
+                ? [...prev.votes]
+                : sanitized.votes;
+            $set.poll = { ...sanitized, votes };
+          }
+        }
+      }
+
+      if (body.clientEditMeta !== undefined) {
+        let meta: Record<string, unknown> | undefined;
+        if (typeof body.clientEditMeta === "string") {
+          try {
+            meta = JSON.parse(body.clientEditMeta) as Record<string, unknown>;
+          } catch {
+            meta = undefined;
+          }
+        } else if (body.clientEditMeta && typeof body.clientEditMeta === "object") {
+          meta = body.clientEditMeta as Record<string, unknown>;
+        }
+        if (meta && Object.keys(meta).length > 0) {
+          $set.clientEditMeta = meta;
+        }
+      }
+
+      if (Object.keys($set).length === 0 && Object.keys($unset).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+
+      const updateDoc: mongoose.UpdateQuery<PostDoc> = {};
+      if (Object.keys($set).length > 0) updateDoc.$set = $set;
+      if (Object.keys($unset).length > 0) updateDoc.$unset = $unset;
+
+      await Post.updateOne({ _id: post._id }, updateDoc);
+
+      const populated = await Post.findById(post._id).populate("authorId", AUTHOR_SELECT).lean();
+      if (!populated) return res.status(404).json({ message: "Post not found" });
+      const likedSet = new Set<string>();
+      const followingSet = new Set<string>([String(user._id)]);
+      const norm = normalizePost(
+        populated as Record<string, unknown>,
+        likedSet,
+        followingSet,
+        String(user._id),
+      );
+      return res.json({ post: norm });
+    } catch (err) {
+      console.error("[posts] patch error:", err);
+      return res.status(500).json({ message: "Failed to update post" });
+    }
+  },
+);
+
 // ── DELETE /posts/:id ───────────────────────────────────────────────
 postsRouter.delete(
   "/:id",
@@ -2317,17 +2516,7 @@ postsRouter.delete(
       if (String(post.authorId) !== String(user._id)) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      if (post.isDeleted) {
-        return res.status(404).json({ message: "Post not found" });
-      }
-      post.isDeleted = true;
-      post.deletedAt = new Date();
-      post.isActive = false;
-      await post.save();
-      if (authorPostsCountWasBumped(post)) {
-        await User.findByIdAndUpdate(user._id, { $inc: { postsCount: -1 } });
-      }
-      emitPostDelete(String(req.params.id));
+      await hardDeletePostWithTrash(post);
       return res.json({ message: "Post deleted" });
     } catch (err) {
       console.error("[posts] delete error:", err);
@@ -2367,6 +2556,7 @@ postsRouter.post(
 );
 
 // ── DELETE /posts/:id/permanent ─────────────────────────────────────
+/** @deprecated Same as DELETE /:id (hard delete + S3 trash). Kept for older clients. */
 postsRouter.delete(
   "/:id/permanent",
   requireVerifiedUser,
@@ -2378,14 +2568,7 @@ postsRouter.delete(
       if (String(post.authorId) !== String(user._id)) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      if (!post.isDeleted) {
-        return res.status(400).json({ message: "Move content to trash first" });
-      }
-      await Promise.all([
-        Comment.updateMany({ postId: post._id }, { $set: { isActive: false } }),
-        Like.deleteMany({ targetType: "post", targetId: post._id }),
-      ]);
-      await Post.deleteOne({ _id: post._id });
+      await hardDeletePostWithTrash(post);
       return res.json({ message: "Post permanently deleted" });
     } catch (err) {
       console.error("[posts] permanent delete error:", err);
