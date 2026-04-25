@@ -16,7 +16,13 @@ import type {
   TextOverlay,
   Visibility,
 } from './createTypes';
-import {DEFAULT_ADJUSTMENTS, DEFAULT_ADVANCED} from './createTypes';
+import {
+  DEFAULT_ADJUSTMENTS,
+  DEFAULT_ADVANCED,
+  allowedCropsForMode,
+  defaultCropForMode,
+  normalizeCropForMode,
+} from './createTypes';
 
 export type CreateDraftState = {
   mode: CreateMode;
@@ -144,30 +150,49 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
   }, []);
 
   const replaceDraft = useCallback((next: CreateDraftState) => {
-    setDraft({
+    const merged: CreateDraftState = {
       ...initialDraft,
       ...next,
       poll: {...initialPoll, ...next.poll},
       advanced: {...DEFAULT_ADVANCED, ...next.advanced},
-    });
+    };
+    const n = merged.assets.length;
+    const cropByAsset: Record<number, CropAspect> = {};
+    for (let i = 0; i < n; i++) {
+      cropByAsset[i] = normalizeCropForMode(merged.cropByAsset[i], merged.mode);
+    }
+    setDraft({...merged, cropByAsset});
   }, []);
 
   const setMode = useCallback((mode: CreateMode) => {
-    setDraft(d => ({...d, mode}));
+    setDraft(d => {
+      const crops = {...d.cropByAsset};
+      for (let i = 0; i < d.assets.length; i++) {
+        crops[i] = normalizeCropForMode(crops[i], mode);
+      }
+      return {...d, mode, cropByAsset: crops};
+    });
   }, []);
 
   const setAssets = useCallback((assets: MediaAsset[]) => {
-    setDraft(d => ({
-      ...d,
-      assets,
-      activeAssetIndex: 0,
-      filterByAsset: {},
-      adjustByAsset: {},
-      rotationByAsset: {},
-      cropByAsset: {},
-      trimStartByAsset: {},
-      trimEndByAsset: {},
-    }));
+    setDraft(d => {
+      const def = defaultCropForMode(d.mode);
+      const cropByAsset: Record<number, CropAspect> = {};
+      assets.forEach((_, idx) => {
+        cropByAsset[idx] = def;
+      });
+      return {
+        ...d,
+        assets,
+        activeAssetIndex: 0,
+        filterByAsset: {},
+        adjustByAsset: {},
+        rotationByAsset: {},
+        cropByAsset,
+        trimStartByAsset: {},
+        trimEndByAsset: {},
+      };
+    });
   }, []);
 
   const reorderAssets = useCallback((from: number, to: number) => {
@@ -204,7 +229,11 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
   }, []);
 
   const setCropForActive = useCallback((c: CropAspect) => {
-    setDraft(d => ({...d, cropByAsset: {...d.cropByAsset, [d.activeAssetIndex]: c}}));
+    setDraft(d => {
+      const allowed = new Set(allowedCropsForMode(d.mode));
+      const next = allowed.has(c) ? c : defaultCropForMode(d.mode);
+      return {...d, cropByAsset: {...d.cropByAsset, [d.activeAssetIndex]: next}};
+    });
   }, []);
 
   const setTrimForActive = useCallback((start: number, end: number) => {

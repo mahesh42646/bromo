@@ -69,7 +69,41 @@ export const DEFAULT_ADJUSTMENTS: AdjustmentState = {
   fade: 0,
 };
 
-export type CropAspect = 'original' | '1:1' | '4:5' | '16:9' | '9:16';
+/** Fixed frame ratios only (no "original"). Mode restricts which values apply. */
+export type CropAspect = '1:1' | '4:5' | '16:9' | '9:16';
+
+export function defaultCropForMode(mode: CreateMode): CropAspect {
+  if (mode === 'post') return '1:1';
+  return '9:16';
+}
+
+export function allowedCropsForMode(mode: CreateMode): CropAspect[] {
+  switch (mode) {
+    case 'reel':
+    case 'story':
+      return ['9:16', '16:9', '4:5'];
+    case 'post':
+      return ['1:1', '4:5', '16:9'];
+    case 'live':
+      return ['9:16'];
+  }
+}
+
+export function normalizeCropForMode(
+  crop: string | undefined | null,
+  mode: CreateMode,
+): CropAspect {
+  const allowed = allowedCropsForMode(mode);
+  if (crop && allowed.includes(crop as CropAspect)) return crop as CropAspect;
+  return defaultCropForMode(mode);
+}
+
+export function aspectRatioFromCrop(crop: CropAspect): number {
+  if (crop === '1:1') return 1;
+  if (crop === '4:5') return 4 / 5;
+  if (crop === '16:9') return 16 / 9;
+  return 9 / 16;
+}
 
 export type LocationTag = {
   id: string;

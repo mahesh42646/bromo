@@ -1,16 +1,13 @@
 import {Dimensions} from 'react-native';
 import type {CreateDraftState} from './CreateDraftContext';
+import {aspectRatioFromCrop, normalizeCropForMode} from './createTypes';
 
 const SNAP_KEY = 'clientSnapshot';
 
 function editorPreviewAspectFromDraft(d: CreateDraftState): number {
   const i = d.activeAssetIndex;
-  const crop = d.cropByAsset[i] ?? 'original';
-  if (crop === '1:1') return 1;
-  if (crop === '4:5') return 4 / 5;
-  if (crop === '16:9') return 16 / 9;
-  if (crop === '9:16') return 9 / 16;
-  return d.mode === 'reel' ? 9 / 16 : 1;
+  const crop = normalizeCropForMode(d.cropByAsset[i], d.mode);
+  return aspectRatioFromCrop(crop);
 }
 
 /**

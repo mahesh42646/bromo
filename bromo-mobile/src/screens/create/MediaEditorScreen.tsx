@@ -47,7 +47,9 @@ import { useCreateDraft } from '../../create/CreateDraftContext';
 import {
   FILTER_IDS,
   TEXT_COLORS,
-  type CropAspect,
+  allowedCropsForMode,
+  aspectRatioFromCrop,
+  normalizeCropForMode,
   type FilterId,
 } from '../../create/createTypes';
 import { DEFAULT_ADJUSTMENTS } from '../../create/createTypes';
@@ -71,14 +73,6 @@ const AUDIO_CATALOG = [
   { id: 'a4', title: 'Acoustic Warm', artist: 'UGC Lite' },
   { id: 'a5', title: 'Trap Vibes', artist: 'Hip Hop' },
   { id: 'a6', title: 'Chill Wave', artist: 'Ambient' },
-];
-
-const CROP_OPTIONS: { id: CropAspect; label: string }[] = [
-  { id: 'original', label: 'Original' },
-  { id: '9:16', label: '9:16' },
-  { id: '1:1', label: '1:1' },
-  { id: '4:5', label: '4:5' },
-  { id: '16:9', label: '16:9' },
 ];
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2, 3];
@@ -251,7 +245,6 @@ function TrimmingVideo({
   onDuration,
   onTimeUpdate,
   onHydrated,
-  onNaturalAspect,
 }: {
   uri: string;
   palette: ThemePalette;
@@ -265,8 +258,6 @@ function TrimmingVideo({
   onTimeUpdate?: (seconds: number) => void;
   /** Fires once when the first frame is ready (or on Android when load completes). */
   onHydrated?: () => void;
-  /** Fires once with the video's natural width/height ratio. */
-  onNaturalAspect?: (aspect: number) => void;
 }) {
   const videoRef = useRef<React.ElementRef<typeof Video>>(null);
   const [dur, setDur] = useState(0);
@@ -332,20 +323,6 @@ function TrimmingVideo({
           const d = e.duration ?? 0;
           setDur(d);
           onDuration?.(d);
-          const ns = e.naturalSize;
-          if (
-            ns &&
-            typeof ns.width === 'number' &&
-            typeof ns.height === 'number' &&
-            ns.width > 0 &&
-            ns.height > 0
-          ) {
-            const orientation =
-              typeof ns.orientation === 'string' ? ns.orientation : undefined;
-            const flipped = orientation === 'portrait';
-            const ratio = flipped ? ns.height / ns.width : ns.width / ns.height;
-            if (Number.isFinite(ratio) && ratio > 0) onNaturalAspect?.(ratio);
-          }
           if (d > 0) {
             videoRef.current?.seek(trimStart * d);
           }
@@ -513,7 +490,7 @@ export function MediaEditorScreen() {
   const filter = draft.filterByAsset[i] ?? 'normal';
   const adjustments = draft.adjustByAsset[i] ?? { ...DEFAULT_ADJUSTMENTS };
   const rotation = draft.rotationByAsset[i] ?? 0;
-  const crop = draft.cropByAsset[i] ?? 'original';
+  const effectiveCrop = normalizeCropForMode(draft.cropByAsset[i], draft.mode);
   const trimStart = draft.trimStartByAsset[i] ?? 0;
   const trimEnd = draft.trimEndByAsset[i] ?? 1;
 
@@ -563,23 +540,8 @@ export function MediaEditorScreen() {
   const [previewPaused, setPreviewPaused] = useState(false);
   const [previewMuted, setPreviewMuted] = useState(true);
   const [previewTimeSec, setPreviewTimeSec] = useState(0);
-  const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
   const activeAdjustDef =
     ADJUST_KEYS.find(item => item.key === activeAdjustKey) ?? ADJUST_KEYS[0];
-
-  useEffect(() => {
-    setNaturalAspect(null);
-    if (!cur) return;
-    if (cur.type === 'image') {
-      Image.getSize(
-        cur.uri,
-        (w, h) => {
-          if (w > 0 && h > 0) setNaturalAspect(w / h);
-        },
-        () => setNaturalAspect(null),
-      );
-    }
-  }, [cur?.uri, cur?.type]);
 
   const closeTool = useCallback(() => setActiveTool(null), []);
 
@@ -597,24 +559,25 @@ export function MediaEditorScreen() {
     }
   }, [cur?.uri, cur?.type, cur?.duration]);
 
-  const aspectRatio =
-    crop === '1:1'
-      ? 1
-      : crop === '4:5'
-      ? 4 / 5
-      : crop === '16:9'
-      ? 16 / 9
-      : crop === '9:16'
-      ? 9 / 16
-      : naturalAspect && naturalAspect > 0
-      ? naturalAspect
-      : draft.mode === 'reel'
-      ? 9 / 16
-      : draft.mode === 'post'
-      ? 1
-      : 9 / 16;
-  const previewResize: 'cover' | 'contain' =
-    crop === 'original' ? 'contain' : 'cover';
+  const aspectRatio = aspectRatioFromCrop(effectiveCrop);
+  const previewResize: 'cover' | 'contain' = 'cover';
+
+  const cropChoices = useMemo(
+    () => allowedCropsForMode(draft.mode).map(id => ({ id, label: id })),
+    [draft.mode],
+  );
+
+  const editorDockTools = useMemo(
+    () =>
+      draft.mode === 'live'
+        ? EDITOR_TOOLS.filter(t => t.id !== 'crop')
+        : EDITOR_TOOLS,
+    [draft.mode],
+  );
+
+  useEffect(() => {
+    if (draft.mode === 'live' && activeTool === 'crop') setActiveTool(null);
+  }, [draft.mode, activeTool]);
   // Allow stage to grow but never overflow vertically.
   const stageMaxH = Math.max(280, viewportH * 0.56);
   const stageMaxW = Math.max(220, Math.min(viewportW - 24, 480));
@@ -720,7 +683,6 @@ export function MediaEditorScreen() {
             onDuration={isActive ? setVideoDurationSec : undefined}
             onTimeUpdate={isActive ? setPreviewTimeSec : undefined}
             onHydrated={isActive ? markPreviewGateDone : undefined}
-            onNaturalAspect={isActive ? setNaturalAspect : undefined}
           />
         ) : (
           <Image
@@ -977,7 +939,7 @@ export function MediaEditorScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.toolRow}>
-          {EDITOR_TOOLS.map(({ id, label, Icon }) => (
+          {editorDockTools.map(({ id, label, Icon }) => (
             <Pressable
               key={id}
               onPress={() => setActiveTool(id)}
@@ -1169,7 +1131,7 @@ export function MediaEditorScreen() {
         palette={palette}
         height={210}>
         <View style={styles.cropRow}>
-          {CROP_OPTIONS.map(c => (
+          {cropChoices.map(c => (
             <Pressable
               key={c.id}
               onPress={() => setCropForActive(c.id)}
@@ -1177,16 +1139,16 @@ export function MediaEditorScreen() {
                 styles.cropChip,
                 {
                   borderColor:
-                    crop === c.id ? palette.accent : palette.border,
+                    effectiveCrop === c.id ? palette.accent : palette.border,
                   backgroundColor:
-                    crop === c.id ? palette.accent : palette.surface,
+                    effectiveCrop === c.id ? palette.accent : palette.surface,
                 },
               ]}>
               <Text
                 style={[
                   styles.cropLabel,
                   { color: palette.foreground },
-                  crop === c.id && { color: palette.accentForeground },
+                  effectiveCrop === c.id && { color: palette.accentForeground },
                 ]}>
                 {c.label}
               </Text>

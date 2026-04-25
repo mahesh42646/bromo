@@ -54,7 +54,11 @@ import {packClientSnapshot, packEditMetaForUpload} from '../../create/draftSnaps
 import type {CreateDraftState} from '../../create/CreateDraftContext';
 import type {MediaAsset, Visibility} from '../../create/createTypes';
 import type {FilterId, FeedCategoryPreset} from '../../create/createTypes';
-import {DEFAULT_ADJUSTMENTS} from '../../create/createTypes';
+import {
+  DEFAULT_ADJUSTMENTS,
+  aspectRatioFromCrop,
+  normalizeCropForMode,
+} from '../../create/createTypes';
 import {FILTER_LAYER_STACKS} from '../../create/filterStyles';
 import {
   adjustOverlayStyle,
@@ -193,21 +197,6 @@ function buildScheduledIso(dateInput: string, timeInput: string): string | null 
   );
   if (Number.isNaN(next.getTime())) return null;
   return next.toISOString();
-}
-
-function previewAspect(
-  mode: CreateDraftState['mode'],
-  crop: string,
-  natural: number | null,
-): number {
-  if (crop === '1:1') return 1;
-  if (crop === '4:5') return 4 / 5;
-  if (crop === '16:9') return 16 / 9;
-  if (crop === '9:16') return 9 / 16;
-  if (natural && natural > 0) return natural;
-  if (mode === 'reel' || mode === 'story') return 9 / 16;
-  if (mode === 'post') return 1;
-  return 1;
 }
 
 /** Generic Instagram-style bottom sheet. */
@@ -702,7 +691,10 @@ export function ShareScreen() {
 
   const asset = draft.assets[draft.activeAssetIndex] ?? draft.assets[0];
   const rotation = draft.rotationByAsset[draft.activeAssetIndex] ?? 0;
-  const crop = draft.cropByAsset[draft.activeAssetIndex] ?? 'original';
+  const crop = normalizeCropForMode(
+    draft.cropByAsset[draft.activeAssetIndex],
+    draft.mode,
+  );
   const filter = (draft.filterByAsset[draft.activeAssetIndex] ?? 'normal') as FilterId;
   const filterStacks = FILTER_LAYER_STACKS[filter];
   const adjustments =
@@ -712,7 +704,6 @@ export function ShareScreen() {
   const satOv = saturationOverlayStyle(adjustments);
   const vigOv = vignetteOverlayStyle(adjustments);
 
-  const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
   const [activeSheet, setActiveSheet] = useState<SheetKey | null>(null);
   const [captionLocal, setCaptionLocal] = useState(draft.caption);
   const [locationQuery, setLocationQuery] = useState('');
@@ -743,20 +734,6 @@ export function ShareScreen() {
   useEffect(() => {
     setScheduleDraft(toDateInputs(draft.advanced.scheduledAt));
   }, [draft.advanced.scheduledAt]);
-
-  useEffect(() => {
-    if (!asset) return;
-    setNaturalAspect(null);
-    if (asset.type === 'image') {
-      Image.getSize(
-        asset.uri,
-        (w, h) => {
-          if (w > 0 && h > 0) setNaturalAspect(w / h);
-        },
-        () => setNaturalAspect(null),
-      );
-    }
-  }, [asset?.uri, asset?.type]);
 
   useEffect(() => {
     const timers = debounceRefs.current;
@@ -838,7 +815,7 @@ export function ShareScreen() {
     navigation.getParent()?.goBack();
   }, [navigation, reset]);
 
-  const aspect = previewAspect(draft.mode, crop, naturalAspect);
+  const aspect = aspectRatioFromCrop(crop);
   const previewBoxW = Math.min(viewportW * 0.75, 320);
   const previewBoxH = previewBoxW / aspect;
 
@@ -1434,7 +1411,7 @@ export function ShareScreen() {
               <Video
                 source={{uri: asset.uri}}
                 style={StyleSheet.absoluteFillObject}
-                resizeMode={crop === 'original' ? 'contain' : 'cover'}
+                resizeMode="cover"
                 repeat
                 muted
                 viewType={
@@ -1449,7 +1426,7 @@ export function ShareScreen() {
                   StyleSheet.absoluteFillObject,
                   {transform: [{rotate: `${rotation}deg`}]},
                 ]}
-                resizeMode={crop === 'original' ? 'contain' : 'cover'}
+                resizeMode="cover"
               />
             )}
             {filterStacks.map((layer, idx) => (
