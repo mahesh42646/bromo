@@ -1656,17 +1656,12 @@ postsRouter.post(
       fs.mkdirSync(path.dirname(destAbs), { recursive: true });
       fs.copyFileSync(srcAbs, destAbs);
 
-      let thumbnailUrl =
-        typeof src.thumbnailUrl === "string" && src.thumbnailUrl.trim()
-          ? rewritePublicMediaUrl(src.thumbnailUrl)
-          : "";
-      if (!thumbnailUrl) {
-        try {
-          const thumbRel = await generateVideoThumbnail(destRel);
-          thumbnailUrl = publicUrlForUploadRelative(thumbRel);
-        } catch {
-          thumbnailUrl = "";
-        }
+      let thumbnailUrl = "";
+      try {
+        const thumbRel = await generateVideoThumbnail(destRel);
+        thumbnailUrl = publicUrlForUploadRelative(thumbRel);
+      } catch {
+        thumbnailUrl = "";
       }
 
       const draftPost = await Post.create({

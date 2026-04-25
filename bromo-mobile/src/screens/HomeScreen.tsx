@@ -63,7 +63,7 @@ import { SearchBar } from '../components/ui/SearchBar';
 import { Card } from '../components/ui/Card';
 import { ThemedSafeScreen } from '../components/ui/ThemedSafeScreen';
 import { parentNavigate } from '../navigation/parentNavigate';
-import { postThumbnailUri } from '../lib/postMediaDisplay';
+import { postPreviewPlayUri, postThumbnailUri } from '../lib/postMediaDisplay';
 import { resolveMediaUrl } from '../lib/resolveMediaUrl';
 import {
   getFeed,
@@ -874,7 +874,7 @@ export function HomeScreen() {
         const ringUri =
           preview != null
             ? preview.mediaType === 'video'
-              ? preview.thumbnailUrl || preview.mediaUrl
+              ? postPreviewPlayUri(preview)
               : preview.mediaUrl
             : group.author.profilePicture ||
             `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}`;
@@ -1821,7 +1821,7 @@ export function HomeScreen() {
                       const thumb = postThumbnailUri(reel);
                       const rawVideoUrl = reel.mediaType === 'video' ? resolveVideoUrl(reel) : '';
                       const reelVideoUri = rawVideoUrl ? resolveMediaUrl(rawVideoUrl) || rawVideoUrl : '';
-                      const showVideoPreview = reel.mediaType === 'video' && (!thumb || thumb === reelVideoUri);
+                      const showVideoPreview = reel.mediaType === 'video';
                       return (
                         <Pressable
                           key={`${reel._id}-${reelIndex}`}

@@ -13,6 +13,7 @@ import { MediaJob, type MediaJobDoc } from "../models/MediaJob.js";
 import { Post } from "../models/Post.js";
 import { User } from "../models/User.js";
 import { packageHls, encodeMezzanineMp4 } from "../services/hlsPackager.js";
+import { generateVideoThumbnail } from "../services/mediaProcessor.js";
 import { normalizeImage } from "../services/imageNormalize.js";
 import { createNotification } from "../models/Notification.js";
 import { emitNotification, emitPostNew, emitStoryNew } from "../services/socketService.js";
@@ -144,6 +145,15 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
   const masterUrl = publicUrlForUploadRelative(result.masterRelPath);
   const mezzanineUrl = publicUrlForUploadRelative(mezzanineRel);
 
+  let mezzanineThumbnailUrl = "";
+  try {
+    const thumbRel = await generateVideoThumbnail(mezzanineRel);
+    mezzanineThumbnailUrl = publicUrlForUploadRelative(thumbRel);
+    void mirrorUploadRelative(thumbRel).catch((e) => console.warn("[s3Mirror] mezzanine thumb:", e));
+  } catch (e) {
+    console.warn("[mediaWorker] mezzanine thumbnail failed:", e);
+  }
+
   await MediaJob.updateOne(
     { _id: job._id },
     {
@@ -167,6 +177,7 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
       processingStatus: "ready",
       hlsMasterUrl: masterUrl,
       mediaUrl: mezzanineUrl,
+      thumbnailUrl: mezzanineThumbnailUrl,
       isActive: activateNow,
     };
     if (activateNow && existing?.type === "story" && !existing.expiresAt) {

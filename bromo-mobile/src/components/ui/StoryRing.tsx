@@ -1,7 +1,12 @@
 import React, {useMemo} from 'react';
 import {Image, View, type StyleProp, type ViewStyle} from 'react-native';
 import Svg, {Circle, Defs, LinearGradient, Stop} from 'react-native-svg';
+import Video from 'react-native-video';
 import {useTheme} from '../../context/ThemeContext';
+
+function isPlayableVideoThumb(uri: string): boolean {
+  return /\.m3u8(\?|$)/i.test(uri) || /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(uri);
+}
 
 type Props = {
   uri?: string;
@@ -21,6 +26,14 @@ export function StoryRing({uri, size = 64, seen = false, style}: Props) {
   const cy = outerSize / 2;
   const r = outerSize / 2 - strokeW / 2 - ringPad * 0.15;
   const gradId = useMemo(() => `storyRingGrad_${Math.random().toString(36).slice(2, 11)}`, []);
+  const resolved = uri ?? `https://i.pravatar.cc/${size}`;
+  const innerStyle = {
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+    borderWidth: borderW,
+    borderColor: palette.background,
+  };
 
   return (
     <View
@@ -60,16 +73,21 @@ export function StoryRing({uri, size = 64, seen = false, style}: Props) {
           <Circle cx={cx} cy={cy} r={r} stroke={`url(#${gradId})`} strokeWidth={strokeW} fill="none" />
         </Svg>
       )}
-      <Image
-        source={{uri: uri ?? `https://i.pravatar.cc/${size}`}}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: borderW,
-          borderColor: palette.background,
-        }}
-      />
+      {isPlayableVideoThumb(resolved) ? (
+        <Video
+          source={{uri: resolved}}
+          style={innerStyle}
+          resizeMode="cover"
+          paused
+          muted
+          repeat={false}
+          ignoreSilentSwitch="ignore"
+          disableFocus
+          playInBackground={false}
+        />
+      ) : (
+        <Image source={{uri: resolved}} style={innerStyle} />
+      )}
     </View>
   );
 }
