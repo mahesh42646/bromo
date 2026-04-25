@@ -1404,7 +1404,8 @@ export function ShareScreen() {
                 placeholder="Write a caption..."
                 placeholderTextColor={palette.placeholder}
                 multiline
-                style={styles.captionInput}
+                style={[styles.captionInput, {borderWidth: 1, borderColor: palette.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10}]}
+           
               />
               <View style={styles.composeMetaRow}>
                 <Text style={styles.composeMetaText}>
@@ -2353,23 +2354,27 @@ function ActionListRow({
   palette: ThemePalette;
 }) {
   return (
+   <View style={styles.actionRow}>
+     <View style={styles.actionRowIcon}>{icon}</View>
     <Pressable
       style={({pressed}) => [
-        styles.actionRow,
-        pressed && {backgroundColor: palette.surface},
-      ]}
-      onPress={onPress}>
-      <View style={styles.actionRowIcon}>{icon}</View>
-      <Text style={styles.actionRowLabel}>{label}</Text>
+       
+        pressed && {backgroundColor: palette.surface},  ]}   onPress={onPress}>
+      
+      <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '600'}}>{label}</Text>
       {value ? (
         <Text
-          style={[styles.actionRowValue, {color: palette.accent}]}
+          style={[ {color: palette.accent, fontSize: 13, fontWeight: '600'}]}
           numberOfLines={1}>
           {value}
         </Text>
       ) : null}
-      <ChevronRight size={18} color={palette.foregroundSubtle} />
+      
     </Pressable>
+    {/* <ChevronRight size={18} color={palette.foregroundSubtle} /> */}
+    {/* <Text style={{color: palette.foregroundSubtle, fontSize: 18, fontWeight: '700', alignSelf: 'flex-end'}}><ChevronRight size={18} color={palette.foregroundSubtle} /></Text> */}
+   </View>
+
   );
 }
 
