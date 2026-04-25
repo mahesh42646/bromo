@@ -65,6 +65,7 @@ import {
 import {CreateStoreScreen} from '../screens/store/CreateStoreScreen';
 import {MyStoreDashboardScreen as ManageStoreScreen} from '../screens/store/MyStoreDashboardScreen';
 import {StorePublicProfileScreen} from '../screens/store/StorePublicProfileScreen';
+import {StoreProductDetailScreen} from '../screens/store/StoreProductDetailScreen';
 import {AllStoresScreen} from '../screens/store/AllStoresScreen';
 import {AddProductScreen} from '../screens/store/AddProductScreen';
 import {
@@ -163,6 +164,7 @@ export function MainAppNavigator() {
       <Stack.Screen name="CreateStore" component={CreateStoreScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="ManageStore" component={ManageStoreScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="StorePublicProfile" component={StorePublicProfileScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="StoreProductDetail" component={StoreProductDetailScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="AllStores" component={AllStoresScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="AddProduct" component={AddProductScreen} options={{animation: 'slide_from_bottom', presentation: 'modal'}} />
       <Stack.Screen name="CreateAdStep1" component={CreateAdStep1Screen} />

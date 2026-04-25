@@ -7,6 +7,7 @@ import {BarChart2, Eye, Heart, MessageCircle, Phone, Send, TrendingUp, Video as 
 import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
+import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {getNotifications, markAllRead, markRead, type AppNotification} from '../../../api/notificationsApi';
 import {getPost, getPostAnalytics, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
@@ -158,7 +159,7 @@ export function ContentInsightsScreen() {
   const selectedPost = selected ? posts.find(p => p._id === selected) : null;
 
   return (
-    <View style={{flex: 1, backgroundColor: palette.background}}>
+    <ThemedSafeScreen>
       {/* Header */}
       <View style={{flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: palette.border}}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{marginRight: 12}}>
@@ -252,7 +253,7 @@ export function ContentInsightsScreen() {
           <View style={{height: 32}} />
         </ScrollView>
       )}
-    </View>
+    </ThemedSafeScreen>
   );
 }
 
@@ -351,7 +352,7 @@ export function NotificationsScreen() {
   }, [navigation]);
 
   return (
-    <View style={{flex: 1, backgroundColor: palette.background}}>
+    <ThemedSafeScreen>
       {/* Header */}
       <View style={{
         flexDirection: 'row', alignItems: 'center',
@@ -447,7 +448,7 @@ export function NotificationsScreen() {
           }}
         />
       )}
-    </View>
+    </ThemedSafeScreen>
   );
 }
 

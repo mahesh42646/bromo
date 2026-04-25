@@ -92,6 +92,7 @@ export type StoreProduct = {
   originalPrice?: number;
   category: string;
   photos: string[];
+  videoUrl?: string;
   inStock: boolean;
   tags: string[];
   viewsCount: number;
@@ -300,6 +301,8 @@ export async function createStore(payload: CreateStorePayload): Promise<Store> {
 export type UpdateStorePayload = Partial<Omit<CreateStorePayload, 'lat' | 'lng'>> & {
   lat?: number;
   lng?: number;
+  removeProfilePhoto?: boolean;
+  removeBannerImage?: boolean;
 };
 
 export async function updateStore(storeId: string, payload: UpdateStorePayload): Promise<Store> {
@@ -312,6 +315,8 @@ export async function updateStore(storeId: string, payload: UpdateStorePayload):
   if (payload.lat != null) form.append('lat', String(payload.lat));
   if (payload.lng != null) form.append('lng', String(payload.lng));
   if (payload.hasDelivery != null) form.append('hasDelivery', String(payload.hasDelivery));
+  if (payload.removeProfilePhoto != null) form.append('removeProfilePhoto', String(payload.removeProfilePhoto));
+  if (payload.removeBannerImage != null) form.append('removeBannerImage', String(payload.removeBannerImage));
   if (payload.profilePhotoUri) {
     const ext = payload.profilePhotoUri.split('.').pop() ?? 'jpg';
     form.append('profilePhoto', {uri: payload.profilePhotoUri, type: `image/${ext}`, name: `profile.${ext}`} as never);
@@ -349,6 +354,7 @@ export type CreateProductPayload = {
   inStock?: boolean;
   tags?: string;
   photoUris?: string[];
+  videoUrl?: string;
 };
 
 export async function createProduct(storeId: string, payload: CreateProductPayload): Promise<StoreProduct> {
@@ -361,6 +367,7 @@ export async function createProduct(storeId: string, payload: CreateProductPaylo
   if (payload.originalPrice) form.append('originalPrice', String(payload.originalPrice));
   if (payload.inStock != null) form.append('inStock', String(payload.inStock));
   if (payload.tags) form.append('tags', payload.tags);
+  if (payload.videoUrl != null) form.append('videoUrl', payload.videoUrl);
 
   (payload.photoUris ?? []).forEach((uri, i) => {
     const ext = uri.split('.').pop() ?? 'jpg';
@@ -374,6 +381,39 @@ export async function createProduct(storeId: string, payload: CreateProductPaylo
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.message ?? 'Failed to add product');
+  return normalizeProduct(body.product);
+}
+
+export type UpdateProductPayload = Partial<CreateProductPayload> & {
+  replacePhotos?: boolean;
+};
+
+export async function updateProduct(storeId: string, productId: string, payload: UpdateProductPayload): Promise<StoreProduct> {
+  const token = await getIdToken();
+  const form = new FormData();
+
+  if (payload.name != null) form.append('name', payload.name);
+  if (payload.description != null) form.append('description', payload.description);
+  if (payload.price != null) form.append('price', String(payload.price));
+  if (payload.originalPrice !== undefined) form.append('originalPrice', payload.originalPrice ? String(payload.originalPrice) : '');
+  if (payload.category != null) form.append('category', payload.category);
+  if (payload.inStock != null) form.append('inStock', String(payload.inStock));
+  if (payload.tags != null) form.append('tags', payload.tags);
+  if (payload.videoUrl != null) form.append('videoUrl', payload.videoUrl);
+  if (payload.replacePhotos != null) form.append('replacePhotos', String(payload.replacePhotos));
+
+  (payload.photoUris ?? []).forEach((uri, i) => {
+    const ext = uri.split('.').pop() ?? 'jpg';
+    form.append('photos', {uri, type: `image/${ext === 'jpg' ? 'jpeg' : ext}`, name: `photo_${i}.${ext}`} as never);
+  });
+
+  const res = await fetch(`${apiBase()}/stores/${storeId}/products/${productId}`, {
+    method: 'PUT',
+    headers: {Authorization: `Bearer ${token}`},
+    body: form,
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.message ?? 'Failed to update product');
   return normalizeProduct(body.product);
 }
 

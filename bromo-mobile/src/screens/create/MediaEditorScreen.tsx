@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   PanResponder,
   Platform,
   Pressable,
@@ -19,21 +20,26 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Slider from '@react-native-community/slider';
 import Video, { ViewType } from 'react-native-video';
 import {
-  ChevronLeft,  Crop,  Lock,
+  ArrowRight,
+  ChevronLeft,
+  CircleOff,
+  Contrast,
+  Crop,
+  Droplets,
+  Gauge,
+  Minus,
   Music2,
   Pause,
-  Plus,
-  RotateCw,
-  SlidersHorizontal,
-  Sun,
-  Contrast,
-  Droplets,
-  Thermometer,
-  Sparkles,
-  CircleOff,
-  Type,
-  Minus,
   Play,
+  RotateCw,
+  Smile,
+  Sparkles,
+  Sun,
+  Thermometer,
+  Type,
+  Volume2,
+  VolumeX,
+  Wand2,
   X,
 } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
@@ -55,11 +61,6 @@ import { FILTER_LABELS, FILTER_LAYER_STACKS } from '../../create/filterStyles';
 import type { CreateStackParamList } from '../../navigation/CreateStackNavigator';
 import type { ThemePalette } from '../../config/platform-theme';
 import { EditorTimeline } from './EditorTimeline';
-import {
-  CreateModeSegment,
-  StudioProgress,
-  StudioSection,
-} from './CreateStudioUI';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'MediaEditor'>;
 
@@ -80,16 +81,41 @@ const CROP_OPTIONS: { id: CropAspect; label: string }[] = [
   { id: '16:9', label: '16:9' },
 ];
 
-type EditorTab = 'edit' | 'filters' | 'adjust' | 'audio' | 'text';
+const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2, 3];
 
-const EDITOR_TABS: Array<{ id: EditorTab; label: string; Icon: typeof Crop }> =
-  [
-    { id: 'edit', label: 'Edit', Icon: Crop },
-    { id: 'filters', label: 'Filters', Icon: SlidersHorizontal },
-    { id: 'adjust', label: 'Adjust', Icon: Sun },
-    { id: 'audio', label: 'Audio', Icon: Music2 },
-    { id: 'text', label: 'Text', Icon: Type },
-  ];
+const QUICK_STICKERS: Array<{ id: string; label: string }> = [
+  { id: 'fire', label: '🔥 Fire' },
+  { id: 'love', label: '❤️ Love' },
+  { id: 'wow', label: '✨ Wow' },
+  { id: 'haha', label: '😂 Haha' },
+  { id: 'cool', label: '😎 Cool' },
+  { id: 'star', label: '⭐ Star' },
+  { id: 'goat', label: '🐐 GOAT' },
+  { id: 'shop', label: '🛍️ Shop' },
+];
+
+type EditorTool =
+  | 'text'
+  | 'sticker'
+  | 'audio'
+  | 'effects'
+  | 'adjust'
+  | 'crop'
+  | 'speed';
+
+const EDITOR_TOOLS: Array<{
+  id: EditorTool;
+  label: string;
+  Icon: typeof Crop;
+}> = [
+  { id: 'text', label: 'Text', Icon: Type },
+  { id: 'sticker', label: 'Sticker', Icon: Smile },
+  { id: 'audio', label: 'Audio', Icon: Music2 },
+  { id: 'effects', label: 'Effects', Icon: Wand2 },
+  { id: 'adjust', label: 'Adjust', Icon: Sun },
+  { id: 'crop', label: 'Crop', Icon: Crop },
+  { id: 'speed', label: 'Speed', Icon: Gauge },
+];
 
 const ADJUST_KEYS = [
   { key: 'brightness', label: 'Brightness', Icon: Sun },
@@ -117,6 +143,13 @@ function renderFilterStacks(filterId: FilterId) {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function fmtTime(sec: number): string {
+  const safe = Number.isFinite(sec) && sec >= 0 ? sec : 0;
+  const m = Math.floor(safe / 60);
+  const s = Math.floor(safe % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 const overlayUi = StyleSheet.create({
@@ -152,12 +185,12 @@ function DraggableTextOverlay({
     fontStyle: 'normal' | 'bold' | 'italic';
   };
   palette: ThemePalette;
-  bounds: {width: number; height: number};
-  onUpdate: (id: string, patch: {x: number; y: number}) => void;
+  bounds: { width: number; height: number };
+  onUpdate: (id: string, patch: { x: number; y: number }) => void;
   onRemove: (id: string) => void;
 }) {
-  const baseRef = useRef({x: overlay.x, y: overlay.y});
-  baseRef.current = {x: overlay.x, y: overlay.y};
+  const baseRef = useRef({ x: overlay.x, y: overlay.y });
+  baseRef.current = { x: overlay.x, y: overlay.y };
 
   const panResponder = useMemo(
     () =>
@@ -165,12 +198,20 @@ function DraggableTextOverlay({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: () => {
-          baseRef.current = {x: overlay.x, y: overlay.y};
+          baseRef.current = { x: overlay.x, y: overlay.y };
         },
         onPanResponderMove: (_, gesture) => {
-          const nextX = clamp(baseRef.current.x + gesture.dx, 10, Math.max(10, bounds.width - 72));
-          const nextY = clamp(baseRef.current.y + gesture.dy, 10, Math.max(10, bounds.height - 72));
-          onUpdate(overlay.id, {x: nextX, y: nextY});
+          const nextX = clamp(
+            baseRef.current.x + gesture.dx,
+            10,
+            Math.max(10, bounds.width - 72),
+          );
+          const nextY = clamp(
+            baseRef.current.y + gesture.dy,
+            10,
+            Math.max(10, bounds.height - 72),
+          );
+          onUpdate(overlay.id, { x: nextX, y: nextY });
         },
       }),
     [bounds.height, bounds.width, onUpdate, overlay.id, overlay.x, overlay.y],
@@ -179,7 +220,7 @@ function DraggableTextOverlay({
   return (
     <View
       {...panResponder.panHandlers}
-      style={[overlayUi.overlayText, {left: overlay.x, top: overlay.y}]}>
+      style={[overlayUi.overlayText, { left: overlay.x, top: overlay.y }]}>
       <Text
         style={{
           color: overlay.color,
@@ -190,7 +231,7 @@ function DraggableTextOverlay({
         {overlay.text}
       </Text>
       <Pressable
-        style={[overlayUi.removeOverlay, {backgroundColor: palette.overlay}]}
+        style={[overlayUi.removeOverlay, { backgroundColor: palette.overlay }]}
         onPress={() => onRemove(overlay.id)}>
         <X size={12} color={palette.foreground} />
       </Pressable>
@@ -205,8 +246,12 @@ function TrimmingVideo({
   trimEnd,
   playbackSpeed,
   paused,
+  muted = false,
+  resizeMode = 'cover',
   onDuration,
   onTimeUpdate,
+  onHydrated,
+  onNaturalAspect,
 }: {
   uri: string;
   palette: ThemePalette;
@@ -214,17 +259,32 @@ function TrimmingVideo({
   trimEnd: number;
   playbackSpeed: number;
   paused?: boolean;
+  muted?: boolean;
+  resizeMode?: 'cover' | 'contain';
   onDuration?: (seconds: number) => void;
   onTimeUpdate?: (seconds: number) => void;
+  /** Fires once when the first frame is ready (or on Android when load completes). */
+  onHydrated?: () => void;
+  /** Fires once with the video's natural width/height ratio. */
+  onNaturalAspect?: (aspect: number) => void;
 }) {
   const videoRef = useRef<React.ElementRef<typeof Video>>(null);
   const [dur, setDur] = useState(0);
   const [ready, setReady] = useState(false);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     setDur(0);
     setReady(false);
+    hydratedRef.current = false;
   }, [uri]);
+
+  const markHydrated = useCallback(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    setReady(true);
+    onHydrated?.();
+  }, [onHydrated]);
 
   const tStart = trimStart * dur;
   const tEnd = trimEnd * dur;
@@ -246,18 +306,17 @@ function TrimmingVideo({
               justifyContent: 'center',
               zIndex: 2,
             },
-          ]}
-        >
+          ]}>
           <ActivityIndicator color={palette.foregroundMuted} />
         </View>
       )}
       <Video
         ref={videoRef}
         source={{ uri }}
-        style={[StyleSheet.absoluteFill, { zIndex: 1 }]}
-        resizeMode="cover"
+        style={StyleSheet.absoluteFill}
+        resizeMode={resizeMode}
         repeat={false}
-        muted
+        muted={muted}
         paused={paused}
         rate={playbackSpeed}
         playInBackground={false}
@@ -273,11 +332,28 @@ function TrimmingVideo({
           const d = e.duration ?? 0;
           setDur(d);
           onDuration?.(d);
+          const ns = e.naturalSize;
+          if (
+            ns &&
+            typeof ns.width === 'number' &&
+            typeof ns.height === 'number' &&
+            ns.width > 0 &&
+            ns.height > 0
+          ) {
+            const orientation =
+              typeof ns.orientation === 'string' ? ns.orientation : undefined;
+            const flipped = orientation === 'portrait';
+            const ratio = flipped ? ns.height / ns.width : ns.width / ns.height;
+            if (Number.isFinite(ratio) && ratio > 0) onNaturalAspect?.(ratio);
+          }
           if (d > 0) {
             videoRef.current?.seek(trimStart * d);
           }
+          if (Platform.OS === 'android') {
+            markHydrated();
+          }
         }}
-        onReadyForDisplay={() => setReady(true)}
+        onReadyForDisplay={() => markHydrated()}
         progressUpdateInterval={120}
         onProgress={p => {
           onTimeUpdate?.(p.currentTime);
@@ -291,6 +367,124 @@ function TrimmingVideo({
   );
 }
 
+type ToolSheetProps = {
+  visible: boolean;
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  palette: ThemePalette;
+  children: React.ReactNode;
+  height?: number;
+};
+
+function ToolSheet({
+  visible,
+  title,
+  subtitle,
+  onClose,
+  palette,
+  children,
+  height = 320,
+}: ToolSheetProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent>
+      <View style={sheetStyles.root}>
+        <Pressable style={sheetStyles.backdrop} onPress={onClose} />
+        <View
+          style={[
+            sheetStyles.sheet,
+            {
+              backgroundColor: palette.card,
+              borderTopColor: palette.hairline,
+              height,
+            },
+          ]}>
+          <View
+            style={[
+              sheetStyles.handle,
+              { backgroundColor: palette.borderHeavy },
+            ]}
+          />
+          <View style={sheetStyles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[sheetStyles.title, { color: palette.foreground }]}>
+                {title}
+              </Text>
+              {subtitle ? (
+                <Text
+                  style={[
+                    sheetStyles.subtitle,
+                    { color: palette.foregroundSubtle },
+                  ]}>
+                  {subtitle}
+                </Text>
+              ) : null}
+            </View>
+            <Pressable
+              onPress={onClose}
+              hitSlop={10}
+              style={[
+                sheetStyles.closeBtn,
+                { backgroundColor: palette.surface },
+              ]}>
+              <X size={18} color={palette.foregroundMuted} />
+            </Pressable>
+          </View>
+          <View style={sheetStyles.body}>{children}</View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const sheetStyles = StyleSheet.create({
+  root: { flex: 1 },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 24,
+  },
+  handle: {
+    alignSelf: 'center',
+    marginTop: 8,
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  title: { fontSize: 16, fontWeight: '900' },
+  subtitle: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  body: { flex: 1, paddingHorizontal: 18, paddingTop: 4 },
+});
+
 export function MediaEditorScreen() {
   const navigation = useNavigation<Nav>();
   const { width: viewportW, height: viewportH } = useWindowDimensions();
@@ -298,7 +492,6 @@ export function MediaEditorScreen() {
   const styles = makeStyles(palette);
   const {
     draft,
-    setMode,
     setActiveAssetIndex,
     setFilterForActive,
     setAdjustForActive,
@@ -310,6 +503,8 @@ export function MediaEditorScreen() {
     addTextOverlay,
     updateTextOverlay,
     removeTextOverlay,
+    addSticker,
+    endMediaImportOverlay,
   } = useCreateDraft();
 
   const assets = draft.assets;
@@ -322,7 +517,40 @@ export function MediaEditorScreen() {
   const trimStart = draft.trimStartByAsset[i] ?? 0;
   const trimEnd = draft.trimEndByAsset[i] ?? 1;
 
-  const [tab, setTab] = useState<EditorTab>('edit');
+  const previewGateDoneRef = useRef(false);
+  useEffect(() => {
+    previewGateDoneRef.current = false;
+  }, [cur?.uri]);
+
+  const markPreviewGateDone = useCallback(() => {
+    if (previewGateDoneRef.current) return;
+    previewGateDoneRef.current = true;
+    endMediaImportOverlay();
+  }, [endMediaImportOverlay]);
+
+  useEffect(() => {
+    if (!cur) {
+      endMediaImportOverlay();
+    }
+  }, [cur, endMediaImportOverlay]);
+
+  useEffect(() => {
+    return () => {
+      endMediaImportOverlay();
+    };
+  }, [endMediaImportOverlay]);
+
+  useEffect(() => {
+    if (!cur?.uri) return;
+    const t = setTimeout(() => {
+      endMediaImportOverlay();
+    }, 120_000);
+    return () => clearTimeout(t);
+  }, [cur?.uri, endMediaImportOverlay]);
+
+  const [activeTool, setActiveTool] = useState<EditorTool | null>(null);
+  const [activeAdjustKey, setActiveAdjustKey] =
+    useState<(typeof ADJUST_KEYS)[number]['key']>('brightness');
   const [textDraft, setTextDraft] = useState('');
   const [textColor, setTextColor] = useState('#FFFFFF');
   const [textSize, setTextSize] = useState(18);
@@ -333,7 +561,27 @@ export function MediaEditorScreen() {
   );
   const [timelineZoom, setTimelineZoom] = useState(1);
   const [previewPaused, setPreviewPaused] = useState(false);
+  const [previewMuted, setPreviewMuted] = useState(true);
   const [previewTimeSec, setPreviewTimeSec] = useState(0);
+  const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
+  const activeAdjustDef =
+    ADJUST_KEYS.find(item => item.key === activeAdjustKey) ?? ADJUST_KEYS[0];
+
+  useEffect(() => {
+    setNaturalAspect(null);
+    if (!cur) return;
+    if (cur.type === 'image') {
+      Image.getSize(
+        cur.uri,
+        (w, h) => {
+          if (w > 0 && h > 0) setNaturalAspect(w / h);
+        },
+        () => setNaturalAspect(null),
+      );
+    }
+  }, [cur?.uri, cur?.type]);
+
+  const closeTool = useCallback(() => setActiveTool(null), []);
 
   const carouselRef = useRef<FlatList>(null);
 
@@ -349,33 +597,28 @@ export function MediaEditorScreen() {
     }
   }, [cur?.uri, cur?.type, cur?.duration]);
 
-  useEffect(() => {
-    if (!cur) return;
-    if (draft.mode === 'reel' && crop !== '9:16') {
-      setCropForActive('9:16');
-    } else if (draft.mode === 'post' && crop !== '1:1') {
-      setCropForActive('1:1');
-    }
-  }, [crop, cur, draft.mode, setCropForActive]);
-
-  const lockedCrop = draft.mode === 'reel' ? '9:16' : draft.mode === 'post' ? '1:1' : null;
-  const effectiveCrop = lockedCrop ?? crop;
-
   const aspectRatio =
-    effectiveCrop === '1:1'
+    crop === '1:1'
       ? 1
-      : effectiveCrop === '4:5'
+      : crop === '4:5'
       ? 4 / 5
-      : effectiveCrop === '16:9'
+      : crop === '16:9'
       ? 16 / 9
-      : effectiveCrop === '9:16'
+      : crop === '9:16'
       ? 9 / 16
+      : naturalAspect && naturalAspect > 0
+      ? naturalAspect
       : draft.mode === 'reel'
       ? 9 / 16
-      : 1;
-  const frameMaxW = Math.max(220, Math.min(viewportW - 28, 430));
-  const frameMaxH = Math.max(260, viewportH * 0.56);
-  const previewW = Math.max(180, Math.min(frameMaxW, frameMaxH * aspectRatio));
+      : draft.mode === 'post'
+      ? 1
+      : 9 / 16;
+  const previewResize: 'cover' | 'contain' =
+    crop === 'original' ? 'contain' : 'cover';
+  // Allow stage to grow but never overflow vertically.
+  const stageMaxH = Math.max(280, viewportH * 0.56);
+  const stageMaxW = Math.max(220, Math.min(viewportW - 24, 480));
+  const previewW = Math.max(180, Math.min(stageMaxW, stageMaxH * aspectRatio));
   const previewHeight = previewW / aspectRatio;
 
   const adjustOverlay = adjustOverlayStyle(adjustments);
@@ -386,8 +629,11 @@ export function MediaEditorScreen() {
   const onTrimChange = useCallback(
     (range: [number, number]) => {
       setTrimForActive(range[0], range[1]);
+      if (videoDurationSec > 0) {
+        setPreviewTimeSec(Math.max(0, range[0]) * videoDurationSec);
+      }
     },
-    [setTrimForActive],
+    [setTrimForActive, videoDurationSec],
   );
 
   const swipeToAsset = useCallback(
@@ -410,6 +656,7 @@ export function MediaEditorScreen() {
       fontStyle: 'bold',
     });
     setTextDraft('');
+    setActiveTool(null);
   }, [
     addTextOverlay,
     draft.textOverlays.length,
@@ -417,6 +664,19 @@ export function MediaEditorScreen() {
     textDraft,
     textSize,
   ]);
+
+  const onPickSticker = useCallback(
+    (sticker: { id: string; label: string }) => {
+      addSticker({
+        productId: sticker.id,
+        label: sticker.label,
+        x: 24,
+        y: 80,
+      });
+      setActiveTool(null);
+    },
+    [addSticker],
+  );
 
   if (!cur) {
     return (
@@ -429,717 +689,737 @@ export function MediaEditorScreen() {
     );
   }
 
+  const renderPreviewCanvas = (
+    item: typeof cur,
+    isActive: boolean,
+    extras: {
+      f: FilterId;
+      r: number;
+      adjOverlay: ReturnType<typeof adjustOverlayStyle>;
+      wOv: ReturnType<typeof warmthOverlayStyle>;
+      sOv: ReturnType<typeof saturationOverlayStyle>;
+      vOv: ReturnType<typeof vignetteOverlayStyle>;
+      ts: number;
+      te: number;
+    },
+  ) => (
+    <View
+      style={[styles.previewFrame, { width: previewW, height: previewHeight }]}>
+      <View
+        style={[styles.media, { transform: [{ rotate: `${extras.r}deg` }] }]}>
+        {item.type === 'video' ? (
+          <TrimmingVideo
+            uri={item.uri}
+            palette={palette}
+            trimStart={extras.ts}
+            trimEnd={extras.te}
+            playbackSpeed={draft.playbackSpeed}
+            paused={isActive ? previewPaused : true}
+            muted={isActive ? previewMuted : true}
+            resizeMode={previewResize}
+            onDuration={isActive ? setVideoDurationSec : undefined}
+            onTimeUpdate={isActive ? setPreviewTimeSec : undefined}
+            onHydrated={isActive ? markPreviewGateDone : undefined}
+            onNaturalAspect={isActive ? setNaturalAspect : undefined}
+          />
+        ) : (
+          <Image
+            source={{ uri: item.uri }}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode={previewResize}
+            onLoadEnd={isActive ? markPreviewGateDone : undefined}
+            onError={isActive ? markPreviewGateDone : undefined}
+          />
+        )}
+        {renderFilterStacks(extras.f)}
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, extras.adjOverlay]}
+        />
+        {extras.wOv ? (
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, extras.wOv]}
+          />
+        ) : null}
+        {extras.sOv ? (
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, extras.sOv]}
+          />
+        ) : null}
+        {extras.vOv ? (
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, extras.vOv]}
+          />
+        ) : null}
+        {draft.textOverlays.map(o => (
+          <DraggableTextOverlay
+            key={o.id}
+            overlay={o}
+            palette={palette}
+            bounds={{ width: previewW, height: previewHeight }}
+            onUpdate={updateTextOverlay}
+            onRemove={removeTextOverlay}
+          />
+        ))}
+        {draft.stickers.map(sticker => (
+          <View
+            key={sticker.id}
+            style={[
+              styles.stagedSticker,
+              {
+                left: sticker.x,
+                top: sticker.y,
+                backgroundColor: 'rgba(0,0,0,0.55)',
+              },
+            ]}>
+            <Text style={styles.stagedStickerText}>{sticker.label}</Text>
+          </View>
+        ))}
+      </View>
+      {item.type === 'video' && isActive ? (
+        <Pressable
+          onPress={() => setPreviewMuted(v => !v)}
+          style={styles.muteButton}
+          hitSlop={8}>
+          {previewMuted ? (
+            <VolumeX size={16} color="#fff" />
+          ) : (
+            <Volume2 size={16} color="#fff" />
+          )}
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
   return (
     <ThemedSafeScreen style={styles.dark}>
-      <View style={styles.headerShell}>
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={styles.iconButton}
-            hitSlop={10}
-          >
-            <ChevronLeft size={26} color={palette.foreground} />
-          </Pressable>
-          <View style={styles.headerCenter}>
-            <Text style={styles.eyebrow}>BROMO CREATOR</Text>
-            <Text style={styles.title}>Edit media</Text>
-          </View>
-          <Pressable
-            onPress={() => navigation.navigate('ShareFinal')}
-            style={styles.nextButton}
-          >
-            <Text style={[styles.next, { color: palette.accentForeground }]}>
-              Next
-            </Text>
-          </Pressable>
-        </View>
-        <CreateModeSegment
-          palette={palette}
-          mode={draft.mode}
-          onChange={setMode}
-          style={styles.modeSegment}
-        />
-        <StudioProgress palette={palette} activeIndex={0} />
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={styles.headerIconBtn}
+          hitSlop={12}>
+          <ChevronLeft size={26} color={palette.foreground} />
+        </Pressable>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          Edit
+        </Text>
+        <Pressable
+          onPress={() => navigation.navigate('ShareFinal')}
+          style={[styles.headerNextBtn, { backgroundColor: palette.accent }]}>
+          <ArrowRight size={20} color={palette.accentForeground} />
+        </Pressable>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.previewStage}>
-          {assets.length > 1 ? (
-            <>
-              <FlatList
-                ref={carouselRef}
-                data={assets}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(_, idx) => `asset_${idx}`}
-                getItemLayout={(_, index) => ({
-                  length: viewportW,
-                  offset: viewportW * index,
-                  index,
-                })}
-                onMomentumScrollEnd={e => {
-                  const idx = Math.round(
-                    e.nativeEvent.contentOffset.x / viewportW,
-                  );
-                  setActiveAssetIndex(idx);
-                }}
-                renderItem={({ item, index }) => {
-                  const f = (draft.filterByAsset[index] ??
-                    'normal') as FilterId;
-                  const r = draft.rotationByAsset[index] ?? 0;
-                  const adj = draft.adjustByAsset[index] ?? {
-                    ...DEFAULT_ADJUSTMENTS,
-                  };
-                  const ts = draft.trimStartByAsset[index] ?? 0;
-                  const te = draft.trimEndByAsset[index] ?? 1;
-                  const ao = adjustOverlayStyle(adj);
-                  const wO = warmthOverlayStyle(adj);
-                  const sO = saturationOverlayStyle(adj);
-                  const vO = vignetteOverlayStyle(adj);
-                  return (
-                    <View
-                      style={[
-                        styles.carouselPage,
-                        { width: viewportW, height: previewHeight },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.previewWrap,
-                          { width: previewW, height: previewHeight },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.media,
-                            { transform: [{ rotate: `${r}deg` }] },
-                          ]}
-                        >
-                          {item.type === 'video' ? (
-                            <TrimmingVideo
-                              uri={item.uri}
-                              palette={palette}
-                              trimStart={ts}
-                              trimEnd={te}
-                              playbackSpeed={draft.playbackSpeed}
-                              paused={index === i ? previewPaused : true}
-                              onDuration={
-                                index === i ? setVideoDurationSec : undefined
-                              }
-                              onTimeUpdate={
-                                index === i ? setPreviewTimeSec : undefined
-                              }
-                            />
-                          ) : (
-                            <Image
-                              source={{ uri: item.uri }}
-                              style={StyleSheet.absoluteFillObject}
-                              resizeMode="cover"
-                            />
-                          )}
-                          {renderFilterStacks(f)}
-                          <View
-                            pointerEvents="none"
-                            style={[StyleSheet.absoluteFill, ao]}
-                          />
-                          {wO ? (
-                            <View
-                              pointerEvents="none"
-                              style={[StyleSheet.absoluteFill, wO]}
-                            />
-                          ) : null}
-                          {sO ? (
-                            <View
-                              pointerEvents="none"
-                              style={[StyleSheet.absoluteFill, sO]}
-                            />
-                          ) : null}
-                          {vO ? (
-                            <View
-                              pointerEvents="none"
-                              style={[StyleSheet.absoluteFill, vO]}
-                            />
-                          ) : null}
-                          {draft.textOverlays.map(o => (
-                            <DraggableTextOverlay
-                              key={o.id}
-                              overlay={o}
-                              palette={palette}
-                              bounds={{width: previewW, height: previewHeight}}
-                              onUpdate={updateTextOverlay}
-                              onRemove={removeTextOverlay}
-                            />
-                          ))}
-                        </View>
-                      </View>
-                    </View>
-                  );
-                }}
-              />
-              <View style={styles.dots}>
-                {assets.map((_, idx) => (
-                  <Pressable
-                    key={idx}
-                    onPress={() => swipeToAsset(idx)}
-                    hitSlop={8}
-                  >
-                    <View style={[styles.dot, idx === i && styles.dotOn]} />
-                  </Pressable>
-                ))}
-              </View>
-            </>
-          ) : (
-            <View
-              style={[
-                styles.previewWrap,
-                { width: previewW, height: previewHeight },
-              ]}
-            >
+      <View style={styles.stage}>
+        {assets.length > 1 ? (
+          <>
+            <FlatList
+              ref={carouselRef}
+              data={assets}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(_, idx) => `asset_${idx}`}
+              getItemLayout={(_, index) => ({
+                length: viewportW,
+                offset: viewportW * index,
+                index,
+              })}
+              onMomentumScrollEnd={e => {
+                const idx = Math.round(
+                  e.nativeEvent.contentOffset.x / viewportW,
+                );
+                setActiveAssetIndex(idx);
+              }}
+              renderItem={({ item, index }) => {
+                const f = (draft.filterByAsset[index] ?? 'normal') as FilterId;
+                const r = draft.rotationByAsset[index] ?? 0;
+                const adj = draft.adjustByAsset[index] ?? {
+                  ...DEFAULT_ADJUSTMENTS,
+                };
+                const ts = draft.trimStartByAsset[index] ?? 0;
+                const te = draft.trimEndByAsset[index] ?? 1;
+                const ao = adjustOverlayStyle(adj);
+                const wO = warmthOverlayStyle(adj);
+                const sO = saturationOverlayStyle(adj);
+                const vO = vignetteOverlayStyle(adj);
+                return (
+                  <View
+                    style={[
+                      styles.carouselPage,
+                      { width: viewportW, height: previewHeight },
+                    ]}>
+                    {renderPreviewCanvas(item, index === i, {
+                      f,
+                      r,
+                      adjOverlay: ao,
+                      wOv: wO,
+                      sOv: sO,
+                      vOv: vO,
+                      ts,
+                      te,
+                    })}
+                  </View>
+                );
+              }}
+            />
+            <View style={styles.dots}>
+              {assets.map((_, idx) => (
+                <Pressable
+                  key={idx}
+                  onPress={() => swipeToAsset(idx)}
+                  hitSlop={8}>
+                  <View
+                    style={[
+                      styles.dot,
+                      { backgroundColor: palette.borderMid },
+                      idx === i && {
+                        backgroundColor: palette.foreground,
+                        width: 14,
+                      },
+                    ]}
+                  />
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : (
+          renderPreviewCanvas(cur, true, {
+            f: filter as FilterId,
+            r: rotation,
+            adjOverlay: adjustOverlay,
+            wOv: warmOv,
+            sOv: satOv,
+            vOv: vigOv,
+            ts: trimStart,
+            te: trimEnd,
+          })
+        )}
+      </View>
+
+      {cur.type === 'video' ? (
+        <View
+          style={[
+            styles.playbackBar,
+            { borderTopColor: palette.hairline },
+          ]}>
+          <Pressable
+            onPress={() => setPreviewPaused(p => !p)}
+            style={[
+              styles.playBtn,
+              { backgroundColor: palette.surfaceHigh },
+            ]}
+            hitSlop={6}>
+            {previewPaused ? (
+              <Play size={16} color={palette.foreground} />
+            ) : (
+              <Pause size={16} color={palette.foreground} />
+            )}
+          </Pressable>
+          <Text style={[styles.timeText, { color: palette.foreground }]}>
+            {fmtTime(previewTimeSec)}{' '}
+            <Text style={{ color: palette.foregroundSubtle }}>
+              / {fmtTime(videoDurationSec)}
+            </Text>
+          </Text>
+          <View style={{ flex: 1 }} />
+          <Text
+            style={{
+              color: palette.foregroundSubtle,
+              fontSize: 11,
+              fontWeight: '900',
+              marginRight: 10,
+            }}>
+            {draft.playbackSpeed}x
+          </Text>
+          <Pressable
+            onPress={() => setPreviewMuted(v => !v)}
+            style={[
+              styles.iconChip,
+              { backgroundColor: palette.surfaceHigh },
+            ]}
+            hitSlop={8}>
+            {previewMuted ? (
+              <VolumeX size={15} color={palette.foreground} />
+            ) : (
+              <Volume2 size={15} color={palette.foreground} />
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+
+      {cur.type === 'video' && videoDurationSec > 0 ? (
+        <View style={[styles.timelineWrap, { borderTopColor: palette.hairline }]}>
+          <EditorTimeline
+            palette={palette}
+            durationSec={videoDurationSec}
+            trimStart={trimStart}
+            trimEnd={trimEnd}
+            onTrimChange={onTrimChange}
+            zoom={timelineZoom}
+            onZoomChange={setTimelineZoom}
+          />
+        </View>
+      ) : null}
+
+      <View
+        style={[
+          styles.toolDock,
+          {
+            backgroundColor: palette.card,
+            borderTopColor: palette.hairline,
+          },
+        ]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.toolRow}>
+          {EDITOR_TOOLS.map(({ id, label, Icon }) => (
+            <Pressable
+              key={id}
+              onPress={() => setActiveTool(id)}
+              style={styles.toolItem}
+              hitSlop={6}>
               <View
                 style={[
-                  styles.media,
-                  { transform: [{ rotate: `${rotation}deg` }] },
-                ]}
-              >
+                  styles.toolIconWrap,
+                  {
+                    backgroundColor: palette.surface,
+                    borderColor: palette.border,
+                  },
+                ]}>
+                <Icon size={20} color={palette.foreground} />
+              </View>
+              <Text
+                style={[styles.toolLabel, { color: palette.foregroundMuted }]}>
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+          <Pressable
+            onPress={rotateActive}
+            style={styles.toolItem}
+            hitSlop={6}>
+            <View
+              style={[
+                styles.toolIconWrap,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                },
+              ]}>
+              <RotateCw size={20} color={palette.foreground} />
+            </View>
+            <Text
+              style={[styles.toolLabel, { color: palette.foregroundMuted }]}>
+              Rotate
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+
+      {/* Effects (filters) sheet */}
+      <ToolSheet
+        visible={activeTool === 'effects'}
+        onClose={closeTool}
+        title="Effects"
+        subtitle="Tap a filter to apply it instantly"
+        palette={palette}
+        height={260}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}>
+          {FILTER_IDS.map(fid => (
+            <Pressable
+              key={fid}
+              onPress={() => setFilterForActive(fid as FilterId)}
+              style={[
+                styles.filterChip,
+                filter === fid && { borderColor: palette.accent },
+              ]}>
+              <View style={styles.filterThumb}>
                 {cur.type === 'video' ? (
-                  <TrimmingVideo
-                    uri={cur.uri}
-                    palette={palette}
-                    trimStart={trimStart}
-                    trimEnd={trimEnd}
-                    playbackSpeed={draft.playbackSpeed}
-                    paused={previewPaused}
-                    onDuration={setVideoDurationSec}
-                    onTimeUpdate={setPreviewTimeSec}
+                  <Video
+                    source={{ uri: cur.uri }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="cover"
+                    paused
+                    muted
+                    repeat={false}
+                    viewType={
+                      Platform.OS === 'android' ? ViewType.TEXTURE : undefined
+                    }
+                    shutterColor="transparent"
                   />
                 ) : (
                   <Image
                     source={{ uri: cur.uri }}
-                    style={StyleSheet.absoluteFillObject}
-                    resizeMode="cover"
+                    style={styles.filterImg}
                   />
                 )}
-                {renderFilterStacks(filter)}
-                <View
-                  pointerEvents="none"
-                  style={[StyleSheet.absoluteFill, adjustOverlay]}
-                />
-                {warmOv ? (
-                  <View
-                    pointerEvents="none"
-                    style={[StyleSheet.absoluteFill, warmOv]}
-                  />
-                ) : null}
-                {satOv ? (
-                  <View
-                    pointerEvents="none"
-                    style={[StyleSheet.absoluteFill, satOv]}
-                  />
-                ) : null}
-                {vigOv ? (
-                  <View
-                    pointerEvents="none"
-                    style={[StyleSheet.absoluteFill, vigOv]}
-                  />
-                ) : null}
-                {draft.textOverlays.map(o => (
-                  <DraggableTextOverlay
-                    key={o.id}
-                    overlay={o}
-                    palette={palette}
-                    bounds={{width: previewW, height: previewHeight}}
-                    onUpdate={updateTextOverlay}
-                    onRemove={removeTextOverlay}
-                  />
-                ))}
+                {renderFilterStacks(fid as FilterId)}
               </View>
-            </View>
-          )}
-        </View>
-
-        {cur.type === 'video' && videoDurationSec > 0 ? (
-          <View style={styles.timelineCard}>
-            <View style={styles.playbackRow}>
-              <Pressable
-                onPress={() => setPreviewPaused(p => !p)}
-                style={[styles.playBtn, { backgroundColor: palette.accent }]}
-              >
-                {previewPaused ? (
-                  <Play size={21} color={palette.accentForeground} />
-                ) : (
-                  <Pause size={21} color={palette.accentForeground} />
-                )}
-              </Pressable>
               <Text
-                style={[styles.playbackTime, { color: palette.foreground }]}
-              >
-                {Math.floor(previewTimeSec / 60)}:
-                {Math.floor(previewTimeSec % 60)
-                  .toString()
-                  .padStart(2, '0')}{' '}
-                / {Math.floor(videoDurationSec / 60)}:
-                {Math.floor(videoDurationSec % 60)
-                  .toString()
-                  .padStart(2, '0')}
-              </Text>
-              <View style={{ flex: 1 }} />
-              <Text
-                style={{
-                  color: palette.foregroundSubtle,
-                  fontSize: 11,
-                  fontWeight: '800',
-                }}
-              >
-                {draft.playbackSpeed}x
-              </Text>
-            </View>
-            <EditorTimeline
-              palette={palette}
-              durationSec={videoDurationSec}
-              trimStart={trimStart}
-              trimEnd={trimEnd}
-              onTrimChange={onTrimChange}
-              zoom={timelineZoom}
-              onZoomChange={setTimelineZoom}
-            />
-            <View style={styles.layerStack}>
-              <View
                 style={[
-                  styles.subTrackRow,
-                  {
-                    borderColor: palette.border,
-                    backgroundColor: palette.surface,
-                  },
-                ]}>
-                <Text style={[styles.subTrackTxt, {color: palette.foreground}]}>
-                  Video layer
-                </Text>
-                <View
-                  style={[
-                    styles.subTrackMeter,
-                    {backgroundColor: palette.surfaceHigh},
-                  ]}>
-                  <View
-                    style={[
-                      styles.subTrackMeterFill,
-                      {
-                        width: `${Math.max(12, (trimEnd - trimStart) * 100)}%`,
-                        backgroundColor: palette.accent,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-              <View
-                style={[
-                  styles.subTrackRow,
-                  {
-                    borderColor: palette.border,
-                    backgroundColor: palette.surface,
-                  },
-                ]}>
-                <Music2 size={15} color={palette.foregroundMuted} />
-                <Text
-                  style={[styles.subTrackTxt, {color: palette.foreground}]}
-                  numberOfLines={1}>
-                  {draft.selectedAudio?.title ?? 'Original audio'}
-                </Text>
-                <View
-                  style={[
-                    styles.subTrackMeter,
-                    {backgroundColor: palette.surfaceHigh},
-                  ]}>
-                  <View
-                    style={[
-                      styles.subTrackMeterFill,
-                      {
-                        width: draft.selectedAudio ? '72%' : '100%',
-                        backgroundColor: draft.selectedAudio
-                          ? palette.accent
-                          : palette.foregroundMuted,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-              <View style={styles.layerRow}>
-                <View style={styles.layerChip}>
-                  <Type size={15} color={palette.foregroundMuted} />
-                  <Text style={styles.layerChipText} numberOfLines={1}>
-                    {draft.textOverlays.length} text
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        ) : null}
+                  styles.filterName,
+                  { color: palette.foregroundMuted },
+                  filter === fid && { color: palette.accent },
+                ]}
+                numberOfLines={1}>
+                {FILTER_LABELS[fid]}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </ToolSheet>
 
+      {/* Adjust sheet */}
+      <ToolSheet
+        visible={activeTool === 'adjust'}
+        onClose={closeTool}
+        title="Adjust"
+        subtitle={`${activeAdjustDef.label}: ${Math.round(
+          adjustments[
+            activeAdjustDef.key as keyof typeof adjustments
+          ] * 100,
+        )}`}
+        palette={palette}
+        height={310}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabBar}
-        >
-          {EDITOR_TABS.map(({ id, label, Icon }) => {
-            const active = tab === id;
+          contentContainerStyle={styles.hitRow}>
+          {ADJUST_KEYS.map(({ key, label, Icon }) => {
+            const active = activeAdjustKey === key;
             return (
               <Pressable
-                key={id}
-                onPress={() => setTab(id)}
+                key={key}
+                onPress={() => setActiveAdjustKey(key)}
                 style={[
-                  styles.tabItem,
+                  styles.adjustChip,
                   {
-                    backgroundColor: active
-                      ? palette.surfaceHigh
-                      : palette.surface,
                     borderColor: active ? palette.accent : palette.border,
+                    backgroundColor: active
+                      ? palette.accent
+                      : palette.surface,
                   },
-                ]}
-              >
+                ]}>
                 <Icon
-                  size={17}
-                  color={active ? palette.accent : palette.foregroundSubtle}
+                  size={14}
+                  color={
+                    active ? palette.accentForeground : palette.foregroundMuted
+                  }
                 />
                 <Text
                   style={[
-                    styles.tabLabel,
-                    active && { color: palette.foreground },
-                  ]}
-                >
+                    styles.adjustChipText,
+                    {
+                      color: active
+                        ? palette.accentForeground
+                        : palette.foreground,
+                    },
+                  ]}>
                   {label}
                 </Text>
               </Pressable>
             );
           })}
         </ScrollView>
+        <View style={styles.adjustSliderWrap}>
+          <Slider
+            minimumValue={-1}
+            maximumValue={1}
+            step={0.01}
+            value={
+              adjustments[activeAdjustDef.key as keyof typeof adjustments]
+            }
+            onValueChange={v =>
+              setAdjustForActive({ [activeAdjustDef.key]: v })
+            }
+            minimumTrackTintColor={palette.accent}
+            maximumTrackTintColor={palette.foregroundFaint}
+            thumbTintColor={palette.foreground}
+          />
+          <Pressable
+            onPress={() =>
+              setAdjustForActive({ [activeAdjustDef.key]: 0 })
+            }
+            style={[
+              styles.resetBtn,
+              { borderColor: palette.border },
+            ]}>
+            <Text
+              style={[styles.resetBtnText, { color: palette.foreground }]}>
+              Reset
+            </Text>
+          </Pressable>
+        </View>
+      </ToolSheet>
 
-        {tab === 'edit' && (
-          <View style={styles.panelStack}>
-            <StudioSection
-              palette={palette}
-              title="Aspect Ratio"
-              bodyStyle={styles.sectionBodyTight}
-            >
-              <View style={styles.cropRow}>
-                {lockedCrop ? (
-                  <View
-                    style={[
-                      styles.cropChip,
-                      {
-                        borderColor: palette.accent,
-                        backgroundColor: palette.accent,
-                        minWidth: 120,
-                        flexDirection: 'row',
-                        gap: 8,
-                        justifyContent: 'center',
-                      },
-                    ]}>
-                    <Lock size={14} color={palette.accentForeground} />
-                    <Text style={[styles.cropLabel, {color: palette.accentForeground}]}>
-                      {lockedCrop} locked
-                    </Text>
-                  </View>
-                ) : (
-                  CROP_OPTIONS.map(c => (
-                    <Pressable
-                      key={c.id}
-                      onPress={() => setCropForActive(c.id)}
-                      style={[
-                        styles.cropChip,
-                        {
-                          borderColor:
-                            crop === c.id ? palette.accent : palette.border,
-                          backgroundColor:
-                            crop === c.id ? palette.accent : palette.surface,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.cropLabel,
-                          crop === c.id && { color: palette.accentForeground },
-                        ]}
-                      >
-                        {c.label}
-                      </Text>
-                    </Pressable>
-                  ))
-                )}
-              </View>
-            </StudioSection>
-
-            <StudioSection
-              palette={palette}
-              title="Transform"
-              bodyStyle={styles.sectionBodyTight}
-            >
-              <View style={styles.tools}>
-                <Pressable style={styles.tool} onPress={rotateActive}>
-                  <RotateCw size={22} color={palette.foreground} />
-                  <Text style={styles.toolTxt}>Rotate</Text>
-                </Pressable>
-                <Pressable style={styles.tool} onPress={() => setTab('text')}>
-                  <Type size={22} color={palette.foreground} />
-                  <Text style={styles.toolTxt}>Text</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.tool}
-                  onPress={() => navigation.navigate('ShareFinal')}
-                >
-                  <Plus size={22} color={palette.foreground} />
-                  <Text style={styles.toolTxt}>Details</Text>
-                </Pressable>
-              </View>
-            </StudioSection>
-
-            {cur.type === 'video' && (
-              <StudioSection
-                palette={palette}
-                title="Playback Speed"
-                bodyStyle={styles.sectionBodyTight}
-              >
-                <View style={styles.speedRow}>
-                  {[0.25, 0.5, 1, 1.5, 2, 3].map(s => (
-                    <Pressable
-                      key={s}
-                      onPress={() => setPlaybackSpeed(s)}
-                      style={[
-                        styles.speedChip,
-                        {
-                          backgroundColor:
-                            draft.playbackSpeed === s
-                              ? palette.accent
-                              : palette.surface,
-                          borderColor:
-                            draft.playbackSpeed === s
-                              ? palette.accent
-                              : palette.border,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.speedTxt,
-                          draft.playbackSpeed === s && {
-                            color: palette.accentForeground,
-                          },
-                        ]}
-                      >
-                        {s}x
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </StudioSection>
-            )}
-          </View>
-        )}
-
-        {tab === 'filters' && (
-          <StudioSection
-            palette={palette}
-            title="Filter Presets"
-            style={styles.panelSection}
-          >
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRow}
-            >
-              {FILTER_IDS.map(fid => (
-                <Pressable
-                  key={fid}
-                  onPress={() => setFilterForActive(fid as FilterId)}
-                  style={[
-                    styles.filterChip,
-                    filter === fid && { borderColor: palette.accent },
-                  ]}
-                >
-                  <View style={styles.filterThumb}>
-                    {cur.type === 'video' ? (
-                      <Video
-                        source={{uri: cur.uri}}
-                        style={StyleSheet.absoluteFill}
-                        resizeMode="cover"
-                        paused
-                        muted
-                        repeat={false}
-                        viewType={
-                          Platform.OS === 'android' ? ViewType.TEXTURE : undefined
-                        }
-                        shutterColor="transparent"
-                      />
-                    ) : (
-                      <Image
-                        source={{ uri: cur.uri }}
-                        style={styles.filterImg}
-                      />
-                    )}
-                    {renderFilterStacks(fid as FilterId)}
-                  </View>
-                  <Text style={styles.filterName} numberOfLines={1}>
-                    {FILTER_LABELS[fid]}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </StudioSection>
-        )}
-
-        {tab === 'adjust' && (
-          <StudioSection
-            palette={palette}
-            title="Light & Colour"
-            style={styles.panelSection}
-          >
-            {ADJUST_KEYS.map(({ key, label, Icon }) => (
-              <View key={key} style={styles.adjustRow}>
-                <View style={styles.adjustLabelRow}>
-                  <Icon size={16} color={palette.foregroundMuted} />
-                  <Text style={styles.adjustLabel}>{label}</Text>
-                  <Text style={styles.adjustValue}>
-                    {Math.round(
-                      adjustments[key as keyof typeof adjustments] * 100,
-                    )}
-                  </Text>
-                </View>
-                <Slider
-                  minimumValue={-1}
-                  maximumValue={1}
-                  step={0.01}
-                  value={adjustments[key as keyof typeof adjustments]}
-                  onValueChange={v => setAdjustForActive({ [key]: v })}
-                  minimumTrackTintColor={palette.accent}
-                  maximumTrackTintColor={palette.foregroundFaint}
-                  thumbTintColor={palette.foreground}
-                  style={styles.adjustSlider}
-                />
-              </View>
-            ))}
-          </StudioSection>
-        )}
-
-        {tab === 'audio' && (
-          <StudioSection
-            palette={palette}
-            title="Audio Source"
-            style={styles.panelSection}
-          >
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.audioRow}
-            >
-              <Pressable
-                onPress={() => setSelectedAudio(null)}
+      {/* Crop sheet */}
+      <ToolSheet
+        visible={activeTool === 'crop'}
+        onClose={closeTool}
+        title="Crop"
+        subtitle="Pick a frame ratio for your media"
+        palette={palette}
+        height={210}>
+        <View style={styles.cropRow}>
+          {CROP_OPTIONS.map(c => (
+            <Pressable
+              key={c.id}
+              onPress={() => setCropForActive(c.id)}
+              style={[
+                styles.cropChip,
+                {
+                  borderColor:
+                    crop === c.id ? palette.accent : palette.border,
+                  backgroundColor:
+                    crop === c.id ? palette.accent : palette.surface,
+                },
+              ]}>
+              <Text
                 style={[
-                  styles.audioCard,
-                  !draft.selectedAudio && { borderColor: palette.accent },
+                  styles.cropLabel,
+                  { color: palette.foreground },
+                  crop === c.id && { color: palette.accentForeground },
+                ]}>
+                {c.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </ToolSheet>
+
+      {/* Speed sheet */}
+      <ToolSheet
+        visible={activeTool === 'speed'}
+        onClose={closeTool}
+        title="Speed"
+        subtitle="Adjust playback rate"
+        palette={palette}
+        height={200}>
+        <View style={styles.cropRow}>
+          {SPEED_OPTIONS.map(s => (
+            <Pressable
+              key={s}
+              onPress={() => setPlaybackSpeed(s)}
+              style={[
+                styles.cropChip,
+                {
+                  borderColor:
+                    draft.playbackSpeed === s
+                      ? palette.accent
+                      : palette.border,
+                  backgroundColor:
+                    draft.playbackSpeed === s
+                      ? palette.accent
+                      : palette.surface,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.cropLabel,
+                  { color: palette.foreground },
+                  draft.playbackSpeed === s && {
+                    color: palette.accentForeground,
+                  },
+                ]}>
+                {s}x
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </ToolSheet>
+
+      {/* Audio sheet */}
+      <ToolSheet
+        visible={activeTool === 'audio'}
+        onClose={closeTool}
+        title="Audio"
+        subtitle="Pick a track or keep original"
+        palette={palette}
+        height={290}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.audioRow}>
+          <Pressable
+            onPress={() => setSelectedAudio(null)}
+            style={[
+              styles.audioCard,
+              {
+                backgroundColor: palette.surface,
+                borderColor: !draft.selectedAudio
+                  ? palette.accent
+                  : palette.border,
+              },
+            ]}>
+            <Music2 size={16} color={palette.foreground} />
+            <Text
+              style={[styles.audioTitle, { color: palette.foreground }]}>
+              No music
+            </Text>
+            <Text
+              style={[
+                styles.audioArtist,
+                { color: palette.foregroundSubtle },
+              ]}>
+              Original
+            </Text>
+          </Pressable>
+          {AUDIO_CATALOG.map(track => (
+            <Pressable
+              key={track.id}
+              onPress={() => setSelectedAudio(track)}
+              style={[
+                styles.audioCard,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor:
+                    draft.selectedAudio?.id === track.id
+                      ? palette.accent
+                      : palette.border,
+                },
+              ]}>
+              <Music2 size={16} color={palette.foreground} />
+              <Text
+                style={[styles.audioTitle, { color: palette.foreground }]}
+                numberOfLines={1}>
+                {track.title}
+              </Text>
+              <Text
+                style={[
+                  styles.audioArtist,
+                  { color: palette.foregroundSubtle },
                 ]}
-              >
-                <Music2 size={16} color={palette.foreground} />
-                <Text style={styles.audioTitle}>No music</Text>
-                <Text style={styles.audioArtist}>Original</Text>
-              </Pressable>
-              {AUDIO_CATALOG.map(track => (
-                <Pressable
-                  key={track.id}
-                  onPress={() => setSelectedAudio(track)}
-                  style={[
-                    styles.audioCard,
-                    draft.selectedAudio?.id === track.id && {
-                      borderColor: palette.accent,
-                    },
-                  ]}
-                >
-                  <Music2 size={16} color={palette.foreground} />
-                  <Text style={styles.audioTitle} numberOfLines={1}>
-                    {track.title}
-                  </Text>
-                  <Text style={styles.audioArtist} numberOfLines={1}>
-                    {track.artist}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </StudioSection>
-        )}
+                numberOfLines={1}>
+                {track.artist}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </ToolSheet>
 
-        {tab === 'text' && (
-          <StudioSection
-            palette={palette}
-            title="Text Overlay"
-            style={styles.panelSection}
-          >
-            <View style={styles.textBox}>
-              <TextInput
-                value={textDraft}
-                onChangeText={setTextDraft}
-                placeholder="Type overlay text"
-                placeholderTextColor={palette.placeholder}
-                style={[styles.textInput, { color: textColor }]}
-              />
-              <Pressable onPress={addOverlayText} style={styles.addTextBtn}>
-                <Text
-                  style={{ color: palette.accentForeground, fontWeight: '900' }}
-                >
-                  Add
-                </Text>
-              </Pressable>
-            </View>
-            <Text style={styles.sectionLabel}>Color</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.colorRow}
-            >
-              {TEXT_COLORS.map(c => (
-                <Pressable
-                  key={c}
-                  onPress={() => setTextColor(c)}
-                  style={[
-                    styles.colorDot,
-                    { backgroundColor: c },
-                    textColor === c && {
-                      borderWidth: 3,
-                      borderColor: palette.accent,
-                    },
-                  ]}
-                />
-              ))}
-            </ScrollView>
-            <Text style={styles.sectionLabel}>Size {textSize}px</Text>
-            <Slider
-              minimumValue={12}
-              maximumValue={48}
-              step={2}
-              value={textSize}
-              onValueChange={setTextSize}
-              minimumTrackTintColor={palette.accent}
-              maximumTrackTintColor={palette.foregroundFaint}
-              thumbTintColor={palette.foreground}
+      {/* Text sheet */}
+      <ToolSheet
+        visible={activeTool === 'text'}
+        onClose={closeTool}
+        title="Text"
+        subtitle="Add overlay text. Drag in preview."
+        palette={palette}
+        height={340}>
+        <View
+          style={[
+            styles.textBox,
+            {
+              backgroundColor: palette.input,
+              borderColor: palette.border,
+            },
+          ]}>
+          <TextInput
+            value={textDraft}
+            onChangeText={setTextDraft}
+            placeholder="Type something"
+            placeholderTextColor={palette.placeholder}
+            style={[styles.textInput, { color: textColor }]}
+            autoFocus
+          />
+          <Pressable
+            onPress={addOverlayText}
+            style={[
+              styles.addTextBtn,
+              { backgroundColor: palette.accent },
+            ]}>
+            <Text
+              style={{
+                color: palette.accentForeground,
+                fontWeight: '900',
+              }}>
+              Add
+            </Text>
+          </Pressable>
+        </View>
+        <Text
+          style={[
+            styles.miniLabel,
+            { color: palette.foregroundSubtle },
+          ]}>
+          Color
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.colorRow}>
+          {TEXT_COLORS.map(c => (
+            <Pressable
+              key={c}
+              onPress={() => setTextColor(c)}
+              style={[
+                styles.colorDot,
+                { backgroundColor: c },
+                textColor === c && {
+                  borderWidth: 3,
+                  borderColor: palette.accent,
+                },
+              ]}
             />
-          </StudioSection>
-        )}
-      </ScrollView>
+          ))}
+        </ScrollView>
+        <Text
+          style={[
+            styles.miniLabel,
+            { color: palette.foregroundSubtle },
+          ]}>
+          Size
+        </Text>
+        <Slider
+          minimumValue={12}
+          maximumValue={48}
+          step={2}
+          value={textSize}
+          onValueChange={setTextSize}
+          minimumTrackTintColor={palette.accent}
+          maximumTrackTintColor={palette.foregroundFaint}
+          thumbTintColor={palette.foreground}
+        />
+      </ToolSheet>
 
-      <View style={styles.footerBar}>
-        <Pressable
-          style={styles.secondaryButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.secondaryButtonText}>Back</Text>
-        </Pressable>
-        <Pressable
-          style={styles.primaryButton}
-          onPress={() => navigation.navigate('ShareFinal')}
-        >
-          <Text style={styles.primaryButtonText}>Next</Text>
-        </Pressable>
-      </View>
+      {/* Sticker sheet */}
+      <ToolSheet
+        visible={activeTool === 'sticker'}
+        onClose={closeTool}
+        title="Sticker"
+        subtitle="Tap a sticker to drop it on your media"
+        palette={palette}
+        height={300}>
+        <View style={styles.stickerGrid}>
+          {QUICK_STICKERS.map(sticker => (
+            <Pressable
+              key={sticker.id}
+              onPress={() => onPickSticker(sticker)}
+              style={[
+                styles.stickerCard,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.stickerCardText,
+                  { color: palette.foreground },
+                ]}>
+                {sticker.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </ToolSheet>
     </ThemedSafeScreen>
   );
 }
@@ -1149,51 +1429,46 @@ function makeStyles(p: ThemePalette) {
     dark: { flex: 1, backgroundColor: p.background },
     white: { color: p.foreground },
     link: { color: p.accent, marginTop: 12 },
-    headerShell: {
-      backgroundColor: p.card,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: p.hairline,
-    },
-    topBar: {
+
+    /* Header */
+    header: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: 12,
-      paddingTop: 8,
-      paddingBottom: 6,
+      paddingTop: 6,
+      paddingBottom: 8,
+      gap: 12,
     },
-    iconButton: {
+    headerIconBtn: {
       width: 38,
       height: 38,
-      borderRadius: 12,
+      borderRadius: 19,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: p.surface,
     },
-    headerCenter: { alignItems: 'center', flex: 1, paddingHorizontal: 10 },
-    eyebrow: { color: p.foregroundSubtle, fontSize: 10, fontWeight: '900' },
-    title: {
+    headerTitle: {
+      flex: 1,
       color: p.foreground,
       fontSize: 17,
       fontWeight: '900',
-      marginTop: 2,
+      textAlign: 'center',
     },
-    modeSegment: { marginHorizontal: 14, marginTop: 4 },
-    nextButton: {
-      minWidth: 58,
+    headerNextBtn: {
+      width: 38,
       height: 38,
-      borderRadius: 12,
-      paddingHorizontal: 13,
+      borderRadius: 19,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: p.accent,
     },
-    next: { fontSize: 14, fontWeight: '900' },
-    scrollContent: { paddingBottom: 18 },
-    previewStage: {
+
+    /* Stage */
+    stage: {
+      flex: 1,
       alignItems: 'center',
-      paddingTop: 14,
-      paddingBottom: 4,
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
       backgroundColor: p.background,
     },
     carouselPage: { alignItems: 'center', justifyContent: 'center' },
@@ -1203,296 +1478,237 @@ function makeStyles(p: ThemePalette) {
       gap: 6,
       marginTop: 10,
     },
-    dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: p.borderMid },
-    dotOn: { backgroundColor: p.foreground, width: 14 },
-    previewWrap: {
-      backgroundColor: p.background,
+    dot: { width: 6, height: 6, borderRadius: 3 },
+    previewFrame: {
+      backgroundColor: '#000',
       borderRadius: 18,
       overflow: 'hidden',
       borderWidth: 1,
       borderColor: p.borderHeavy,
     },
-    timelineCard: {
-      marginHorizontal: 14,
-      marginTop: 10,
+    media: { flex: 1, overflow: 'hidden' },
+    muteButton: {
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      width: 32,
+      height: 32,
       borderRadius: 16,
-      borderWidth: 1,
-      borderColor: p.border,
-      backgroundColor: p.card,
-      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.35)',
+      zIndex: 8,
     },
-    playbackRow: {
+    stagedSticker: {
+      position: 'absolute',
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+      borderRadius: 999,
+    },
+    stagedStickerText: {
+      color: '#fff',
+      fontSize: 12,
+      fontWeight: '800',
+    },
+
+    /* Playback bar */
+    playbackBar: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 14,
-      paddingVertical: 10,
-      gap: 12,
+      paddingVertical: 8,
+      gap: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
     },
     playBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    playbackTime: {
+    iconChip: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    timeText: {
       fontSize: 13,
       fontWeight: '800',
       fontVariant: ['tabular-nums'],
     },
-    layerRow: {
-      flexDirection: 'row',
-      gap: 8,
-      paddingHorizontal: 14,
-      paddingBottom: 14,
+
+    /* Timeline wrap */
+    timelineWrap: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      paddingTop: 4,
     },
-    layerStack: {
-      gap: 8,
-      paddingHorizontal: 14,
-      paddingBottom: 10,
-    },
-    layerChip: {
-      flex: 1,
-      minHeight: 38,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      borderWidth: 1,
-      borderColor: p.border,
-      borderRadius: 12,
-      backgroundColor: p.surface,
-      paddingHorizontal: 10,
-    },
-    layerChipText: {
-      flex: 1,
-      color: p.foregroundMuted,
-      fontSize: 12,
-      fontWeight: '700',
-    },
-    subTrackHint: { paddingHorizontal: 14, gap: 8, marginBottom: 8 },
-    subTrackRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 12,
+
+    /* Tool dock (bottom) */
+    toolDock: {
+      borderTopWidth: StyleSheet.hairlineWidth,
       paddingVertical: 10,
-      borderRadius: 12,
-      borderWidth: 1,
     },
-    subTrackTxt: { fontSize: 12, fontWeight: '600', flex: 1 },
-    subTrackMeter: {
-      width: 110,
-      height: 8,
-      borderRadius: 999,
-      overflow: 'hidden',
-    },
-    subTrackMeterFill: {
-      height: '100%',
-      borderRadius: 999,
-    },
-    media: { flex: 1, overflow: 'hidden' },
-    overlayText: {
-      position: 'absolute',
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    removeOverlay: {
-      marginLeft: 6,
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      backgroundColor: p.overlay,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    tabBar: {
-      flexDirection: 'row',
-      gap: 8,
+    toolRow: {
       paddingHorizontal: 14,
-      paddingVertical: 12,
+      gap: 16,
+      alignItems: 'center',
     },
-    tabItem: {
-      width: 76,
-      minHeight: 56,
-      borderWidth: 1,
+    toolItem: {
+      width: 64,
+      alignItems: 'center',
+      gap: 6,
+    },
+    toolIconWrap: {
+      width: 44,
+      height: 44,
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 5,
+      borderWidth: 1,
     },
-    tabLabel: { color: p.foregroundSubtle, fontSize: 11, fontWeight: '700' },
-    panelStack: { gap: 12, paddingHorizontal: 14 },
-    panelSection: { marginHorizontal: 14 },
-    sectionBodyTight: { padding: 12 },
-    sectionLabel: {
-      color: p.foreground,
-      fontSize: 13,
-      fontWeight: '800',
-      marginTop: 14,
+    toolLabel: {
+      fontSize: 11,
+      fontWeight: '700',
     },
-    hint: {
-      color: p.foregroundSubtle,
-      marginLeft: 14,
-      marginTop: 4,
-      fontSize: 12,
+
+    /* Sheet content shared */
+    hitRow: {
+      gap: 8,
+      paddingRight: 8,
+      alignItems: 'center',
     },
-    filterRow: { gap: 10, paddingRight: 2 },
+
+    /* Filters */
+    filterRow: { gap: 12, paddingRight: 4, paddingTop: 4 },
     filterChip: {
-      width: 72,
+      width: 78,
       alignItems: 'center',
       borderWidth: 2,
       borderColor: 'transparent',
-      borderRadius: 12,
+      borderRadius: 14,
       paddingBottom: 6,
+      paddingTop: 4,
     },
     filterThumb: {
-      width: 64,
-      height: 64,
+      width: 68,
+      height: 68,
       borderRadius: 12,
       overflow: 'hidden',
     },
     filterImg: { width: '100%', height: '100%' },
     filterName: {
-      color: p.foregroundMuted,
-      fontSize: 10,
-      marginTop: 4,
-      fontWeight: '600',
+      fontSize: 11,
+      marginTop: 6,
+      fontWeight: '700',
     },
-    adjustPane: { paddingHorizontal: 14, paddingTop: 8 },
-    adjustRow: { marginBottom: 10 },
-    adjustLabelRow: {
+
+    /* Adjust */
+    adjustChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      marginBottom: 2,
+      gap: 6,
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
     },
-    adjustLabel: {
-      color: p.foregroundMuted,
-      fontSize: 13,
-      fontWeight: '600',
-      flex: 1,
-    },
-    adjustValue: {
-      color: p.foregroundSubtle,
+    adjustChipText: {
       fontSize: 12,
       fontWeight: '700',
-      width: 40,
-      textAlign: 'right',
     },
-    adjustSlider: { height: 32 },
-    cropRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-    cropChip: {
-      paddingHorizontal: 16,
+    adjustSliderWrap: {
+      marginTop: 18,
+      gap: 14,
+    },
+    resetBtn: {
+      alignSelf: 'center',
+      paddingHorizontal: 18,
       paddingVertical: 10,
-      borderRadius: 10,
-      borderWidth: 1,
-      backgroundColor: p.surface,
-    },
-    cropLabel: { color: p.foreground, fontWeight: '800', fontSize: 13 },
-    tools: { flexDirection: 'row', gap: 10 },
-    tool: {
-      flex: 1,
-      minHeight: 72,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
       borderRadius: 12,
       borderWidth: 1,
-      borderColor: p.border,
-      backgroundColor: p.surface,
     },
-    toolTxt: { color: p.foregroundMuted, fontSize: 11, fontWeight: '800' },
-    textSection: { marginBottom: 8 },
+    resetBtnText: { fontSize: 12, fontWeight: '900' },
+
+    /* Crop / Speed */
+    cropRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      paddingTop: 4,
+    },
+    cropChip: {
+      paddingHorizontal: 18,
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    cropLabel: { fontWeight: '800', fontSize: 13 },
+
+    /* Audio */
+    audioRow: { gap: 10, paddingRight: 4, paddingTop: 4 },
+    audioCard: {
+      width: 130,
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      gap: 4,
+    },
+    audioTitle: { fontSize: 13, fontWeight: '800', marginTop: 6 },
+    audioArtist: { fontSize: 11 },
+
+    /* Text */
     textBox: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: p.input,
-      borderRadius: 12,
+      borderRadius: 14,
       paddingHorizontal: 12,
+      paddingVertical: 6,
       gap: 10,
       borderWidth: 1,
-      borderColor: p.border,
     },
-    textInput: { flex: 1, paddingVertical: 12 },
+    textInput: { flex: 1, paddingVertical: 12, fontSize: 15 },
     addTextBtn: {
-      minWidth: 58,
-      alignItems: 'center',
-      justifyContent: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
       borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 9,
-      backgroundColor: p.accent,
     },
-    colorRow: { gap: 10, marginTop: 8 },
+    miniLabel: {
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 0.4,
+      marginTop: 14,
+      marginBottom: 6,
+    },
+    colorRow: { gap: 10 },
     colorDot: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       borderWidth: 1,
       borderColor: p.surfaceHigh,
     },
-    speedRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-    speedChip: {
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 8,
-      borderWidth: 1,
-      backgroundColor: p.surface,
-    },
-    speedTxt: { color: p.foreground, fontWeight: '800' },
-    audioRow: { gap: 10 },
-    audioCard: {
-      width: 120,
-      padding: 10,
-      borderRadius: 12,
-      backgroundColor: p.surface,
-      borderWidth: 1,
-      borderColor: p.border,
-    },
-    audioTitle: {
-      color: p.foreground,
-      fontSize: 12,
-      fontWeight: '800',
-      marginTop: 6,
-    },
-    audioArtist: { color: p.foregroundSubtle, fontSize: 10, marginTop: 2 },
-    footerBar: {
+
+    /* Stickers */
+    stickerGrid: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 10,
+      paddingTop: 4,
+    },
+    stickerCard: {
       paddingHorizontal: 14,
-      paddingTop: 10,
-      paddingBottom: 12,
-      backgroundColor: p.card,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: p.hairline,
-    },
-    secondaryButton: {
-      flex: 1,
-      minHeight: 48,
-      borderRadius: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
+      paddingVertical: 12,
+      borderRadius: 12,
       borderWidth: 1,
-      borderColor: p.border,
-      backgroundColor: p.surface,
     },
-    secondaryButtonText: {
-      color: p.foregroundMuted,
+    stickerCardText: {
       fontSize: 14,
-      fontWeight: '900',
-    },
-    primaryButton: {
-      flex: 2,
-      minHeight: 48,
-      borderRadius: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: p.accent,
-    },
-    primaryButtonText: {
-      color: p.accentForeground,
-      fontSize: 15,
-      fontWeight: '900',
+      fontWeight: '800',
     },
   });
 }

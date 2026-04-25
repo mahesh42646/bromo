@@ -47,6 +47,7 @@ export function AddProductScreen() {
   const [category, setCategory] = useState('');
   const [inStock, setInStock] = useState(true);
   const [tags, setTags] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -82,6 +83,7 @@ export function AddProductScreen() {
         inStock,
         tags: tags.trim() || undefined,
         photoUris,
+        videoUrl: videoUrl.trim() || undefined,
       });
       Alert.alert('Product Added!', `"${name}" is now in your store.`, [
         {text: 'Add Another', onPress: () => navigation.replace('AddProduct', {storeId})},
@@ -92,7 +94,7 @@ export function AddProductScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [name, description, price, originalPrice, category, inStock, tags, photoUris, storeId, navigation]);
+  }, [name, description, price, originalPrice, category, inStock, tags, photoUris, videoUrl, storeId, navigation]);
 
   return (
     <ThemedSafeScreen>
@@ -213,6 +215,16 @@ export function AddProductScreen() {
             onChangeText={setTags}
             placeholder="e.g. casual, summer, unisex"
             placeholderTextColor={palette.placeholder}
+            style={[s.input, {color: palette.foreground, borderColor: palette.border, backgroundColor: palette.glassFaint}]}
+          />
+
+          <FieldLabel label="Product Video URL (optional)" palette={palette} />
+          <TextInput
+            value={videoUrl}
+            onChangeText={setVideoUrl}
+            placeholder="https://... (YouTube, Instagram, etc.)"
+            placeholderTextColor={palette.placeholder}
+            autoCapitalize="none"
             style={[s.input, {color: palette.foreground, borderColor: palette.border, backgroundColor: palette.glassFaint}]}
           />
 

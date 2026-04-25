@@ -283,7 +283,12 @@ export function StorePublicProfileScreen() {
           ) : (
             <View style={s.productGrid}>
               {filtered.map(product => (
-                <ProductViewCard key={product._id} product={product} palette={palette} />
+                <ProductViewCard
+                  key={product._id}
+                  product={product}
+                  palette={palette}
+                  onPress={() => navigation.navigate('StoreProductDetail', {storeId: store._id, productId: product._id})}
+                />
               ))}
             </View>
           )}
@@ -298,16 +303,18 @@ export function StorePublicProfileScreen() {
 function ProductViewCard({
   product,
   palette,
+  onPress,
 }: {
   product: StoreProduct;
   palette: ReturnType<typeof useTheme>['palette'];
+  onPress: () => void;
 }) {
   const thumb = product.photos?.[0];
   const hasDiscount = product.originalPrice && product.originalPrice > product.price;
   const discountPct = hasDiscount ? Math.round(((product.originalPrice! - product.price) / product.originalPrice!) * 100) : 0;
 
   return (
-    <View style={[s.productCard, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+    <Pressable onPress={onPress} style={[s.productCard, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
       <View style={[s.productThumb, {backgroundColor: palette.glassMid}]}>
         {thumb ? (
           <Image source={{uri: thumb}} style={s.productThumbImg} resizeMode="cover" />
@@ -324,6 +331,11 @@ function ProductViewCard({
             <Text style={{color: '#fff', fontSize: 10, fontWeight: '700'}}>Out of Stock</Text>
           </View>
         )}
+        {product.videoUrl?.trim() ? (
+          <View style={[s.discountBadge, {backgroundColor: 'rgba(0,0,0,0.75)', top: 30}]}>
+            <Text style={{color: '#fff', fontSize: 9, fontWeight: '900'}}>VIDEO</Text>
+          </View>
+        ) : null}
       </View>
       <View style={s.productInfo}>
         <Text style={[s.productName, {color: palette.foreground}]} numberOfLines={2}>{product.name}</Text>
@@ -334,7 +346,7 @@ function ProductViewCard({
           )}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

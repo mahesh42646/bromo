@@ -474,7 +474,19 @@ storeRouter.post(
       const existing = await Store.findOne({ owner: req.dbUser!._id });
       if (existing) return res.status(409).json({ message: "You already have a store" });
 
-      const { name, phone, city, address, lat, lng, hasDelivery, category, description } = req.body as Record<string, string>;
+      const {
+        name,
+        phone,
+        city,
+        address,
+        lat,
+        lng,
+        hasDelivery,
+        category,
+        description,
+        removeProfilePhoto,
+        removeBannerImage,
+      } = req.body as Record<string, string>;
 
       if (!name || !phone || !city || !address || !lat || !lng || !category) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -529,7 +541,19 @@ storeRouter.put(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const { name, phone, city, address, lat, lng, hasDelivery, category, description } = req.body as Record<string, string>;
+      const {
+        name,
+        phone,
+        city,
+        address,
+        lat,
+        lng,
+        hasDelivery,
+        category,
+        description,
+        removeProfilePhoto,
+        removeBannerImage,
+      } = req.body as Record<string, string>;
       const files = req.files as Record<string, Express.Multer.File[]>;
 
       if (name) store.name = name.trim();
@@ -542,6 +566,8 @@ storeRouter.put(
       if (hasDelivery !== undefined) store.hasDelivery = hasDelivery === "true";
       if (category) store.category = category as never;
       if (description !== undefined) store.description = description.trim();
+      if (removeProfilePhoto === "true") store.profilePhoto = "";
+      if (removeBannerImage === "true") store.bannerImage = "";
       if (files?.profilePhoto?.[0]) store.profilePhoto = fileToUrl(files.profilePhoto[0]);
       if (files?.bannerImage?.[0]) store.bannerImage = fileToUrl(files.bannerImage[0]);
 
@@ -585,7 +611,7 @@ storeRouter.post(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const { name, description, price, originalPrice, category, inStock, tags } = req.body as Record<string, string>;
+      const { name, description, price, originalPrice, category, inStock, tags, videoUrl } = req.body as Record<string, string>;
       if (!name || !price || !category) {
         return res.status(400).json({ message: "name, price, category required" });
       }
@@ -602,6 +628,7 @@ storeRouter.post(
         category: category.trim(),
         inStock: inStock !== "false",
         photos,
+        videoUrl: (videoUrl ?? "").trim(),
         tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
       });
 
@@ -630,7 +657,7 @@ storeRouter.put(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const { name, description, price, originalPrice, category, inStock, tags } = req.body as Record<string, string>;
+      const { name, description, price, originalPrice, category, inStock, tags, videoUrl, replacePhotos } = req.body as Record<string, string>;
       if (name) product.name = name.trim();
       if (description !== undefined) product.description = description.trim();
       if (price) product.price = parseFloat(price);
@@ -638,9 +665,11 @@ storeRouter.put(
       if (category) product.category = category.trim();
       if (inStock !== undefined) product.inStock = inStock !== "false";
       if (tags) product.tags = tags.split(",").map((t) => t.trim()).filter(Boolean);
+      if (videoUrl !== undefined) product.videoUrl = videoUrl.trim();
 
       const newPhotos = (req.files as Express.Multer.File[])?.map(fileToUrl) ?? [];
-      if (newPhotos.length > 0) product.photos = newPhotos;
+      if (replacePhotos === "true") product.photos = newPhotos;
+      else if (newPhotos.length > 0) product.photos = newPhotos;
 
       await product.save();
       res.json({ product });

@@ -1,4 +1,4 @@
-import React, {createContext, useCallback, useContext, useMemo, useState} from 'react';
+import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import type {
   AdvancedPostOptions,
   AdjustmentState,
@@ -123,14 +123,25 @@ type Ctx = {
   reset: () => void;
   /** Replace editor state (e.g. resume cloud draft). */
   replaceDraft: (next: CreateDraftState) => void;
+  /** Full-screen gate on CreateHub while library/camera hands off to MediaEditor (cleared when preview is ready). */
+  mediaImportOverlay: boolean;
+  beginMediaImportOverlay: () => void;
+  endMediaImportOverlay: () => void;
 };
 
 const CreateDraftContext = createContext<Ctx | null>(null);
 
 export function CreateDraftProvider({children}: {children: React.ReactNode}) {
   const [draft, setDraft] = useState<Draft>(initialDraft);
+  const [mediaImportOverlay, setMediaImportOverlay] = useState(false);
 
-  const reset = useCallback(() => setDraft(initialDraft), []);
+  const beginMediaImportOverlay = useCallback(() => setMediaImportOverlay(true), []);
+  const endMediaImportOverlay = useCallback(() => setMediaImportOverlay(false), []);
+
+  const reset = useCallback(() => {
+    setMediaImportOverlay(false);
+    setDraft(initialDraft);
+  }, []);
 
   const replaceDraft = useCallback((next: CreateDraftState) => {
     setDraft({
@@ -331,6 +342,12 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
     setDraft(d => ({...d, feedCategoryManual: s}));
   }, []);
 
+  useEffect(() => {
+    if (!mediaImportOverlay) return;
+    const t = setTimeout(() => setMediaImportOverlay(false), 120_000);
+    return () => clearTimeout(t);
+  }, [mediaImportOverlay]);
+
   const value = useMemo<Ctx>(
     () => ({
       draft,
@@ -366,9 +383,12 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
       setFeedCategoryManual,
       reset,
       replaceDraft,
+      mediaImportOverlay,
+      beginMediaImportOverlay,
+      endMediaImportOverlay,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [draft],
+    [draft, mediaImportOverlay, beginMediaImportOverlay, endMediaImportOverlay],
   );
 
   return <CreateDraftContext.Provider value={value}>{children}</CreateDraftContext.Provider>;

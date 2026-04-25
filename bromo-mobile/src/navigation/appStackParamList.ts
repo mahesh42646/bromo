@@ -65,6 +65,7 @@ export type AppStackParamList = {
   CreateStore: undefined;
   ManageStore: undefined;
   StorePublicProfile: {storeId: string};
+  StoreProductDetail: {storeId: string; productId: string};
   AllStores: undefined;
   AddProduct: {storeId: string};
 

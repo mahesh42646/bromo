@@ -7,6 +7,7 @@ export type NotificationType =
   | 'follow_request'
   | 'follow_accept'
   | 'mention'
+  | 'new_post'
   | 'message'
   | 'milestone';
 

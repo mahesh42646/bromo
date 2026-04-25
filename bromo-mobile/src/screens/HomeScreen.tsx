@@ -408,20 +408,19 @@ const PostCard = React.memo(function PostCard({
             <View style={{ alignItems: 'center', paddingBottom: 8 }}>
               <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: palette.border }} />
             </View>
-            {menuRows.map(item => (
-              <Pressable
-                key={item.label}
-                onPress={item.onPress}
-                style={({ pressed }) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 14,
-                  paddingVertical: 14, paddingHorizontal: 18,
-                  backgroundColor: pressed ? `${palette.foreground}0f` : 'transparent',
-                })}>
+            {menuRows.map((item, idx) => (
+            <View style={{  flexDirection: 'row', alignItems: 'center', gap: 14,
+              paddingVertical: 14, paddingHorizontal: 18,
+              }}>
+                <Pressable
+                key={`${item.label}-${idx}`}
+                onPress={item.onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                 {item.icon}
                 <ThemedText variant="body" style={{ fontSize: 15, fontWeight: '500', color: item.danger ? palette.destructive : palette.foreground }}>
                   {item.label}
                 </ThemedText>
               </Pressable>
+            </View>
             ))}
           </Pressable>
         </Pressable>
@@ -1107,7 +1106,10 @@ export function HomeScreen() {
       lng: userLng,
       maxDistance: 3000,
     })
-      .then(res => setTopVisitedStores(res.stores.slice(0, MAX_TOP_VISITED_STORES)))
+      .then(res => {
+        const deduped = Array.from(new Map(res.stores.map(store => [store._id, store])).values());
+        setTopVisitedStores(deduped.slice(0, MAX_TOP_VISITED_STORES));
+      })
       .catch(() => setTopVisitedStores([]));
   }, [activeCategory, userLat, userLng]);
 
@@ -1701,12 +1703,12 @@ export function HomeScreen() {
                   )}
 
                   {/* Following stories */}
-                  {storyTrayEntries.map(({ group, ringUriResolved, allSeen }) => (
+                  {storyTrayEntries.map(({ group, ringUriResolved, allSeen }, storyIndex) => (
                     <Pressable
                       key={
                         group.isPromoted && group.promotionId
-                          ? `story-promo-${group.promotionId}`
-                          : `story-${group.author._id}`
+                          ? `story-promo-${group.promotionId}-${storyIndex}`
+                          : `story-${group.author._id}-${storyIndex}`
                       }
                       style={{ alignItems: 'center', gap: 5 }}
                       onPress={() => parentNavigate(navigation, 'StoryView', { userId: group.author._id })}>
@@ -1761,9 +1763,9 @@ export function HomeScreen() {
                     contentContainerStyle={{
                       paddingHorizontal: 14, gap: 12,
                     }}>
-                    {topVisitedStores.map(store => (
-                     
-                     <View
+                    {topVisitedStores.map((store, storeIndex) => (
+                      <View
+                        key={`${store._id}-${storeIndex}`}
                        style={{
                           width: '50%',
                           marginTop: 0,
@@ -1774,7 +1776,6 @@ export function HomeScreen() {
                           backgroundColor: palette.surface,
                         }}
                         ><StoreDiscoverHomeCard
-                        key={store._id}
                         store={store}
                         palette={palette}
                         liked={likedStoreIds[store._id] ?? Boolean(store.isFavorited)}
@@ -1816,14 +1817,14 @@ export function HomeScreen() {
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ paddingHorizontal: 14, gap: 10 }}>
-                    {trendingReels.map(reel => {
+                    {trendingReels.map((reel, reelIndex) => {
                       const thumb = postThumbnailUri(reel);
                       const rawVideoUrl = reel.mediaType === 'video' ? resolveVideoUrl(reel) : '';
                       const reelVideoUri = rawVideoUrl ? resolveMediaUrl(rawVideoUrl) || rawVideoUrl : '';
                       const showVideoPreview = reel.mediaType === 'video' && (!thumb || thumb === reelVideoUri);
                       return (
                         <Pressable
-                          key={reel._id}
+                          key={`${reel._id}-${reelIndex}`}
                           onPress={() => {
                             recordView(reel._id, 0).catch(() => null);
                             parentNavigate(navigation, 'Reels', { initialPostId: reel._id });
@@ -1894,9 +1895,9 @@ export function HomeScreen() {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ paddingHorizontal: 14, gap: 12, paddingBottom: 14 }}
                     style={{ paddingTop: 6 }}>
-                    {suggestions.map(s => (
+                    {suggestions.map((s, suggestionIndex) => (
                       <SuggestionCard
-                        key={s._id}
+                        key={`${s._id}-${suggestionIndex}`}
                         user={s}
                         onFollowToggle={() => { }}
                         navigation={navigation}

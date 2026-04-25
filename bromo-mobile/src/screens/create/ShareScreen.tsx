@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +26,7 @@ import {
   Calendar,
   Check,
   ChevronLeft,
+  ChevronRight,
   Download,
   EyeOff,
   Globe,
@@ -34,12 +35,16 @@ import {
   MapPin,
   MessageCircle,
   MessageCircleOff,
+  Music2,
   Save,
   Search,
   Send,
   Share2,
   ShoppingBag,
+  Sparkles,
+  Tag,
   Trash2,
+  Type,
   Users,
   X,
 } from 'lucide-react-native';
@@ -69,11 +74,7 @@ import {createDraft} from '../../api/draftsApi';
 import {searchUsers, type SuggestedUser} from '../../api/followApi';
 import {listProducts, type AffiliateProduct} from '../../api/productsApi';
 import {searchPlaces, type PlaceItem} from '../../api/placesApi';
-import {
-  CreateModeSegment,
-  StudioProgress,
-  StudioSection,
-} from './CreateStudioUI';
+import type {ThemePalette} from '../../config/platform-theme';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'ShareFinal'>;
 
@@ -86,6 +87,27 @@ const FEED_CATEGORY_CHIPS: Array<{
   {preset: 'sports', label: 'Sports'},
   {preset: 'shopping', label: 'Shopping'},
   {preset: 'tech', label: 'Tech'},
+];
+
+type SheetKey =
+  | 'location'
+  | 'people'
+  | 'products'
+  | 'music'
+  | 'poll'
+  | 'visibility'
+  | 'category'
+  | 'advanced'
+  | 'story'
+  | 'preview';
+
+const AUDIO_CATALOG_FALLBACK = [
+  {id: 'a1', title: 'Original audio', artist: 'BROMO Sound'},
+  {id: 'a2', title: 'City Nights', artist: 'Lo-Fi Pack'},
+  {id: 'a3', title: 'Drill Beat', artist: 'Trending'},
+  {id: 'a4', title: 'Acoustic Warm', artist: 'UGC Lite'},
+  {id: 'a5', title: 'Trap Vibes', artist: 'Hip Hop'},
+  {id: 'a6', title: 'Chill Wave', artist: 'Ambient'},
 ];
 
 function slugFeedCategory(manual: string, preset: string): string {
@@ -173,108 +195,300 @@ function buildScheduledIso(dateInput: string, timeInput: string): string | null 
   return next.toISOString();
 }
 
-function previewAspect(mode: CreateDraftState['mode'], crop: string): number {
+function previewAspect(
+  mode: CreateDraftState['mode'],
+  crop: string,
+  natural: number | null,
+): number {
   if (crop === '1:1') return 1;
   if (crop === '4:5') return 4 / 5;
   if (crop === '16:9') return 16 / 9;
   if (crop === '9:16') return 9 / 16;
+  if (natural && natural > 0) return natural;
   if (mode === 'reel' || mode === 'story') return 9 / 16;
   if (mode === 'post') return 1;
   return 1;
 }
 
-function makeStyles() {
+/** Generic Instagram-style bottom sheet. */
+function ActionSheet({
+  visible,
+  title,
+  subtitle,
+  onClose,
+  palette,
+  children,
+  height = 460,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  palette: ThemePalette;
+  children: React.ReactNode;
+  height?: number;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}>
+      <View style={sheetStyles.root}>
+        <Pressable style={sheetStyles.backdrop} onPress={onClose} />
+        <View
+          style={[
+            sheetStyles.sheet,
+            {
+              backgroundColor: palette.card,
+              borderTopColor: palette.hairline,
+              maxHeight: '90%',
+              minHeight: height,
+            },
+          ]}>
+          <View
+            style={[
+              sheetStyles.handle,
+              {backgroundColor: palette.borderHeavy},
+            ]}
+          />
+          <View style={sheetStyles.headerRow}>
+            <View style={{flex: 1}}>
+              <Text style={[sheetStyles.title, {color: palette.foreground}]}>
+                {title}
+              </Text>
+              {subtitle ? (
+                <Text
+                  style={[
+                    sheetStyles.subtitle,
+                    {color: palette.foregroundSubtle},
+                  ]}>
+                  {subtitle}
+                </Text>
+              ) : null}
+            </View>
+            <Pressable
+              onPress={onClose}
+              style={[
+                sheetStyles.closeBtn,
+                {backgroundColor: palette.surface},
+              ]}
+              hitSlop={10}>
+              <X size={18} color={palette.foregroundMuted} />
+            </Pressable>
+          </View>
+          <View style={sheetStyles.body}>{children}</View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const sheetStyles = StyleSheet.create({
+  root: {flex: 1},
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 24,
+  },
+  handle: {
+    alignSelf: 'center',
+    marginTop: 8,
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  title: {fontSize: 16, fontWeight: '900'},
+  subtitle: {fontSize: 12, fontWeight: '600', marginTop: 2},
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  body: {flex: 1, paddingHorizontal: 18, paddingTop: 6},
+});
+
+function makeStyles(p: ThemePalette) {
   return StyleSheet.create({
-    root: {flex: 1},
-    headerShell: {
-      borderBottomWidth: StyleSheet.hairlineWidth,
-    },
+    root: {flex: 1, backgroundColor: p.background},
+
+    /* Header */
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: 12,
-      paddingTop: 8,
-      paddingBottom: 6,
+      paddingTop: 6,
+      paddingBottom: 8,
+      gap: 10,
+      backgroundColor: p.background,
     },
-    iconButton: {
+    headerIconBtn: {
       width: 38,
       height: 38,
-      borderRadius: 12,
+      borderRadius: 19,
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: p.surface,
     },
-    headerCenter: {flex: 1, alignItems: 'center', paddingHorizontal: 10},
-    eyebrow: {fontSize: 10, fontWeight: '900'},
-    headerTitle: {fontSize: 17, fontWeight: '900', marginTop: 2},
-    stepPill: {
-      minWidth: 44,
-      height: 38,
-      borderRadius: 12,
-      borderWidth: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    stepPillText: {fontSize: 12, fontWeight: '900'},
-    modeSegment: {marginHorizontal: 14, marginTop: 4},
-    body: {
-      gap: 12,
-      paddingHorizontal: 14,
-      paddingTop: 14,
-      paddingBottom: 18,
-    },
-    preview: {
-      width: '100%',
-      borderRadius: 18,
-      overflow: 'hidden',
-    },
-    media: {...StyleSheet.absoluteFillObject},
-    textOverlay: {position: 'absolute'},
-    sticker: {
-      position: 'absolute',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 5,
-      paddingHorizontal: 8,
-      paddingVertical: 5,
-      borderRadius: 8,
-    },
-    stickerTxt: {fontSize: 11, fontWeight: '800'},
-    pollOverlay: {
-      position: 'absolute',
-      left: 14,
-      right: 14,
-      bottom: 14,
-      borderRadius: 14,
-      padding: 12,
-      gap: 8,
-    },
-    pollQuestion: {fontSize: 12, fontWeight: '900'},
-    pollOption: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: 10,
-      paddingVertical: 9,
-      borderRadius: 10,
-    },
-    pollOptionTxt: {flex: 1, fontSize: 11, fontWeight: '800'},
-    captionBox: {
-      flexDirection: 'row',
-      padding: 12,
-      borderRadius: 12,
-      borderWidth: 1,
-      gap: 12,
-      alignItems: 'flex-start',
-    },
-    thumbImg: {width: 64, height: 64, borderRadius: 10},
-    captionInline: {
+    headerTitle: {
       flex: 1,
-      fontSize: 15,
-      minHeight: 82,
-      textAlignVertical: 'top',
-      padding: 0,
+      color: p.foreground,
+      fontSize: 17,
+      fontWeight: '900',
+      textAlign: 'center',
     },
+    shareBtn: {
+      paddingHorizontal: 16,
+      height: 38,
+      minWidth: 76,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: p.accent,
+    },
+    shareBtnText: {color: p.accentForeground, fontSize: 14, fontWeight: '900'},
+
+    /* Body scroll */
+    body: {flex: 1},
+    bodyContent: {paddingBottom: 24},
+
+    /* Compose row */
+    composeRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 14,
+      paddingTop: 12,
+      paddingBottom: 14,
+      gap: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: p.hairline,
+    },
+    composeThumbWrap: {
+      width: 64,
+      borderRadius: 8,
+      overflow: 'hidden',
+      backgroundColor: p.surface,
+    },
+    composeThumb: {width: '100%', height: '100%'},
+    composeInputWrap: {
+      flex: 1,
+      paddingTop: 2,
+    },
+    captionInput: {
+      color: p.foreground,
+      fontSize: 15,
+      paddingVertical: 4,
+      minHeight: 56,
+      textAlignVertical: 'top',
+    },
+    composeMetaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 6,
+      gap: 10,
+    },
+    composeMetaText: {
+      fontSize: 11,
+      color: p.foregroundSubtle,
+      fontWeight: '700',
+    },
+
+    /* Action list rows */
+    actionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      minHeight: 52,
+      gap: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: p.hairline,
+    },
+    actionRowIcon: {
+      width: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    actionRowLabel: {
+      flex: 1,
+      color: p.foreground,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    actionRowValue: {
+      fontSize: 13,
+      color: p.foregroundMuted,
+      fontWeight: '700',
+      maxWidth: 160,
+    },
+    sectionHeader: {
+      paddingHorizontal: 16,
+      paddingTop: 18,
+      paddingBottom: 6,
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 0.6,
+      color: p.foregroundSubtle,
+    },
+
+    /* Footer / bottom CTA */
+    footerBar: {
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: p.hairline,
+      backgroundColor: p.card,
+      gap: 10,
+    },
+    footerActionRow: {flexDirection: 'row', gap: 10},
+    footerSmallBtn: {
+      flex: 1,
+      minHeight: 42,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: p.border,
+      backgroundColor: p.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      flexDirection: 'row',
+    },
+    footerSmallText: {color: p.foreground, fontSize: 12, fontWeight: '900'},
+    primaryShareBtn: {
+      minHeight: 50,
+      borderRadius: 14,
+      backgroundColor: p.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+    },
+    primaryShareText: {
+      color: p.accentForeground,
+      fontSize: 15,
+      fontWeight: '900',
+    },
+
+    /* Sheet helpers */
     searchBox: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -283,14 +497,18 @@ function makeStyles() {
       paddingHorizontal: 12,
       borderRadius: 12,
       borderWidth: 1,
+      borderColor: p.border,
+      backgroundColor: p.input,
+      marginBottom: 10,
     },
     searchInput: {
       flex: 1,
       paddingVertical: 8,
       fontSize: 14,
+      color: p.foreground,
     },
     chipRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
-    selectedChip: {
+    chipSelected: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
@@ -298,21 +516,44 @@ function makeStyles() {
       paddingVertical: 8,
       borderRadius: 999,
       borderWidth: 1,
+      borderColor: p.accent,
+      backgroundColor: `${p.accent}1f`,
     },
-    selectedChipText: {fontSize: 12, fontWeight: '700', maxWidth: 180},
-    hitRow: {gap: 8, paddingRight: 2},
-    hitChip: {
-      minWidth: 96,
-      maxWidth: 164,
-      paddingHorizontal: 10,
-      paddingVertical: 10,
-      borderRadius: 12,
-      borderWidth: 1,
+    chipSelectedText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: p.accent,
+      maxWidth: 180,
     },
-    hitChipTitle: {fontSize: 12, fontWeight: '800'},
-    hitChipMeta: {fontSize: 11, marginTop: 3},
-    sectionLabel: {fontSize: 12, fontWeight: '900'},
-    pollStack: {gap: 10},
+    sheetItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: p.hairline,
+    },
+    sheetItemTitle: {
+      flex: 1,
+      color: p.foreground,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    sheetItemMeta: {
+      color: p.foregroundMuted,
+      fontSize: 12,
+      fontWeight: '600',
+      marginTop: 2,
+    },
+    sheetEmpty: {
+      color: p.foregroundSubtle,
+      fontSize: 13,
+      paddingVertical: 16,
+      textAlign: 'center',
+    },
+
+    /* Poll sheet */
     pollInput: {
       minHeight: 44,
       borderRadius: 12,
@@ -320,57 +561,51 @@ function makeStyles() {
       paddingHorizontal: 12,
       paddingVertical: 10,
       fontSize: 14,
+      borderColor: p.border,
+      backgroundColor: p.input,
+      color: p.foreground,
     },
-    pollOptionRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    addOptionBtn: {
+    pollAddBtn: {
       minHeight: 42,
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
+      borderColor: p.border,
+      backgroundColor: p.surface,
     },
-    toggleRow: {
+    pollAddBtnText: {color: p.foreground, fontWeight: '800', fontSize: 12},
+
+    /* Visibility / advanced */
+    optionRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+      gap: 12,
       paddingHorizontal: 12,
-      paddingVertical: 12,
+      paddingVertical: 14,
       borderRadius: 12,
-    },
-    toggleLabel: {flex: 1, fontSize: 14, fontWeight: '700'},
-    footerBar: {
-      paddingHorizontal: 14,
-      paddingTop: 10,
-      paddingBottom: 12,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      gap: 10,
-    },
-    footerActionRow: {flexDirection: 'row', gap: 10},
-    footerButton: {
-      flex: 1,
-      minHeight: 46,
-      borderRadius: 14,
       borderWidth: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      flexDirection: 'row',
-      paddingHorizontal: 10,
+      borderColor: p.border,
+      backgroundColor: p.surface,
     },
-    footerPrimary: {
-      minHeight: 50,
-      borderRadius: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
-      gap: 8,
+    optionLabel: {
+      flex: 1,
+      color: p.foreground,
+      fontSize: 14,
+      fontWeight: '700',
     },
-    footerButtonText: {fontSize: 12, fontWeight: '900'},
-    footerPrimaryText: {fontSize: 15, fontWeight: '900'},
+
+    /* Category chips */
+    categoryRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
+    categoryChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+    categoryChipText: {fontSize: 12, fontWeight: '800'},
+
+    /* Schedule modal */
     modalBackdrop: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.65)',
@@ -385,9 +620,11 @@ function makeStyles() {
       padding: 18,
       gap: 12,
       borderWidth: 1,
+      backgroundColor: p.card,
+      borderColor: p.border,
     },
-    modalTitle: {fontSize: 17, fontWeight: '900'},
-    modalSubtitle: {fontSize: 13, lineHeight: 19},
+    modalTitle: {fontSize: 17, fontWeight: '900', color: p.foreground},
+    modalSubtitle: {fontSize: 13, lineHeight: 19, color: p.foregroundMuted},
     modalRow: {flexDirection: 'row', gap: 10},
     modalInput: {
       flex: 1,
@@ -396,12 +633,13 @@ function makeStyles() {
       borderWidth: 1,
       paddingHorizontal: 12,
       fontSize: 14,
+      backgroundColor: p.input,
+      borderColor: p.border,
+      color: p.foreground,
     },
-    modalActions: {
-      flexDirection: 'row',
-      gap: 10,
-      marginTop: 4,
-    },
+    modalActions: {flexDirection: 'row', gap: 10, marginTop: 4},
+
+    /* Loader */
     loaderBackdrop: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.56)',
@@ -416,51 +654,38 @@ function makeStyles() {
       fontWeight: '700',
       marginTop: 6,
     },
-  });
-}
 
-function ToggleRow({
-  icon,
-  label,
-  value,
-  onToggle,
-  colors,
-  styles,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: boolean;
-  onToggle: (value: boolean) => void;
-  colors: {
-    surface: string;
-    foreground: string;
-  };
-  styles: ReturnType<typeof makeStyles>;
-}) {
-  return (
-    <View style={[styles.toggleRow, {backgroundColor: colors.surface}]}>
-      {icon}
-      <Text style={[styles.toggleLabel, {color: colors.foreground}]}>{label}</Text>
-      <Switch value={value} onValueChange={onToggle} />
-    </View>
-  );
+    /* Preview sheet */
+    previewSheetWrap: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: 4,
+    },
+    previewSheetBox: {
+      borderRadius: 18,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: p.borderHeavy,
+      backgroundColor: '#000',
+    },
+  });
 }
 
 export function ShareScreen() {
   const navigation = useNavigation<Nav>();
   const {width: viewportW} = useWindowDimensions();
   const {palette} = useTheme();
-  const styles = makeStyles();
+  const styles = makeStyles(palette);
   const {
     draft,
     reset,
-    setMode,
     setCaption,
     setHashtags,
     setTagged,
     setLocation,
     setProducts,
     setPoll,
+    setSelectedAudio,
     setVisibility,
     setAdvanced,
     setFeedCategoryPreset,
@@ -478,8 +703,6 @@ export function ShareScreen() {
   const asset = draft.assets[draft.activeAssetIndex] ?? draft.assets[0];
   const rotation = draft.rotationByAsset[draft.activeAssetIndex] ?? 0;
   const crop = draft.cropByAsset[draft.activeAssetIndex] ?? 'original';
-  const aspect = previewAspect(draft.mode, crop);
-  const previewHeight = Math.min(Math.max(320, (viewportW - 28) / aspect), 560);
   const filter = (draft.filterByAsset[draft.activeAssetIndex] ?? 'normal') as FilterId;
   const filterStacks = FILTER_LAYER_STACKS[filter];
   const adjustments =
@@ -489,6 +712,8 @@ export function ShareScreen() {
   const satOv = saturationOverlayStyle(adjustments);
   const vigOv = vignetteOverlayStyle(adjustments);
 
+  const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
+  const [activeSheet, setActiveSheet] = useState<SheetKey | null>(null);
   const [captionLocal, setCaptionLocal] = useState(draft.caption);
   const [locationQuery, setLocationQuery] = useState('');
   const [locationHits, setLocationHits] = useState<PlaceItem[]>([]);
@@ -502,6 +727,14 @@ export function ShareScreen() {
   const [scheduleDraft, setScheduleDraft] = useState(() =>
     toDateInputs(draft.advanced.scheduledAt),
   );
+  const [pollLocal, setPollLocal] = useState(() => ({
+    question: draft.poll.question,
+    options:
+      draft.poll.options.length >= 2
+        ? [...draft.poll.options]
+        : ['Yes', 'No'],
+    enabled: draft.poll.enabled,
+  }));
 
   useEffect(() => {
     setCaptionLocal(draft.caption);
@@ -512,31 +745,43 @@ export function ShareScreen() {
   }, [draft.advanced.scheduledAt]);
 
   useEffect(() => {
-    const timers = debounceRefs.current;
-    if (timers.location) {
-      clearTimeout(timers.location);
+    if (!asset) return;
+    setNaturalAspect(null);
+    if (asset.type === 'image') {
+      Image.getSize(
+        asset.uri,
+        (w, h) => {
+          if (w > 0 && h > 0) setNaturalAspect(w / h);
+        },
+        () => setNaturalAspect(null),
+      );
     }
+  }, [asset?.uri, asset?.type]);
+
+  useEffect(() => {
+    const timers = debounceRefs.current;
+    if (timers.location) clearTimeout(timers.location);
     timers.location = setTimeout(async () => {
       const query = locationQuery.trim();
       if (!query) {
         setLocationHits([]);
         return;
       }
-      const {items} = await searchPlaces(query);
-      setLocationHits(items);
+      try {
+        const {items} = await searchPlaces(query);
+        setLocationHits(items);
+      } catch {
+        setLocationHits([]);
+      }
     }, 260);
     return () => {
-      if (timers.location) {
-        clearTimeout(timers.location);
-      }
+      if (timers.location) clearTimeout(timers.location);
     };
   }, [locationQuery]);
 
   useEffect(() => {
     const timers = debounceRefs.current;
-    if (timers.people) {
-      clearTimeout(timers.people);
-    }
+    if (timers.people) clearTimeout(timers.people);
     timers.people = setTimeout(async () => {
       const query = peopleQuery.trim();
       if (!query) {
@@ -545,36 +790,34 @@ export function ShareScreen() {
       }
       try {
         const {users} = await searchUsers(query);
-        setPeopleHits(users.slice(0, 8));
+        setPeopleHits(users.slice(0, 12));
       } catch {
         setPeopleHits([]);
       }
     }, 260);
     return () => {
-      if (timers.people) {
-        clearTimeout(timers.people);
-      }
+      if (timers.people) clearTimeout(timers.people);
     };
   }, [peopleQuery]);
 
   useEffect(() => {
     const timers = debounceRefs.current;
-    if (timers.product) {
-      clearTimeout(timers.product);
-    }
+    if (timers.product) clearTimeout(timers.product);
     timers.product = setTimeout(async () => {
       const query = productQuery.trim();
       if (!query) {
         setProductHits([]);
         return;
       }
-      const {items} = await listProducts(query, undefined, 10);
-      setProductHits(items);
+      try {
+        const {items} = await listProducts(query, undefined, 12);
+        setProductHits(items);
+      } catch {
+        setProductHits([]);
+      }
     }, 260);
     return () => {
-      if (timers.product) {
-        clearTimeout(timers.product);
-      }
+      if (timers.product) clearTimeout(timers.product);
     };
   }, [productQuery]);
 
@@ -587,10 +830,17 @@ export function ShareScreen() {
     [setAdvanced, setCaption, setHashtags],
   );
 
+  const closeSheet = useCallback(() => setActiveSheet(null), []);
+  const openSheet = useCallback((key: SheetKey) => setActiveSheet(key), []);
+
   const closeAll = useCallback(() => {
     reset();
     navigation.getParent()?.goBack();
   }, [navigation, reset]);
+
+  const aspect = previewAspect(draft.mode, crop, naturalAspect);
+  const previewBoxW = Math.min(viewportW * 0.75, 320);
+  const previewBoxH = previewBoxW / aspect;
 
   const saveDraftNow = useCallback(async () => {
     if (!asset) {
@@ -744,6 +994,16 @@ export function ShareScreen() {
 
         const taggedUserIds = draft.tagged.map(t => t.id).filter(Boolean);
         const productIds = draft.products.map(p => p.id).filter(Boolean);
+        const pollPayload =
+          draft.poll.enabled && draft.poll.options.filter(Boolean).length >= 2
+            ? {
+                question: draft.poll.question.trim(),
+                options: draft.poll.options
+                  .map(o => o.trim())
+                  .filter(Boolean)
+                  .slice(0, 4),
+              }
+            : undefined;
         const durationMs = effectiveTrimmedDurationMs(draft, asset);
         const clientEditMeta = packEditMetaForUpload(draft);
         const useAsync =
@@ -807,6 +1067,7 @@ export function ShareScreen() {
             settings,
             durationMs,
             clientEditMeta,
+            poll: pollPayload,
             ...(postType !== 'story' && feedCategory ? {feedCategory} : {}),
             scheduledFor: scheduleIso ?? undefined,
           });
@@ -838,17 +1099,27 @@ export function ShareScreen() {
     key: Visibility;
     label: string;
     Icon: typeof Globe;
-  }[] =
-    draft.mode === 'story'
-      ? [
-          {key: 'public', label: 'Your story (followers)', Icon: Users},
-          {key: 'close_friends', label: 'Close Friends', Icon: Heart},
-        ]
-      : [
-          {key: 'public', label: 'Anyone', Icon: Globe},
-          {key: 'followers', label: 'Followers only', Icon: Users},
-          {key: 'private', label: 'Only me', Icon: Lock},
-        ];
+  }[] = useMemo(
+    () =>
+      draft.mode === 'story'
+        ? [
+            {key: 'public', label: 'Your story (followers)', Icon: Users},
+            {key: 'close_friends', label: 'Close Friends', Icon: Heart},
+          ]
+        : [
+            {key: 'public', label: 'Anyone', Icon: Globe},
+            {key: 'followers', label: 'Followers only', Icon: Users},
+            {key: 'private', label: 'Only me', Icon: Lock},
+          ],
+    [draft.mode],
+  );
+
+  const visibilityLabel = useMemo(
+    () =>
+      visibilityOptions.find(item => item.key === draft.visibility)?.label ??
+      'Anyone',
+    [visibilityOptions, draft.visibility],
+  );
 
   const discard = useCallback(() => {
     Alert.alert('Discard?', 'Your edits will be lost.', [
@@ -857,786 +1128,281 @@ export function ShareScreen() {
     ]);
   }, [closeAll]);
 
-  const selectedPollOptions = draft.poll.options.length
-    ? draft.poll.options
-    : ['Yes', 'No'];
-  const selectedPollVotes =
-    draft.poll.votes.length === selectedPollOptions.length
-      ? draft.poll.votes
-      : selectedPollOptions.map((_, index) => draft.poll.votes[index] ?? 0);
+  const taggedSummary = useMemo(() => {
+    if (!draft.tagged.length) return undefined;
+    const first = draft.tagged[0].username;
+    return draft.tagged.length > 1
+      ? `${first} +${draft.tagged.length - 1}`
+      : first;
+  }, [draft.tagged]);
 
-  return (
-    <ThemedSafeScreen
-      style={[styles.root, {backgroundColor: palette.background}]}>
-      <View
-        style={[
-          styles.headerShell,
-          {backgroundColor: palette.card, borderBottomColor: palette.hairline},
-        ]}>
+  const productSummary = useMemo(() => {
+    if (!draft.products.length) return undefined;
+    return draft.products.length === 1
+      ? draft.products[0].name
+      : `${draft.products.length} products`;
+  }, [draft.products]);
+
+  const categorySummary = useMemo(() => {
+    if (draft.feedCategoryManual.trim())
+      return `#${draft.feedCategoryManual.trim()}`;
+    return (
+      FEED_CATEGORY_CHIPS.find(c => c.preset === draft.feedCategoryPreset)
+        ?.label ?? 'General'
+    );
+  }, [draft.feedCategoryManual, draft.feedCategoryPreset]);
+
+  const advancedActiveCount =
+    (draft.advanced.commentsOff ? 1 : 0) +
+    (draft.advanced.hideLikeCount ? 1 : 0) +
+    (draft.advanced.brandedContent ? 1 : 0) +
+    (draft.advanced.shareToStory ? 1 : 0);
+
+  /** Apply local poll edits back to context. */
+  const commitPoll = useCallback(() => {
+    const cleaned = pollLocal.options
+      .map(o => o.trim())
+      .filter(Boolean)
+      .slice(0, 4);
+    setPoll({
+      enabled: pollLocal.enabled && cleaned.length >= 2,
+      question: pollLocal.question.trim(),
+      options: cleaned.length >= 2 ? cleaned : ['Yes', 'No'],
+    });
+    setActiveSheet(null);
+  }, [pollLocal, setPoll]);
+
+  if (!asset) {
+    return (
+      <ThemedSafeScreen style={styles.root}>
         <View style={styles.header}>
           <Pressable
+            style={styles.headerIconBtn}
             onPress={() => navigation.goBack()}
-            style={[styles.iconButton, {backgroundColor: palette.surface}]}>
-            <ChevronLeft size={22} color={palette.foreground} />
+            hitSlop={12}>
+            <ChevronLeft size={26} color={palette.foreground} />
           </Pressable>
-          <View style={styles.headerCenter}>
-            <Text style={[styles.eyebrow, {color: palette.foregroundSubtle}]}>
-              BROMO CREATOR
-            </Text>
-            <Text
-              style={[styles.headerTitle, {color: palette.foreground}]}>
-              Details & share
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.stepPill,
-              {backgroundColor: palette.surface, borderColor: palette.border},
-            ]}>
-            <Text
-              style={[styles.stepPillText, {color: palette.foregroundMuted}]}>
-              2/2
-            </Text>
-          </View>
+          <Text style={styles.headerTitle}>New post</Text>
+          <View style={{width: 38}} />
         </View>
-        <CreateModeSegment
-          palette={palette}
-          mode={draft.mode}
-          onChange={setMode}
-          style={styles.modeSegment}
-        />
-        <StudioProgress palette={palette} activeIndex={1} />
+        <View
+          style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
+          <Text style={{color: palette.foreground}}>No media selected.</Text>
+        </View>
+      </ThemedSafeScreen>
+    );
+  }
+
+  return (
+    <ThemedSafeScreen style={styles.root}>
+      <View style={styles.header}>
+        <Pressable
+          style={styles.headerIconBtn}
+          onPress={() => navigation.goBack()}
+          hitSlop={12}>
+          <ChevronLeft size={26} color={palette.foreground} />
+        </Pressable>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          New {draft.mode === 'story' ? 'story' : draft.mode === 'reel' ? 'reel' : 'post'}
+        </Text>
+        <Pressable
+          style={styles.shareBtn}
+          onPress={() => publish(null)}
+          disabled={busy !== null}>
+          <Text style={styles.shareBtnText}>Share</Text>
+        </Pressable>
       </View>
 
       <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.body}>
-        <ViewShot
-          ref={previewShotRef}
-          style={[
-            styles.preview,
-            {height: previewHeight, backgroundColor: palette.surface},
-          ]}
-          options={{format: 'jpg', quality: 0.92}}>
-          {asset?.type === 'video' ? (
-            <Video
-              source={{uri: asset.uri}}
-              style={styles.media}
-              resizeMode="cover"
-              repeat
-              muted
-              viewType={Platform.OS === 'android' ? ViewType.TEXTURE : undefined}
-              shutterColor="transparent"
-            />
-          ) : asset ? (
-            <Image
-              source={{uri: asset.uri}}
-              style={[styles.media, {transform: [{rotate: `${rotation}deg`}]}]}
-              resizeMode="cover"
-            />
-          ) : null}
-          {filterStacks.map((layer, idx) => (
-            <View
-              key={`layer_${idx}`}
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor: layer.backgroundColor,
-                  opacity: layer.opacity,
-                },
-              ]}
-            />
-          ))}
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill, adjustOverlay]} />
-          {warmOv ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, warmOv]} /> : null}
-          {satOv ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, satOv]} /> : null}
-          {vigOv ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, vigOv]} /> : null}
-          {draft.textOverlays.map(o => (
-            <View key={o.id} style={[styles.textOverlay, {left: o.x, top: o.y}]}>
-              <Text
-                style={{
-                  color: o.color,
-                  fontSize: o.fontSize,
-                  fontWeight: o.fontStyle === 'bold' ? '900' : '600',
-                  fontStyle: o.fontStyle === 'italic' ? 'italic' : 'normal',
-                }}>
-                {o.text}
-              </Text>
-            </View>
-          ))}
-          {draft.stickers.map(sticker => (
-            <View
-              key={sticker.id}
-              style={[
-                styles.sticker,
-                {left: sticker.x, top: sticker.y, backgroundColor: palette.overlay},
-              ]}>
-              <ShoppingBag size={10} color={palette.foreground} />
-              <Text style={[styles.stickerTxt, {color: palette.foreground}]}>
-                {sticker.label}
-              </Text>
-            </View>
-          ))}
-          {draft.poll.enabled && selectedPollOptions.length >= 2 ? (
-            <View
-              style={[
-                styles.pollOverlay,
-                {backgroundColor: palette.overlay},
-              ]}>
-              {draft.poll.question ? (
-                <Text
-                  style={[styles.pollQuestion, {color: palette.foreground}]}>
-                  {draft.poll.question}
-                </Text>
-              ) : null}
-              {selectedPollOptions.slice(0, 4).map((option, index) => (
-                <View
-                  key={`${option}_${index}`}
-                  style={[
-                    styles.pollOption,
-                    {
-                      backgroundColor:
-                        index === 0 ? palette.accent : palette.surface,
-                    },
-                  ]}>
-                  <Text
-                    style={[
-                      styles.pollOptionTxt,
-                      {
-                        color:
-                          index === 0
-                            ? palette.accentForeground
-                            : palette.foreground,
-                      },
-                    ]}>
-                    {option}
-                  </Text>
-                  <Text
-                    style={{
-                      color:
-                        index === 0
-                          ? palette.accentForeground
-                          : palette.foregroundMuted,
-                      fontSize: 10,
-                      fontWeight: '900',
-                    }}>
-                    {selectedPollVotes[index] ?? 0}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </ViewShot>
-
-        <StudioSection palette={palette} title="Caption">
-          <View
-            style={[
-              styles.captionBox,
-              {borderColor: palette.border, backgroundColor: palette.surface},
-            ]}>
-            {asset ? (
-              asset.type === 'image' ? (
-                <Image source={{uri: asset.uri}} style={styles.thumbImg} />
-              ) : (
-                <View
-                  style={[
-                    styles.thumbImg,
-                    {
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: palette.input,
-                    },
-                  ]}>
-                  <Send size={16} color={palette.foregroundMuted} />
-                </View>
-              )
-            ) : null}
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        keyboardShouldPersistTaps="handled">
+        {/* Compose row: small thumb + caption */}
+        <View style={styles.composeRow}>
+          <Pressable
+            onPress={() => openSheet('preview')}
+            style={[styles.composeThumbWrap, {height: 64 / Math.max(0.4, aspect)}]}>
+            {asset.type === 'video' ? (
+              <Video
+                source={{uri: asset.uri}}
+                style={styles.composeThumb}
+                resizeMode="cover"
+                paused
+                muted
+                viewType={
+                  Platform.OS === 'android' ? ViewType.TEXTURE : undefined
+                }
+                shutterColor="transparent"
+              />
+            ) : (
+              <Image
+                source={{uri: asset.uri}}
+                style={[
+                  styles.composeThumb,
+                  {transform: [{rotate: `${rotation}deg`}]},
+                ]}
+                resizeMode="cover"
+              />
+            )}
+          </Pressable>
+          <View style={styles.composeInputWrap}>
             <TextInput
               value={captionLocal}
               onChangeText={next => {
                 setCaptionLocal(next);
                 syncCaption(next);
               }}
-              placeholder="Write a caption"
+              placeholder="Write a caption..."
               placeholderTextColor={palette.placeholder}
               multiline
-              style={[styles.captionInline, {color: palette.foreground}]}
+              style={styles.captionInput}
             />
-          </View>
-        </StudioSection>
-
-        <StudioSection palette={palette} title="Location">
-          <View
-            style={[
-              styles.searchBox,
-              {backgroundColor: palette.input, borderColor: palette.border},
-            ]}>
-            <Search size={16} color={palette.foregroundMuted} />
-            <TextInput
-              value={locationQuery}
-              onChangeText={setLocationQuery}
-              placeholder={draft.location?.name ?? 'Search location'}
-              placeholderTextColor={palette.placeholder}
-              style={[styles.searchInput, {color: palette.foreground}]}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-          {draft.location ? (
-            <View style={[styles.chipRow, {marginTop: 10}]}>
-              <Pressable
-                style={[
-                  styles.selectedChip,
-                  {borderColor: palette.accent, backgroundColor: `${palette.accent}22`},
-                ]}
-                onPress={() => setLocation(null)}>
-                <MapPin size={14} color={palette.accent} />
-                <Text
-                  style={[styles.selectedChipText, {color: palette.accent}]}
-                  numberOfLines={1}>
-                  {draft.location.name}
-                </Text>
-                <X size={14} color={palette.accent} />
-              </Pressable>
+            <View style={styles.composeMetaRow}>
+              <Text style={styles.composeMetaText}>
+                {asset.type === 'video' ? 'Video' : 'Photo'}
+                {draft.assets.length > 1
+                  ? ` · ${draft.assets.length} items`
+                  : ''}
+              </Text>
+              <Text style={styles.composeMetaText}>· Tap thumb to preview</Text>
             </View>
-          ) : null}
-          {locationHits.length ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[styles.hitRow, {marginTop: 10}]}>
-              {locationHits.map(place => (
-                <Pressable
-                  key={place.placeId ?? `${place.name}_${place.address ?? ''}`}
-                  onPress={() => {
-                    setLocation({
-                      id: place.placeId ?? `${place.name}_${place.lat}_${place.lng}`,
-                      name: place.name,
-                      address: place.address,
-                      lat: place.lat,
-                      lng: place.lng,
-                      placeId: place.placeId,
-                    });
-                    setLocationQuery('');
-                    setLocationHits([]);
-                  }}
-                  style={[
-                    styles.hitChip,
-                    {borderColor: palette.border, backgroundColor: palette.surface},
-                  ]}>
-                  <Text
-                    style={[styles.hitChipTitle, {color: palette.foreground}]}
-                    numberOfLines={1}>
-                    {place.name}
-                  </Text>
-                  {place.address ? (
-                    <Text
-                      style={[styles.hitChipMeta, {color: palette.foregroundMuted}]}
-                      numberOfLines={2}>
-                      {place.address}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : null}
-        </StudioSection>
-
-        <StudioSection palette={palette} title="Poll">
-          <View style={styles.pollStack}>
-            <ToggleRow
-              icon={<MessageCircle size={16} color={palette.foreground} />}
-              label="Enable poll"
-              value={draft.poll.enabled}
-              onToggle={value =>
-                setPoll({
-                  enabled: value,
-                  options: selectedPollOptions.length >= 2
-                    ? selectedPollOptions
-                    : ['Yes', 'No'],
-                })
-              }
-              colors={{surface: palette.surface, foreground: palette.foreground}}
-              styles={styles}
-            />
-            {draft.poll.enabled ? (
-              <>
-                <TextInput
-                  value={draft.poll.question}
-                  onChangeText={question => setPoll({question})}
-                  placeholder="Poll question"
-                  placeholderTextColor={palette.placeholder}
-                  style={[
-                    styles.pollInput,
-                    {
-                      backgroundColor: palette.input,
-                      borderColor: palette.border,
-                      color: palette.foreground,
-                    },
-                  ]}
-                />
-                {selectedPollOptions.map((option, index) => (
-                  <View key={`poll_option_${index}`} style={styles.pollOptionRow}>
-                    <TextInput
-                      value={option}
-                      onChangeText={text => {
-                        const nextOptions = [...selectedPollOptions];
-                        nextOptions[index] = text;
-                        setPoll({options: nextOptions});
-                      }}
-                      placeholder={`Answer ${index + 1}`}
-                      placeholderTextColor={palette.placeholder}
-                      style={[
-                        styles.pollInput,
-                        {
-                          flex: 1,
-                          backgroundColor: palette.input,
-                          borderColor: palette.border,
-                          color: palette.foreground,
-                        },
-                      ]}
-                    />
-                    {selectedPollOptions.length > 2 ? (
-                      <Pressable
-                        onPress={() => {
-                          const nextOptions = selectedPollOptions.filter((_, i) => i !== index);
-                          const nextVotes = selectedPollVotes.filter((_, i) => i !== index);
-                          setPoll({options: nextOptions, votes: nextVotes});
-                        }}
-                        style={[
-                          styles.iconButton,
-                          {backgroundColor: palette.surface},
-                        ]}>
-                        <X size={16} color={palette.foregroundMuted} />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ))}
-                {selectedPollOptions.length < 4 ? (
-                  <Pressable
-                    onPress={() =>
-                      setPoll({
-                        options: [...selectedPollOptions, `Option ${selectedPollOptions.length + 1}`],
-                      })
-                    }
-                    style={[
-                      styles.addOptionBtn,
-                      {
-                        borderColor: palette.border,
-                        backgroundColor: palette.surface,
-                      },
-                    ]}>
-                    <Text style={[styles.sectionLabel, {color: palette.foreground}]}>
-                      Add answer
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </>
-            ) : null}
           </View>
-        </StudioSection>
+        </View>
 
-        <StudioSection palette={palette} title="Tag People">
-          <View
-            style={[
-              styles.searchBox,
-              {backgroundColor: palette.input, borderColor: palette.border},
-            ]}>
-            <Search size={16} color={palette.foregroundMuted} />
-            <TextInput
-              value={peopleQuery}
-              onChangeText={setPeopleQuery}
-              placeholder="Search people"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.searchInput, {color: palette.foreground}]}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-          {draft.tagged.length ? (
-            <View style={[styles.chipRow, {marginTop: 10}]}>
-              {draft.tagged.map(person => (
-                <Pressable
-                  key={person.id}
-                  onPress={() =>
-                    setTagged(draft.tagged.filter(item => item.id !== person.id))
-                  }
-                  style={[
-                    styles.selectedChip,
-                    {borderColor: palette.accent, backgroundColor: `${palette.accent}22`},
-                  ]}>
-                  <Users size={14} color={palette.accent} />
-                  <Text
-                    style={[styles.selectedChipText, {color: palette.accent}]}>
-                    @{person.username}
-                  </Text>
-                  <X size={14} color={palette.accent} />
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          {peopleHits.length ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[styles.hitRow, {marginTop: 10}]}>
-              {peopleHits.map(person => {
-                const active = draft.tagged.some(item => item.id === person._id);
-                return (
-                  <Pressable
-                    key={person._id}
-                    onPress={() => {
-                      if (active) {
-                        setTagged(draft.tagged.filter(item => item.id !== person._id));
-                      } else {
-                        setTagged([
-                          ...draft.tagged,
-                          {
-                            id: person._id,
-                            username: person.username,
-                            avatar: person.profilePicture || undefined,
-                          },
-                        ]);
-                      }
-                    }}
-                    style={[
-                      styles.hitChip,
-                      {
-                        borderColor: active ? palette.accent : palette.border,
-                        backgroundColor: active
-                          ? `${palette.accent}22`
-                          : palette.surface,
-                      },
-                    ]}>
-                    <Text
-                      style={[
-                        styles.hitChipTitle,
-                        {color: active ? palette.accent : palette.foreground},
-                      ]}>
-                      @{person.username}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.hitChipMeta,
-                        {color: active ? palette.accent : palette.foregroundMuted},
-                      ]}>
-                      {active ? 'Selected' : 'Tap to tag'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          ) : null}
-        </StudioSection>
-
-        <StudioSection palette={palette} title="Tag Products">
-          <View
-            style={[
-              styles.searchBox,
-              {backgroundColor: palette.input, borderColor: palette.border},
-            ]}>
-            <Search size={16} color={palette.foregroundMuted} />
-            <TextInput
-              value={productQuery}
-              onChangeText={setProductQuery}
-              placeholder="Search products"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.searchInput, {color: palette.foreground}]}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-          {draft.products.length ? (
-            <View style={[styles.chipRow, {marginTop: 10}]}>
-              {draft.products.map(product => (
-                <Pressable
-                  key={product.id}
-                  onPress={() =>
-                    setProducts(draft.products.filter(item => item.id !== product.id))
-                  }
-                  style={[
-                    styles.selectedChip,
-                    {borderColor: palette.accent, backgroundColor: `${palette.accent}22`},
-                  ]}>
-                  <ShoppingBag size={14} color={palette.accent} />
-                  <Text
-                    style={[styles.selectedChipText, {color: palette.accent}]}
-                    numberOfLines={1}>
-                    {product.name}
-                  </Text>
-                  <X size={14} color={palette.accent} />
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          {productHits.length ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[styles.hitRow, {marginTop: 10}]}>
-              {productHits.map(product => {
-                const active = draft.products.some(item => item.id === product._id);
-                return (
-                  <Pressable
-                    key={product._id}
-                    onPress={() => {
-                      if (active) {
-                        setProducts(
-                          draft.products.filter(item => item.id !== product._id),
-                        );
-                      } else {
-                        setProducts([...draft.products, affiliateToAttachment(product)]);
-                      }
-                    }}
-                    style={[
-                      styles.hitChip,
-                      {
-                        borderColor: active ? palette.accent : palette.border,
-                        backgroundColor: active
-                          ? `${palette.accent}22`
-                          : palette.surface,
-                      },
-                    ]}>
-                    <Text
-                      style={[
-                        styles.hitChipTitle,
-                        {color: active ? palette.accent : palette.foreground},
-                      ]}
-                      numberOfLines={2}>
-                      {product.title}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.hitChipMeta,
-                        {color: active ? palette.accent : palette.foregroundMuted},
-                      ]}
-                      numberOfLines={1}>
-                      {active ? 'Selected' : `${product.currency} ${product.price}`}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          ) : null}
-        </StudioSection>
+        {/* Action rows */}
+        <ActionListRow
+          icon={<Tag size={18} color={palette.foreground} />}
+          label="Tag people"
+          value={taggedSummary}
+          onPress={() => openSheet('people')}
+          styles={styles}
+          palette={palette}
+        />
+        <ActionListRow
+          icon={<MapPin size={18} color={palette.foreground} />}
+          label="Add location"
+          value={draft.location?.name}
+          onPress={() => openSheet('location')}
+          styles={styles}
+          palette={palette}
+        />
+        <ActionListRow
+          icon={<Music2 size={18} color={palette.foreground} />}
+          label="Add music"
+          value={draft.selectedAudio?.title}
+          onPress={() => openSheet('music')}
+          styles={styles}
+          palette={palette}
+        />
+        <ActionListRow
+          icon={<ShoppingBag size={18} color={palette.foreground} />}
+          label="Tag products"
+          value={productSummary}
+          onPress={() => openSheet('products')}
+          styles={styles}
+          palette={palette}
+        />
+        <ActionListRow
+          icon={<MessageCircle size={18} color={palette.foreground} />}
+          label="Add poll"
+          value={
+            draft.poll.enabled && draft.poll.options.length >= 2
+              ? draft.poll.question || 'Active'
+              : undefined
+          }
+          onPress={() => {
+            setPollLocal({
+              question: draft.poll.question,
+              options:
+                draft.poll.options.length >= 2
+                  ? [...draft.poll.options]
+                  : ['Yes', 'No'],
+              enabled: draft.poll.enabled,
+            });
+            openSheet('poll');
+          }}
+          styles={styles}
+          palette={palette}
+        />
 
         {(draft.mode === 'post' || draft.mode === 'reel') && (
-          <StudioSection palette={palette} title="Feed Category">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.hitRow}>
-              {FEED_CATEGORY_CHIPS.map(category => {
-                const active =
-                  draft.feedCategoryManual.trim() === '' &&
-                  draft.feedCategoryPreset === category.preset;
-                return (
-                  <Pressable
-                    key={category.preset}
-                    onPress={() => setFeedCategoryPreset(category.preset)}
-                    style={[
-                      styles.selectedChip,
-                      {
-                        borderColor: active ? palette.accent : palette.border,
-                        backgroundColor: active
-                          ? palette.accent
-                          : palette.surface,
-                      },
-                    ]}>
-                    <Text
-                      style={[
-                        styles.selectedChipText,
-                        {
-                          color: active
-                            ? palette.accentForeground
-                            : palette.foreground,
-                        },
-                      ]}>
-                      {category.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <TextInput
-              value={draft.feedCategoryManual}
-              onChangeText={setFeedCategoryManual}
-              placeholder="Custom category"
-              placeholderTextColor={palette.placeholder}
-              style={[
-                styles.pollInput,
-                {
-                  marginTop: 10,
-                  backgroundColor: palette.input,
-                  borderColor: palette.border,
-                  color: palette.foreground,
-                },
-              ]}
-            />
-          </StudioSection>
+          <ActionListRow
+            icon={<Sparkles size={18} color={palette.foreground} />}
+            label="Feed category"
+            value={categorySummary}
+            onPress={() => openSheet('category')}
+            styles={styles}
+            palette={palette}
+          />
         )}
 
-        <StudioSection palette={palette} title="Visibility">
-          <View style={{gap: 8}}>
-            {visibilityOptions.map(option => {
-              const selected = draft.visibility === option.key;
-              return (
-                <Pressable
-                  key={option.key}
-                  onPress={() => setVisibility(option.key)}
-                  style={[
-                    styles.toggleRow,
-                    {
-                      backgroundColor: palette.surface,
-                      borderWidth: 1,
-                      borderColor: selected ? palette.accent : palette.border,
-                    },
-                  ]}>
-                  <option.Icon
-                    size={16}
-                    color={selected ? palette.accent : palette.foregroundMuted}
-                  />
-                  <Text
-                    style={[
-                      styles.toggleLabel,
-                      {color: selected ? palette.accent : palette.foreground},
-                    ]}>
-                    {option.label}
-                  </Text>
-                  {selected ? <Check size={16} color={palette.accent} /> : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        </StudioSection>
+        <Text style={styles.sectionHeader}>Audience &amp; settings</Text>
 
-        <StudioSection palette={palette} title="Advanced Settings">
-          <View style={{gap: 8}}>
-            <ToggleRow
-              icon={<MessageCircleOff size={16} color={palette.foreground} />}
-              label="Turn off comments"
-              value={draft.advanced.commentsOff}
-              onToggle={value => setAdvanced({commentsOff: value})}
-              colors={{surface: palette.surface, foreground: palette.foreground}}
-              styles={styles}
-            />
-            <ToggleRow
-              icon={<EyeOff size={16} color={palette.foreground} />}
-              label="Hide like count"
-              value={draft.advanced.hideLikeCount}
-              onToggle={value => setAdvanced({hideLikeCount: value})}
-              colors={{surface: palette.surface, foreground: palette.foreground}}
-              styles={styles}
-            />
-            <ToggleRow
-              icon={<Award size={16} color={palette.foreground} />}
-              label="Branded content"
-              value={draft.advanced.brandedContent}
-              onToggle={value => setAdvanced({brandedContent: value})}
-              colors={{surface: palette.surface, foreground: palette.foreground}}
-              styles={styles}
-            />
-            {draft.mode === 'post' ? (
-              <ToggleRow
-                icon={<Share2 size={16} color={palette.foreground} />}
-                label="Also share to your story"
-                value={draft.advanced.shareToStory}
-                onToggle={value => setAdvanced({shareToStory: value})}
-                colors={{surface: palette.surface, foreground: palette.foreground}}
-                styles={styles}
-              />
-            ) : null}
-          </View>
-        </StudioSection>
-
+        <ActionListRow
+          icon={<Globe size={18} color={palette.foreground} />}
+          label="Audience"
+          value={visibilityLabel}
+          onPress={() => openSheet('visibility')}
+          styles={styles}
+          palette={palette}
+        />
+        <ActionListRow
+          icon={<EyeOff size={18} color={palette.foreground} />}
+          label="Advanced settings"
+          value={advancedActiveCount ? `${advancedActiveCount} on` : undefined}
+          onPress={() => openSheet('advanced')}
+          styles={styles}
+          palette={palette}
+        />
         {draft.mode === 'story' ? (
-          <StudioSection palette={palette} title="Story Options">
-            <View style={{gap: 8}}>
-              <ToggleRow
-                icon={<MessageCircle size={16} color={palette.foreground} />}
-                label="Allow replies"
-                value={draft.storyAllowReplies}
-                onToggle={value => setStoryOptions({storyAllowReplies: value})}
-                colors={{surface: palette.surface, foreground: palette.foreground}}
-                styles={styles}
-              />
-              <ToggleRow
-                icon={<Share2 size={16} color={palette.foreground} />}
-                label="Share to partner apps"
-                value={draft.storyShareOffPlatform}
-                onToggle={value =>
-                  setStoryOptions({storyShareOffPlatform: value})
-                }
-                colors={{surface: palette.surface, foreground: palette.foreground}}
-                styles={styles}
-              />
-            </View>
-          </StudioSection>
+          <ActionListRow
+            icon={<Share2 size={18} color={palette.foreground} />}
+            label="Story options"
+            value={
+              draft.storyAllowReplies || draft.storyShareOffPlatform
+                ? 'Custom'
+                : 'Defaults'
+            }
+            onPress={() => openSheet('story')}
+            styles={styles}
+            palette={palette}
+          />
         ) : null}
       </ScrollView>
 
-      <View
-        style={[
-          styles.footerBar,
-          {backgroundColor: palette.card, borderTopColor: palette.hairline},
-        ]}>
+      <View style={styles.footerBar}>
         <View style={styles.footerActionRow}>
-          <Pressable
-            style={[
-              styles.footerButton,
-              {backgroundColor: palette.surface, borderColor: palette.border},
-            ]}
-            onPress={discard}>
-            <Trash2 size={16} color={palette.destructive} />
-            <Text style={[styles.footerButtonText, {color: palette.destructive}]}>
+          <Pressable style={styles.footerSmallBtn} onPress={discard}>
+            <Trash2 size={14} color={palette.destructive} />
+            <Text style={[styles.footerSmallText, {color: palette.destructive}]}>
               Cancel
             </Text>
           </Pressable>
           <Pressable
-            style={[
-              styles.footerButton,
-              {backgroundColor: palette.surface, borderColor: palette.border},
-            ]}
+            style={styles.footerSmallBtn}
             onPress={saveDraftNow}
             disabled={busy !== null}>
-            <Save size={16} color={palette.foreground} />
-            <Text style={[styles.footerButtonText, {color: palette.foreground}]}>
-              Draft
-            </Text>
+            <Save size={14} color={palette.foreground} />
+            <Text style={styles.footerSmallText}>Draft</Text>
+          </Pressable>
+          <Pressable style={styles.footerSmallBtn} onPress={downloadExport}>
+            <Download size={14} color={palette.foreground} />
+            <Text style={styles.footerSmallText}>Save</Text>
           </Pressable>
           <Pressable
-            style={[
-              styles.footerButton,
-              {backgroundColor: palette.surface, borderColor: palette.border},
-            ]}
-            onPress={downloadExport}>
-            <Download size={16} color={palette.foreground} />
-            <Text style={[styles.footerButtonText, {color: palette.foreground}]}>
-              Download
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.footerButton,
-              {backgroundColor: palette.surface, borderColor: palette.border},
-            ]}
+            style={styles.footerSmallBtn}
             onPress={() => setScheduleOpen(true)}
             disabled={busy !== null}>
-            <Calendar size={16} color={palette.foreground} />
-            <Text style={[styles.footerButtonText, {color: palette.foreground}]}>
-              Schedule
-            </Text>
+            <Calendar size={14} color={palette.foreground} />
+            <Text style={styles.footerSmallText}>Schedule</Text>
           </Pressable>
         </View>
         <Pressable
-          style={[styles.footerPrimary, {backgroundColor: palette.accent}]}
+          style={styles.primaryShareBtn}
           onPress={() => publish(null)}
           disabled={busy !== null}>
           <Send size={18} color={palette.accentForeground} />
-          <Text
-            style={[styles.footerPrimaryText, {color: palette.accentForeground}]}>
+          <Text style={styles.primaryShareText}>
             {draft.mode === 'story'
               ? 'Share story'
               : draft.mode === 'reel'
@@ -1646,64 +1412,724 @@ export function ShareScreen() {
         </Pressable>
       </View>
 
-      <Modal visible={scheduleOpen} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.modalBackdrop}>
-          <View
+      {/* === Sub-sheets === */}
+
+      {/* Preview (live preview matching what will be uploaded) */}
+      <ActionSheet
+        visible={activeSheet === 'preview'}
+        onClose={closeSheet}
+        title="Preview"
+        subtitle="This is how your post will appear"
+        palette={palette}
+        height={previewBoxH + 100}>
+        <View style={styles.previewSheetWrap}>
+          <ViewShot
+            ref={previewShotRef}
             style={[
-              styles.modalCard,
-              {backgroundColor: palette.card, borderColor: palette.border},
-            ]}>
-            <Text style={[styles.modalTitle, {color: palette.foreground}]}>
-              Schedule post
+              styles.previewSheetBox,
+              {width: previewBoxW, height: previewBoxH},
+            ]}
+            options={{format: 'jpg', quality: 0.92}}>
+            {asset.type === 'video' ? (
+              <Video
+                source={{uri: asset.uri}}
+                style={StyleSheet.absoluteFillObject}
+                resizeMode={crop === 'original' ? 'contain' : 'cover'}
+                repeat
+                muted
+                viewType={
+                  Platform.OS === 'android' ? ViewType.TEXTURE : undefined
+                }
+                shutterColor="transparent"
+              />
+            ) : (
+              <Image
+                source={{uri: asset.uri}}
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  {transform: [{rotate: `${rotation}deg`}]},
+                ]}
+                resizeMode={crop === 'original' ? 'contain' : 'cover'}
+              />
+            )}
+            {filterStacks.map((layer, idx) => (
+              <View
+                key={`layer_${idx}`}
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    backgroundColor: layer.backgroundColor,
+                    opacity: layer.opacity,
+                  },
+                ]}
+              />
+            ))}
+            <View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, adjustOverlay]}
+            />
+            {warmOv ? (
+              <View
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, warmOv]}
+              />
+            ) : null}
+            {satOv ? (
+              <View
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, satOv]}
+              />
+            ) : null}
+            {vigOv ? (
+              <View
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, vigOv]}
+              />
+            ) : null}
+            {draft.textOverlays.map(o => (
+              <View
+                key={o.id}
+                style={{position: 'absolute', left: o.x, top: o.y}}>
+                <Text
+                  style={{
+                    color: o.color,
+                    fontSize: o.fontSize,
+                    fontWeight: o.fontStyle === 'bold' ? '900' : '600',
+                    fontStyle: o.fontStyle === 'italic' ? 'italic' : 'normal',
+                  }}>
+                  {o.text}
+                </Text>
+              </View>
+            ))}
+            {draft.stickers.map(sticker => (
+              <View
+                key={sticker.id}
+                style={{
+                  position: 'absolute',
+                  left: sticker.x,
+                  top: sticker.y,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(0,0,0,0.55)',
+                }}>
+                <ShoppingBag size={10} color="#fff" />
+                <Text
+                  style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>
+                  {sticker.label}
+                </Text>
+              </View>
+            ))}
+          </ViewShot>
+        </View>
+      </ActionSheet>
+
+      {/* People */}
+      <ActionSheet
+        visible={activeSheet === 'people'}
+        onClose={closeSheet}
+        title="Tag people"
+        subtitle="Mentioned users get a notification"
+        palette={palette}>
+        <View style={styles.searchBox}>
+          <Search size={16} color={palette.foregroundMuted} />
+          <TextInput
+            value={peopleQuery}
+            onChangeText={setPeopleQuery}
+            placeholder="Search people"
+            placeholderTextColor={palette.placeholder}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+        {draft.tagged.length ? (
+          <View style={[styles.chipRow, {marginBottom: 10}]}>
+            {draft.tagged.map(person => (
+              <Pressable
+                key={person.id}
+                onPress={() =>
+                  setTagged(draft.tagged.filter(item => item.id !== person.id))
+                }
+                style={styles.chipSelected}>
+                <Users size={12} color={palette.accent} />
+                <Text style={styles.chipSelectedText}>@{person.username}</Text>
+                <X size={12} color={palette.accent} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        <ScrollView keyboardShouldPersistTaps="handled">
+          {peopleHits.length ? (
+            peopleHits.map(person => {
+              const active = draft.tagged.some(item => item.id === person._id);
+              return (
+                <Pressable
+                  key={person._id}
+                  onPress={() => {
+                    if (active) {
+                      setTagged(
+                        draft.tagged.filter(item => item.id !== person._id),
+                      );
+                    } else {
+                      setTagged([
+                        ...draft.tagged,
+                        {
+                          id: person._id,
+                          username: person.username,
+                          avatar: person.profilePicture || undefined,
+                        },
+                      ]);
+                    }
+                  }}
+                  style={styles.sheetItem}>
+                  <View style={styles.actionRowIcon}>
+                    <Users size={18} color={palette.foregroundMuted} />
+                  </View>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.sheetItemTitle}>
+                      @{person.username}
+                    </Text>
+                    {person.displayName ? (
+                      <Text style={styles.sheetItemMeta}>
+                        {person.displayName}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {active ? (
+                    <Check size={18} color={palette.accent} />
+                  ) : null}
+                </Pressable>
+              );
+            })
+          ) : (
+            <Text style={styles.sheetEmpty}>
+              {peopleQuery
+                ? 'No people match that search'
+                : 'Search to find people you know'}
             </Text>
-            <Text
-              style={[styles.modalSubtitle, {color: palette.foregroundMuted}]}>
+          )}
+        </ScrollView>
+      </ActionSheet>
+
+      {/* Location */}
+      <ActionSheet
+        visible={activeSheet === 'location'}
+        onClose={closeSheet}
+        title="Add location"
+        palette={palette}>
+        <View style={styles.searchBox}>
+          <Search size={16} color={palette.foregroundMuted} />
+          <TextInput
+            value={locationQuery}
+            onChangeText={setLocationQuery}
+            placeholder={draft.location?.name ?? 'Search a place'}
+            placeholderTextColor={palette.placeholder}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {draft.location ? (
+            <Pressable
+              onPress={() => setLocation(null)}
+              hitSlop={8}
+              style={{padding: 4}}>
+              <X size={16} color={palette.foregroundMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+        <ScrollView keyboardShouldPersistTaps="handled">
+          {draft.location ? (
+            <View style={styles.sheetItem}>
+              <View style={styles.actionRowIcon}>
+                <MapPin size={18} color={palette.accent} />
+              </View>
+              <View style={{flex: 1}}>
+                <Text style={styles.sheetItemTitle}>{draft.location.name}</Text>
+                {draft.location.address ? (
+                  <Text style={styles.sheetItemMeta}>
+                    {draft.location.address}
+                  </Text>
+                ) : null}
+              </View>
+              <Check size={18} color={palette.accent} />
+            </View>
+          ) : null}
+          {locationHits.length ? (
+            locationHits.map((place, idx) => {
+              const placeKey = place.placeId ?? `${place.name}_${idx}`;
+              return (
+              <Pressable
+                key={placeKey}
+                style={styles.sheetItem}
+                onPress={() => {
+                  setLocation({
+                    id: placeKey,
+                    name: place.name,
+                    address: place.address,
+                    lat: place.lat,
+                    lng: place.lng,
+                    placeId: place.placeId,
+                  });
+                  closeSheet();
+                }}>
+                <View style={styles.actionRowIcon}>
+                  <MapPin size={18} color={palette.foregroundMuted} />
+                </View>
+                <View style={{flex: 1}}>
+                  <Text style={styles.sheetItemTitle}>{place.name}</Text>
+                  {place.address ? (
+                    <Text style={styles.sheetItemMeta}>{place.address}</Text>
+                  ) : null}
+                </View>
+              </Pressable>
+              );
+            })
+          ) : (
+            <Text style={styles.sheetEmpty}>
+              {locationQuery
+                ? 'No places found yet'
+                : 'Type a place to start searching'}
+            </Text>
+          )}
+        </ScrollView>
+      </ActionSheet>
+
+      {/* Music */}
+      <ActionSheet
+        visible={activeSheet === 'music'}
+        onClose={closeSheet}
+        title="Add music"
+        subtitle={
+          draft.selectedAudio
+            ? `Now: ${draft.selectedAudio.title}`
+            : 'Pick a track or keep original'
+        }
+        palette={palette}>
+        <ScrollView keyboardShouldPersistTaps="handled">
+          <Pressable
+            onPress={() => {
+              setSelectedAudio(null);
+              closeSheet();
+            }}
+            style={styles.sheetItem}>
+            <View style={styles.actionRowIcon}>
+              <Music2 size={18} color={palette.foregroundMuted} />
+            </View>
+            <View style={{flex: 1}}>
+              <Text style={styles.sheetItemTitle}>Original audio</Text>
+              <Text style={styles.sheetItemMeta}>Use the clip&rsquo;s own sound</Text>
+            </View>
+            {!draft.selectedAudio ? (
+              <Check size={18} color={palette.accent} />
+            ) : null}
+          </Pressable>
+          {AUDIO_CATALOG_FALLBACK.map(track => {
+            const active = draft.selectedAudio?.id === track.id;
+            return (
+              <Pressable
+                key={track.id}
+                style={styles.sheetItem}
+                onPress={() => {
+                  setSelectedAudio(track);
+                  closeSheet();
+                }}>
+                <View style={styles.actionRowIcon}>
+                  <Music2 size={18} color={palette.foregroundMuted} />
+                </View>
+                <View style={{flex: 1}}>
+                  <Text style={styles.sheetItemTitle}>{track.title}</Text>
+                  <Text style={styles.sheetItemMeta}>{track.artist}</Text>
+                </View>
+                {active ? <Check size={18} color={palette.accent} /> : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </ActionSheet>
+
+      {/* Products */}
+      <ActionSheet
+        visible={activeSheet === 'products'}
+        onClose={closeSheet}
+        title="Tag products"
+        subtitle="Tagged products show as small stickers"
+        palette={palette}>
+        <View style={styles.searchBox}>
+          <Search size={16} color={palette.foregroundMuted} />
+          <TextInput
+            value={productQuery}
+            onChangeText={setProductQuery}
+            placeholder="Search products"
+            placeholderTextColor={palette.placeholder}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+        {draft.products.length ? (
+          <View style={[styles.chipRow, {marginBottom: 10}]}>
+            {draft.products.map(product => (
+              <Pressable
+                key={product.id}
+                onPress={() =>
+                  setProducts(
+                    draft.products.filter(item => item.id !== product.id),
+                  )
+                }
+                style={styles.chipSelected}>
+                <ShoppingBag size={12} color={palette.accent} />
+                <Text
+                  numberOfLines={1}
+                  style={styles.chipSelectedText}>
+                  {product.name}
+                </Text>
+                <X size={12} color={palette.accent} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        <ScrollView keyboardShouldPersistTaps="handled">
+          {productHits.length ? (
+            productHits.map(product => {
+              const active = draft.products.some(
+                item => item.id === product._id,
+              );
+              return (
+                <Pressable
+                  key={product._id}
+                  onPress={() => {
+                    if (active) {
+                      setProducts(
+                        draft.products.filter(item => item.id !== product._id),
+                      );
+                    } else {
+                      setProducts([
+                        ...draft.products,
+                        affiliateToAttachment(product),
+                      ]);
+                    }
+                  }}
+                  style={styles.sheetItem}>
+                  <View style={styles.actionRowIcon}>
+                    <ShoppingBag size={18} color={palette.foregroundMuted} />
+                  </View>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.sheetItemTitle} numberOfLines={2}>
+                      {product.title}
+                    </Text>
+                    <Text style={styles.sheetItemMeta} numberOfLines={1}>
+                      {product.currency} {product.price}
+                    </Text>
+                  </View>
+                  {active ? (
+                    <Check size={18} color={palette.accent} />
+                  ) : null}
+                </Pressable>
+              );
+            })
+          ) : (
+            <Text style={styles.sheetEmpty}>
+              {productQuery
+                ? 'No products match yet'
+                : 'Search to tag products'}
+            </Text>
+          )}
+        </ScrollView>
+      </ActionSheet>
+
+      {/* Poll */}
+      <ActionSheet
+        visible={activeSheet === 'poll'}
+        onClose={() => {
+          commitPoll();
+        }}
+        title="Add poll"
+        subtitle="Poll appears in the caption · 1 vote per user"
+        palette={palette}
+        height={420}>
+        <View style={{gap: 10}}>
+          <View style={styles.optionRow}>
+            <Type size={16} color={palette.foreground} />
+            <Text style={styles.optionLabel}>Enable poll</Text>
+            <Switch
+              value={pollLocal.enabled}
+              onValueChange={enabled =>
+                setPollLocal(prev => ({...prev, enabled}))
+              }
+            />
+          </View>
+          <TextInput
+            value={pollLocal.question}
+            onChangeText={question =>
+              setPollLocal(prev => ({...prev, question}))
+            }
+            placeholder="Ask a question"
+            placeholderTextColor={palette.placeholder}
+            style={styles.pollInput}
+          />
+          {pollLocal.options.map((opt, idx) => (
+            <View
+              key={`opt_${idx}`}
+              style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+              <TextInput
+                value={opt}
+                onChangeText={next =>
+                  setPollLocal(prev => ({
+                    ...prev,
+                    options: prev.options.map((o, i) => (i === idx ? next : o)),
+                  }))
+                }
+                placeholder={`Option ${idx + 1}`}
+                placeholderTextColor={palette.placeholder}
+                style={[styles.pollInput, {flex: 1}]}
+                maxLength={48}
+              />
+              {pollLocal.options.length > 2 ? (
+                <Pressable
+                  onPress={() =>
+                    setPollLocal(prev => ({
+                      ...prev,
+                      options: prev.options.filter((_, i) => i !== idx),
+                    }))
+                  }
+                  hitSlop={8}
+                  style={{padding: 8}}>
+                  <X size={18} color={palette.foregroundMuted} />
+                </Pressable>
+              ) : null}
+            </View>
+          ))}
+          {pollLocal.options.length < 4 ? (
+            <Pressable
+              style={styles.pollAddBtn}
+              onPress={() =>
+                setPollLocal(prev => ({
+                  ...prev,
+                  options: [...prev.options, ''],
+                }))
+              }>
+              <Text style={styles.pollAddBtnText}>+ Add option</Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            style={[styles.primaryShareBtn, {marginTop: 8}]}
+            onPress={commitPoll}>
+            <Text style={styles.primaryShareText}>Save poll</Text>
+          </Pressable>
+        </View>
+      </ActionSheet>
+
+      {/* Visibility */}
+      <ActionSheet
+        visible={activeSheet === 'visibility'}
+        onClose={closeSheet}
+        title="Audience"
+        palette={palette}
+        height={300}>
+        <View style={{gap: 8}}>
+          {visibilityOptions.map(option => {
+            const selected = draft.visibility === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                onPress={() => {
+                  setVisibility(option.key);
+                  closeSheet();
+                }}
+                style={[
+                  styles.optionRow,
+                  selected && {borderColor: palette.accent},
+                ]}>
+                <option.Icon
+                  size={18}
+                  color={selected ? palette.accent : palette.foregroundMuted}
+                />
+                <Text
+                  style={[
+                    styles.optionLabel,
+                    {color: selected ? palette.accent : palette.foreground},
+                  ]}>
+                  {option.label}
+                </Text>
+                {selected ? (
+                  <Check size={18} color={palette.accent} />
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </ActionSheet>
+
+      {/* Feed Category */}
+      <ActionSheet
+        visible={activeSheet === 'category'}
+        onClose={closeSheet}
+        title="Feed category"
+        subtitle="Helps your post reach the right feed"
+        palette={palette}
+        height={320}>
+        <View style={[styles.categoryRow, {marginBottom: 14}]}>
+          {FEED_CATEGORY_CHIPS.map(category => {
+            const active =
+              draft.feedCategoryManual.trim() === '' &&
+              draft.feedCategoryPreset === category.preset;
+            return (
+              <Pressable
+                key={category.preset}
+                onPress={() => setFeedCategoryPreset(category.preset)}
+                style={[
+                  styles.categoryChip,
+                  {
+                    borderColor: active ? palette.accent : palette.border,
+                    backgroundColor: active ? palette.accent : palette.surface,
+                  },
+                ]}>
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    {
+                      color: active
+                        ? palette.accentForeground
+                        : palette.foreground,
+                    },
+                  ]}>
+                  {category.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <TextInput
+          value={draft.feedCategoryManual}
+          onChangeText={setFeedCategoryManual}
+          placeholder="Custom category (e.g. fitness)"
+          placeholderTextColor={palette.placeholder}
+          style={styles.pollInput}
+        />
+      </ActionSheet>
+
+      {/* Advanced */}
+      <ActionSheet
+        visible={activeSheet === 'advanced'}
+        onClose={closeSheet}
+        title="Advanced settings"
+        palette={palette}
+        height={420}>
+        <View style={{gap: 8}}>
+          <ToggleRow
+            icon={<MessageCircleOff size={16} color={palette.foreground} />}
+            label="Turn off comments"
+            value={draft.advanced.commentsOff}
+            onToggle={value => setAdvanced({commentsOff: value})}
+            styles={styles}
+            palette={palette}
+          />
+          <ToggleRow
+            icon={<EyeOff size={16} color={palette.foreground} />}
+            label="Hide like count"
+            value={draft.advanced.hideLikeCount}
+            onToggle={value => setAdvanced({hideLikeCount: value})}
+            styles={styles}
+            palette={palette}
+          />
+          <ToggleRow
+            icon={<Award size={16} color={palette.foreground} />}
+            label="Branded content"
+            value={draft.advanced.brandedContent}
+            onToggle={value => setAdvanced({brandedContent: value})}
+            styles={styles}
+            palette={palette}
+          />
+          {draft.mode === 'post' ? (
+            <ToggleRow
+              icon={<Share2 size={16} color={palette.foreground} />}
+              label="Also share to your story"
+              value={draft.advanced.shareToStory}
+              onToggle={value => setAdvanced({shareToStory: value})}
+              styles={styles}
+              palette={palette}
+            />
+          ) : null}
+        </View>
+      </ActionSheet>
+
+      {/* Story options */}
+      {draft.mode === 'story' ? (
+        <ActionSheet
+          visible={activeSheet === 'story'}
+          onClose={closeSheet}
+          title="Story options"
+          palette={palette}
+          height={300}>
+          <View style={{gap: 8}}>
+            <ToggleRow
+              icon={<MessageCircle size={16} color={palette.foreground} />}
+              label="Allow replies"
+              value={draft.storyAllowReplies}
+              onToggle={value => setStoryOptions({storyAllowReplies: value})}
+              styles={styles}
+              palette={palette}
+            />
+            <ToggleRow
+              icon={<Share2 size={16} color={palette.foreground} />}
+              label="Share to partner apps"
+              value={draft.storyShareOffPlatform}
+              onToggle={value =>
+                setStoryOptions({storyShareOffPlatform: value})
+              }
+              styles={styles}
+              palette={palette}
+            />
+          </View>
+        </ActionSheet>
+      ) : null}
+
+      {/* Schedule */}
+      <Modal
+        visible={scheduleOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Schedule post</Text>
+            <Text style={styles.modalSubtitle}>
               Choose when this content should publish. Use local device date and
               time.
             </Text>
             <View style={styles.modalRow}>
               <TextInput
                 value={scheduleDraft.date}
-                onChangeText={date => setScheduleDraft(current => ({...current, date}))}
+                onChangeText={date =>
+                  setScheduleDraft(current => ({...current, date}))
+                }
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor={palette.placeholder}
-                style={[
-                  styles.modalInput,
-                  {
-                    backgroundColor: palette.input,
-                    borderColor: palette.border,
-                    color: palette.foreground,
-                  },
-                ]}
+                style={styles.modalInput}
               />
               <TextInput
                 value={scheduleDraft.time}
-                onChangeText={time => setScheduleDraft(current => ({...current, time}))}
+                onChangeText={time =>
+                  setScheduleDraft(current => ({...current, time}))
+                }
                 placeholder="HH:mm"
                 placeholderTextColor={palette.placeholder}
-                style={[
-                  styles.modalInput,
-                  {
-                    backgroundColor: palette.input,
-                    borderColor: palette.border,
-                    color: palette.foreground,
-                  },
-                ]}
+                style={styles.modalInput}
               />
             </View>
             <View style={styles.modalActions}>
               <Pressable
-                style={[
-                  styles.footerButton,
-                  {backgroundColor: palette.surface, borderColor: palette.border},
-                ]}
+                style={styles.footerSmallBtn}
                 onPress={() => setScheduleOpen(false)}>
-                <Text style={[styles.footerButtonText, {color: palette.foreground}]}>
-                  Cancel
-                </Text>
+                <Text style={styles.footerSmallText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[styles.footerPrimary, {flex: 1, backgroundColor: palette.accent}]}
+                style={[styles.primaryShareBtn, {flex: 1}]}
                 onPress={() => {
                   const iso = buildScheduledIso(
                     scheduleDraft.date,
@@ -1720,20 +2146,19 @@ export function ShareScreen() {
                   setScheduleOpen(false);
                   publish(iso).catch(() => null);
                 }}>
-                <Text
-                  style={[
-                    styles.footerPrimaryText,
-                    {color: palette.accentForeground},
-                  ]}>
-                  Schedule
-                </Text>
+                <Text style={styles.primaryShareText}>Schedule</Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
 
-      <Modal visible={busy !== null} transparent animationType="fade" statusBarTranslucent>
+      {/* Loader */}
+      <Modal
+        visible={busy !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent>
         <View style={styles.loaderBackdrop}>
           <ActivityIndicator size="large" color="#fff" />
           <Text style={styles.loaderTitle}>
@@ -1751,5 +2176,69 @@ export function ShareScreen() {
         </View>
       </Modal>
     </ThemedSafeScreen>
+  );
+}
+
+function ActionListRow({
+  icon,
+  label,
+  value,
+  onPress,
+  styles,
+  palette,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value?: string;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  palette: ThemePalette;
+}) {
+  return (
+    <Pressable
+      style={({pressed}) => [
+        styles.actionRow,
+        pressed && {backgroundColor: palette.surface},
+      ]}
+      onPress={onPress}>
+      <View style={styles.actionRowIcon}>{icon}</View>
+      <Text style={styles.actionRowLabel}>{label}</Text>
+      {value ? (
+        <Text
+          style={[styles.actionRowValue, {color: palette.accent}]}
+          numberOfLines={1}>
+          {value}
+        </Text>
+      ) : null}
+      <ChevronRight size={18} color={palette.foregroundSubtle} />
+    </Pressable>
+  );
+}
+
+function ToggleRow({
+  icon,
+  label,
+  value,
+  onToggle,
+  styles,
+  palette,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: boolean;
+  onToggle: (value: boolean) => void;
+  styles: ReturnType<typeof makeStyles>;
+  palette: ThemePalette;
+}) {
+  return (
+    <View style={styles.optionRow}>
+      {icon}
+      <Text style={styles.optionLabel}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        thumbColor={value ? palette.accent : undefined}
+      />
+    </View>
   );
 }

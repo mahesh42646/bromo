@@ -9,6 +9,7 @@ export interface StoreProductDoc extends Document {
   originalPrice?: number;
   category: string;
   photos: string[];
+  videoUrl?: string;
   inStock: boolean;
   tags: string[];
   viewsCount: number;
@@ -27,6 +28,7 @@ const storeProductSchema = new Schema<StoreProductDoc>(
     originalPrice: { type: Number, min: 0 },
     category: { type: String, required: true, trim: true },
     photos: [{ type: String }],
+    videoUrl: { type: String, default: "" },
     inStock: { type: Boolean, default: true },
     tags: [{ type: String, trim: true }],
     viewsCount: { type: Number, default: 0 },

@@ -5,6 +5,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -143,26 +144,41 @@ export function CreateHubScreen() {
     setFilterForActive,
     setMode,
     setSelectedAudio,
+    mediaImportOverlay,
+    beginMediaImportOverlay,
   } = useCreateDraft();
 
   const [roll, setRoll] = useState<Array<{uri: string; type: 'image' | 'video'}>>([]);
   const [loadingRoll, setLoadingRoll] = useState(true);
   const [flashOn, setFlashOn] = useState(false);
   const [frontCam, setFrontCam] = useState(false);
-  const [preparingEditor, setPreparingEditor] = useState(false);
   const [captureFilter, setCaptureFilter] = useState<FilterId>('normal');
   const lastBootstrapTs = useRef<number | undefined>(undefined);
+  /** Blocks overlapping camera/library → editor handoffs (avoids races and crashes). */
+  const editorHandoffBusyRef = useRef(false);
+  const libraryPickerOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (!mediaImportOverlay) {
+      editorHandoffBusyRef.current = false;
+    }
+  }, [mediaImportOverlay]);
 
   const goToEditorWithAssets = useCallback(
     (list: MediaAsset[]) => {
       if (!list.length) return;
-      setPreparingEditor(true);
+      if (editorHandoffBusyRef.current) return;
+      editorHandoffBusyRef.current = true;
+      beginMediaImportOverlay();
       setAssets(list);
       setFilterForActive(captureFilter);
-      navigation.navigate('MediaEditor');
-      setTimeout(() => setPreparingEditor(false), 220);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          navigation.navigate('MediaEditor');
+        });
+      });
     },
-    [captureFilter, navigation, setAssets, setFilterForActive],
+    [beginMediaImportOverlay, captureFilter, navigation, setAssets, setFilterForActive],
   );
 
   useFocusEffect(
@@ -240,18 +256,24 @@ export function CreateHubScreen() {
 
   const openLibraryFull = useCallback(() => {
     if (draft.mode === 'live') return;
+    if (mediaImportOverlay || editorHandoffBusyRef.current) return;
+    if (libraryPickerOpenRef.current) return;
+    libraryPickerOpenRef.current = true;
     launchImageLibrary(
       {
         mediaType: draft.mode === 'reel' ? 'video' : 'mixed',
         selectionLimit: 1,
+        includeBase64: false,
+        ...(Platform.OS === 'ios' ? {assetRepresentationMode: 'current' as const} : {}),
       },
       res => {
+        libraryPickerOpenRef.current = false;
         if (res.didCancel || res.errorCode) return;
         const list = (res.assets ?? []).map(mapAsset).filter(Boolean) as MediaAsset[];
         if (list.length) goToEditorWithAssets(list);
       },
     );
-  }, [draft.mode, goToEditorWithAssets]);
+  }, [draft.mode, goToEditorWithAssets, mediaImportOverlay]);
 
   const onLivePress = useCallback(() => {
     navigation.navigate('LivePreview');
@@ -384,10 +406,10 @@ export function CreateHubScreen() {
           <View style={styles.captureRow}>
             <Pressable
               onPress={openLibraryFull}
-              disabled={draft.mode === 'live'}
+              disabled={draft.mode === 'live' || mediaImportOverlay}
               style={[
                 styles.sideAction,
-                draft.mode === 'live' && styles.sideActionDisabled,
+                (draft.mode === 'live' || mediaImportOverlay) && styles.sideActionDisabled,
               ]}>
               {roll[0] ? (
                 <Image source={{uri: roll[0].uri}} style={styles.galleryThumb} />
@@ -453,11 +475,13 @@ export function CreateHubScreen() {
         </View>
       </View>
 
-      <Modal visible={preparingEditor} transparent animationType="fade" statusBarTranslucent>
+      <Modal visible={mediaImportOverlay} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.loaderBackdrop}>
           <ActivityIndicator size="large" color="#fff" />
-          <Text style={styles.loaderTitle}>Loading editor...</Text>
-          <Text style={styles.loaderSubtitle}>Preparing your media</Text>
+          <Text style={styles.loaderTitle}>Opening editor</Text>
+          <Text style={styles.loaderSubtitle}>
+            Large videos can take a moment — keep this screen open
+          </Text>
         </View>
       </Modal>
     </ThemedSafeScreen>

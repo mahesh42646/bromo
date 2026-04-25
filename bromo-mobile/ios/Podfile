@@ -5,9 +5,32 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+def load_dot_env(path)
+  env = {}
+  return env unless File.exist?(path)
+
+  File.foreach(path) do |line|
+    clean = line.strip
+    next if clean.empty? || clean.start_with?('#') || !clean.include?('=')
+
+    idx = clean.index('=')
+    key = clean[0...idx].strip
+    value = clean[(idx + 1)..].strip
+    if (value.start_with?('"') && value.end_with?('"')) || (value.start_with?("'") && value.end_with?("'"))
+      value = value[1...-1]
+    end
+    env[key] = value
+  end
+
+  env
+end
+
 platform :ios, min_ios_version_supported
 $RNFirebaseAsStaticFramework = true
 prepare_react_native_project!
+
+dot_env = load_dot_env(File.join(__dir__, '..', '.env'))
+google_maps_ios_api_key = dot_env['GOOGLE_MAPS_API_KEY_IOS'].to_s
 
 target 'BromoMobile' do
   # FirebaseAuth (Swift) exposes FirebaseAuth-Swift.h only under a real framework layout.
@@ -22,7 +45,8 @@ target 'BromoMobile' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
-  pod 'GoogleMaps'
+  rn_maps_path = '../node_modules/react-native-maps'
+  pod 'react-native-maps', :path => rn_maps_path, :subspecs => ['Google']
 
   # FirebaseAuth is Swift and needs module maps from its Obj-C dependencies.
   # Apply modular_headers only to those specific pods — NOT globally.
@@ -52,6 +76,17 @@ target 'BromoMobile' do
           s['DEBUG_INFORMATION_FORMAT'] = 'dwarf'
         end
       end
+    end
+
+    installer.aggregate_targets.map(&:user_project).uniq.each do |project|
+      project.targets.each do |target|
+        next unless target.name == 'BromoMobile'
+
+        target.build_configurations.each do |cfg|
+          cfg.build_settings['INFOPLIST_KEY_GoogleMapsAPIKey'] = google_maps_ios_api_key
+        end
+      end
+      project.save
     end
   end
 end

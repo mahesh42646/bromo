@@ -36,6 +36,12 @@ export type LocationMeta = {
   placeId?: string;
 };
 
+export type PostPoll = {
+  question: string;
+  options: string[];
+  votes: number[];
+};
+
 export interface PostDoc extends Document {
   authorId: Types.ObjectId;
   type: "post" | "reel" | "story";
@@ -85,6 +91,7 @@ export interface PostDoc extends Document {
   mediaJobId?: Types.ObjectId;
   /** Home / explore bucket (post + reel). Default general. */
   feedCategory: string;
+  poll?: PostPoll;
   scheduledFor?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -140,6 +147,11 @@ const postSchema = new Schema<PostDoc>(
     processingError: { type: String },
     mediaJobId: { type: Schema.Types.ObjectId, ref: "MediaJob" },
     feedCategory: { type: String, default: "general", index: true },
+    poll: {
+      question: { type: String, maxlength: 140, default: "" },
+      options: [{ type: String, maxlength: 80 }],
+      votes: [{ type: Number, min: 0 }],
+    },
     scheduledFor: { type: Date, default: undefined, index: true },
   },
   { timestamps: true },

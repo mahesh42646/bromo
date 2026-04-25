@@ -57,6 +57,12 @@ export type StoryMeta = {
   overlays?: StoryOverlay[];
 };
 
+export type PostPoll = {
+  question: string;
+  options: string[];
+  votes: number[];
+};
+
 export type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';
 
 export type Post = {
@@ -96,6 +102,7 @@ export type Post = {
   scheduledFor?: string;
   /** Story-only: overlays and background color */
   storyMeta?: StoryMeta;
+  poll?: PostPoll;
   /** Story tray: whether the current user has finished this segment (server). */
   seenByMe?: boolean;
   /** v2 packed edit intent: filters, trim, speed, overlays, products, etc. (see `packEditMetaForUpload`). */
@@ -326,6 +333,7 @@ export async function createPost(data: {
   scheduledFor?: string;
   /** JSON string of edit metadata (filters, trim, overlays). */
   clientEditMeta?: string;
+  poll?: {question?: string; options?: string[]};
 }): Promise<{post: Post}> {
   const res = await authedFetch('/posts', {
     method: 'POST',
@@ -336,6 +344,21 @@ export async function createPost(data: {
     throw new Error((body as {message?: string}).message ?? 'Failed to create post');
   }
   return res.json() as Promise<{post: Post}>;
+}
+
+export async function votePostPoll(
+  postId: string,
+  optionIndex: number,
+): Promise<{voted: boolean; alreadyVoted: boolean; optionIndex: number; poll: PostPoll}> {
+  const res = await authedFetch(`/posts/${encodeURIComponent(postId)}/poll-vote`, {
+    method: 'POST',
+    body: JSON.stringify({optionIndex}),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Failed to submit poll vote');
+  }
+  return res.json() as Promise<{voted: boolean; alreadyVoted: boolean; optionIndex: number; poll: PostPoll}>;
 }
 
 export async function deletePost(id: string): Promise<void> {

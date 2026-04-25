@@ -13,6 +13,7 @@ import { MediaJob } from "../models/MediaJob.js";
 import { StorySeen } from "../models/StorySeen.js";
 import { Like } from "../models/Like.js";
 import { Comment } from "../models/Comment.js";
+import { PostPollVote } from "../models/PostPollVote.js";
 import { Follow } from "../models/Follow.js";
 import { User } from "../models/User.js";
 import { createNotification, checkLikeMilestone } from "../models/Notification.js";
@@ -673,6 +674,23 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
     } : null,
     isFollowing,
     authorId: undefined,
+  };
+}
+
+function sanitizePollInput(raw: unknown): { question: string; options: string[]; votes: number[] } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const obj = raw as { question?: unknown; options?: unknown };
+  const question = typeof obj.question === "string" ? obj.question.trim().slice(0, 140) : "";
+  const optionsRaw = Array.isArray(obj.options) ? obj.options : [];
+  const options = optionsRaw
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 4);
+  if (options.length < 2) return undefined;
+  return {
+    question,
+    options,
+    votes: options.map(() => 0),
   };
 }
 
@@ -2056,6 +2074,7 @@ postsRouter.post(
         settings,
         durationMs,
         storyMeta,
+        poll: pollRaw,
         feedCategory: feedCategoryRaw,
         scheduledFor: scheduledForRaw,
         clientEditMeta: clientEditMetaRaw,
@@ -2074,6 +2093,7 @@ postsRouter.post(
         settings?: { commentsOff?: boolean; hideLikes?: boolean; allowRemix?: boolean; closeFriendsOnly?: boolean };
         durationMs?: number;
         storyMeta?: { bgColor?: string; overlays?: unknown[] };
+        poll?: { question?: string; options?: string[] };
         feedCategory?: string;
         scheduledFor?: string;
         clientEditMeta?: string | Record<string, unknown>;
@@ -2100,6 +2120,12 @@ postsRouter.post(
           /* ignore */
         }
       }
+      const pollFromMeta = sanitizePollInput(
+        clientEditMeta && typeof clientEditMeta === "object"
+          ? (clientEditMeta as { poll?: unknown }).poll
+          : undefined,
+      );
+      const poll = sanitizePollInput(pollRaw) ?? pollFromMeta;
 
       // For color-background stories, mediaUrl may be the sentinel "color-bg"
       const isColorBgStory = type === "story" && storyMeta?.bgColor && (!mediaUrl || mediaUrl === "color-bg");
@@ -2159,6 +2185,7 @@ postsRouter.post(
         ...(isScheduled ? { isActive: false } : {}),
         feedCategory,
         ...(type === "story" && storyMeta ? { storyMeta } : {}),
+        ...(poll ? { poll } : {}),
       });
 
       if (!isScheduled && (type === "post" || type === "reel")) {
@@ -2178,10 +2205,107 @@ postsRouter.post(
         emitPostNew(result as object);
       }
 
+      if (safeTaggedUserIds.length) {
+        await Promise.allSettled(
+          safeTaggedUserIds.map((taggedId) =>
+            createNotification({
+              recipientId: taggedId,
+              actorId: user._id,
+              type: "mention",
+              postId: post._id,
+              message: `${user.username} mentioned you in a ${type}.`,
+            }),
+          ),
+        );
+      }
+
+      const followers = await Follow.find({
+        followingId: user._id,
+        status: "accepted",
+      })
+        .select("followerId")
+        .lean();
+      const followerIds = followers
+        .map((f) => String(f.followerId))
+        .filter((id) => id && id !== String(user._id));
+      if (followerIds.length) {
+        await Promise.allSettled(
+          followerIds.map((rid) =>
+            createNotification({
+              recipientId: rid,
+              actorId: user._id,
+              type: "new_post",
+              postId: post._id,
+              message: `${user.username} posted a new ${type}.`,
+            }),
+          ),
+        );
+      }
+
       return res.status(201).json({ post: result });
     } catch (err) {
       console.error("[posts] create error:", err);
       return res.status(500).json({ message: "Failed to create post" });
+    }
+  },
+);
+
+postsRouter.post(
+  "/:id/poll-vote",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const postId = String(req.params.id ?? "");
+      const optionIndex = Number((req.body as { optionIndex?: unknown }).optionIndex);
+      if (!mongoose.Types.ObjectId.isValid(postId)) {
+        return res.status(400).json({ message: "Invalid post id" });
+      }
+      if (!Number.isInteger(optionIndex) || optionIndex < 0) {
+        return res.status(400).json({ message: "Valid optionIndex required" });
+      }
+      const post = await Post.findOne({ _id: postId, ...VISIBLE_POST });
+      if (!post?.poll?.options?.length || post.poll.options.length < 2) {
+        return res.status(400).json({ message: "Poll is not enabled on this post" });
+      }
+      if (optionIndex >= post.poll.options.length) {
+        return res.status(400).json({ message: "Invalid optionIndex" });
+      }
+
+      const existing = await PostPollVote.findOne({
+        postId: post._id,
+        userId: user._id,
+      })
+        .select("optionIndex")
+        .lean();
+      if (existing) {
+        return res.status(200).json({
+          voted: false,
+          alreadyVoted: true,
+          optionIndex: Number(existing.optionIndex),
+          poll: post.poll,
+        });
+      }
+
+      await PostPollVote.create({
+        postId: post._id,
+        userId: user._id,
+        optionIndex,
+      });
+      const votes = [...(post.poll.votes ?? post.poll.options.map(() => 0))];
+      while (votes.length < post.poll.options.length) votes.push(0);
+      votes[optionIndex] = (Number(votes[optionIndex]) || 0) + 1;
+      post.poll.votes = votes;
+      await post.save();
+      return res.status(200).json({
+        voted: true,
+        alreadyVoted: false,
+        optionIndex,
+        poll: post.poll,
+      });
+    } catch (err) {
+      console.error("[posts] poll vote error:", err);
+      return res.status(500).json({ message: "Failed to submit poll vote" });
     }
   },
 );

@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -14,7 +15,8 @@ import {
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import MapView, { Callout, Marker, PROVIDER_GOOGLE, type LatLng } from 'react-native-maps';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import MapView, { Callout, Marker, PROVIDER_GOOGLE, UrlTile, type LatLng } from 'react-native-maps';
 import {
   BadgeCheck,
   Bell,
@@ -167,10 +169,15 @@ export function StoreScreen() {
   const [paying, setPaying] = useState(false);
   const [likedStoreIds, setLikedStoreIds] = useState<Record<string, boolean>>({});
   const [fullMapVisible, setFullMapVisible] = useState(false);
+  const [mapTileFallback, setMapTileFallback] = useState(false);
+  const [miniMapLoaded, setMiniMapLoaded] = useState(false);
+  const [fullMapLoaded, setFullMapLoaded] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mapRef = useRef<MapView | null>(null);
   const fullMapRef = useRef<MapView | null>(null);
+  const miniMapLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fullMapLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const appTitle = contract.branding.appTitle || 'BROMO';
 
@@ -311,6 +318,54 @@ export function StoreScreen() {
     });
   }, [mapFitCoordinates]);
 
+  const clearMiniMapLoadTimeout = useCallback(() => {
+    if (miniMapLoadTimeoutRef.current) {
+      clearTimeout(miniMapLoadTimeoutRef.current);
+      miniMapLoadTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearFullMapLoadTimeout = useCallback(() => {
+    if (fullMapLoadTimeoutRef.current) {
+      clearTimeout(fullMapLoadTimeoutRef.current);
+      fullMapLoadTimeoutRef.current = null;
+    }
+  }, []);
+
+  const armMiniMapFallback = useCallback(() => {
+    clearMiniMapLoadTimeout();
+    miniMapLoadTimeoutRef.current = setTimeout(() => {
+      setMapTileFallback(true);
+    }, 2200);
+  }, [clearMiniMapLoadTimeout]);
+
+  const armFullMapFallback = useCallback(() => {
+    clearFullMapLoadTimeout();
+    fullMapLoadTimeoutRef.current = setTimeout(() => {
+      setMapTileFallback(true);
+    }, 2200);
+  }, [clearFullMapLoadTimeout]);
+
+  const handleMiniMapReady = useCallback(() => {
+    fitMapToCoordinates(mapRef, false);
+    if (!miniMapLoaded) armMiniMapFallback();
+  }, [armMiniMapFallback, fitMapToCoordinates, miniMapLoaded]);
+
+  const handleMiniMapLoaded = useCallback(() => {
+    setMiniMapLoaded(true);
+    clearMiniMapLoadTimeout();
+  }, [clearMiniMapLoadTimeout]);
+
+  const handleFullMapReady = useCallback(() => {
+    fitMapToCoordinates(fullMapRef, false);
+    if (!fullMapLoaded) armFullMapFallback();
+  }, [armFullMapFallback, fitMapToCoordinates, fullMapLoaded]);
+
+  const handleFullMapLoaded = useCallback(() => {
+    setFullMapLoaded(true);
+    clearFullMapLoadTimeout();
+  }, [clearFullMapLoadTimeout]);
+
   useEffect(() => {
     if (mapFitCoordinates.length === 0) return;
     const timer = setTimeout(() => {
@@ -321,11 +376,40 @@ export function StoreScreen() {
 
   useEffect(() => {
     if (!fullMapVisible || mapFitCoordinates.length === 0) return;
+    setFullMapLoaded(false);
     const timer = setTimeout(() => {
       fitMapToCoordinates(fullMapRef, true);
     }, 120);
     return () => clearTimeout(timer);
   }, [fitMapToCoordinates, fullMapVisible, mapFitCoordinates]);
+
+  useEffect(() => {
+    setMiniMapLoaded(false);
+  }, [mapMarkers, userLat, userLng, loading, mapTileFallback]);
+
+  useEffect(() => {
+    if (loading) {
+      clearMiniMapLoadTimeout();
+      clearFullMapLoadTimeout();
+      return;
+    }
+    if (!miniMapLoaded) armMiniMapFallback();
+    return () => clearMiniMapLoadTimeout();
+  }, [armMiniMapFallback, clearMiniMapLoadTimeout, clearFullMapLoadTimeout, loading, miniMapLoaded]);
+
+  useEffect(() => {
+    if (!fullMapVisible) {
+      clearFullMapLoadTimeout();
+      return;
+    }
+    if (!fullMapLoaded) armFullMapFallback();
+    return () => clearFullMapLoadTimeout();
+  }, [armFullMapFallback, clearFullMapLoadTimeout, fullMapLoaded, fullMapVisible]);
+
+  useEffect(() => () => {
+    clearMiniMapLoadTimeout();
+    clearFullMapLoadTimeout();
+  }, [clearFullMapLoadTimeout, clearMiniMapLoadTimeout]);
 
   const hasActiveFilters =
     Boolean(activeCategory) ||
@@ -341,7 +425,7 @@ export function StoreScreen() {
 
   const openMyStore = useCallback(() => {
     if (myStore?._id) {
-      parentNavigate(navigation, 'StorePublicProfile', { storeId: myStore._id });
+      parentNavigate(navigation, 'ManageStore');
       return;
     }
     parentNavigate(navigation, 'CreateStore');
@@ -425,11 +509,11 @@ export function StoreScreen() {
   }, [openStoreProfile]);
 
   const renderStoreMarkers = useCallback((onPressStore: (storeId: string) => void) => (
-    mapMarkers.map(({ store, latitude, longitude }) => {
+    mapMarkers.map(({ store, latitude, longitude }, markerIndex) => {
       const addressLine = store.address?.trim() || store.city?.trim() || 'Address unavailable';
       return (
         <Marker
-          key={store._id}
+          key={`${store._id}-${markerIndex}`}
           coordinate={{ latitude, longitude }}
           onCalloutPress={() => onPressStore(store._id)}>
           <View style={[s.storeMarkerOuter, { borderColor: palette.primary }]}>
@@ -649,10 +733,12 @@ export function StoreScreen() {
           ) : (
             <View style={[s.mapPreviewWrap, { borderColor: palette.border, backgroundColor: palette.input }]}>
               <MapView
+                key={mapTileFallback ? 'mini-fallback' : 'mini-google'}
                 ref={mapRef}
                 style={s.mapPreview}
-                provider={PROVIDER_GOOGLE}
+                provider={mapTileFallback && Platform.OS === 'ios' ? undefined : PROVIDER_GOOGLE}
                 initialRegion={mapRegion}
+                mapType={mapTileFallback && Platform.OS === 'android' ? 'none' : 'satellite'}
                 scrollEnabled={false}
                 zoomEnabled={false}
                 rotateEnabled={false}
@@ -660,7 +746,14 @@ export function StoreScreen() {
                 toolbarEnabled={false}
                 showsCompass={false}
                 showsUserLocation={userLat != null && userLng != null}
-                onMapReady={() => fitMapToCoordinates(mapRef, false)}>
+                onMapReady={handleMiniMapReady}
+                onMapLoaded={handleMiniMapLoaded}>
+                {mapTileFallback && Platform.OS === 'android' ? (
+                  <UrlTile
+                    urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    maximumZ={19}
+                  />
+                ) : null}
                 {renderStoreMarkers(openStoreProfile)}
               </MapView>
               <View style={[s.mapHintPill, { backgroundColor: `${palette.background}D8`, borderColor: palette.border }]}>
@@ -711,8 +804,8 @@ export function StoreScreen() {
                     <Text style={{ fontSize: 11, color: palette.foregroundSubtle }}>/month · {plan.billedAs}</Text>
 
                     <View style={{ marginTop: 12, gap: 7 }}>
-                      {plan.features.slice(0, 5).map(feature => (
-                        <View key={feature} style={{ flexDirection: 'row', gap: 7, alignItems: 'flex-start' }}>
+                      {plan.features.slice(0, 5).map((feature, featureIndex) => (
+                        <View key={`${plan.id}-${featureIndex}`} style={{ flexDirection: 'row', gap: 7, alignItems: 'flex-start' }}>
                           <BadgeCheck size={12} color={palette.success} style={{ marginTop: 1 }} />
                           <Text style={{ flex: 1, fontSize: 12, color: palette.foregroundSubtle, lineHeight: 17 }}>{feature}</Text>
                         </View>
@@ -763,6 +856,7 @@ export function StoreScreen() {
             stores.map((store, i) => (
 
               <View
+                key={`${store._id}-${i}`}
                 style={{
                   width: '100%',
                   marginTop: 10,
@@ -774,7 +868,6 @@ export function StoreScreen() {
                 }}
               >
                 <StoreDiscoverCard
-                  key={store._id}
                   store={store}
                   palette={palette}
                   liked={likedStoreIds[store._id] ?? Boolean(store.isFavorited)}
@@ -808,7 +901,7 @@ export function StoreScreen() {
         presentationStyle="fullScreen"
         visible={fullMapVisible}
         onRequestClose={() => setFullMapVisible(false)}>
-        <View style={[s.fullMapModal, { backgroundColor: palette.background }]}>
+        <SafeAreaView edges={['top', 'bottom']} style={[s.fullMapModal, { backgroundColor: palette.background }]}>
           <View style={[s.fullMapHeader, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
             <Pressable
               onPress={() => setFullMapVisible(false)}
@@ -824,10 +917,12 @@ export function StoreScreen() {
 
           <View style={s.fullMapBody}>
             <MapView
+              key={mapTileFallback ? 'full-fallback' : 'full-google'}
               ref={fullMapRef}
               style={s.fullMap}
-              provider={PROVIDER_GOOGLE}
+              provider={mapTileFallback && Platform.OS === 'ios' ? undefined : PROVIDER_GOOGLE}
               initialRegion={mapRegion}
+              mapType={mapTileFallback && Platform.OS === 'android' ? 'none' : 'satellite'}
               scrollEnabled
               zoomEnabled
               rotateEnabled
@@ -836,7 +931,14 @@ export function StoreScreen() {
               showsCompass
               showsMyLocationButton
               showsUserLocation={userLat != null && userLng != null}
-              onMapReady={() => fitMapToCoordinates(fullMapRef, false)}>
+              onMapReady={handleFullMapReady}
+              onMapLoaded={handleFullMapLoaded}>
+              {mapTileFallback && Platform.OS === 'android' ? (
+                <UrlTile
+                  urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  maximumZ={19}
+                />
+              ) : null}
               {renderStoreMarkers(openStoreFromFullMap)}
             </MapView>
             <View style={[s.fullMapHintBar, { backgroundColor: `${palette.background}E8`, borderColor: palette.border }]}>
@@ -845,7 +947,7 @@ export function StoreScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       <Modal

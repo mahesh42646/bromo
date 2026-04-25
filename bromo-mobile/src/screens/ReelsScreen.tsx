@@ -41,6 +41,8 @@ import {
   Sparkles,
   BarChart2,
   Megaphone,
+  Volume2,
+  VolumeX,
 } from 'lucide-react-native';
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NavigationProp, RouteProp} from '@react-navigation/native';
@@ -64,6 +66,7 @@ import {
   sendReelFeedback,
   fetchPostWhy,
   reportPostStrict,
+  votePostPoll,
   type Post,
 } from '../api/postsApi';
 import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
@@ -495,6 +498,8 @@ const ReelItem = React.memo(function ReelItem({
   const [coverSpinner, setCoverSpinner] = useState(true);
   const [moreOpen, setMoreOpen] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [pollBusy, setPollBusy] = useState(false);
+  const [reelPoll, setReelPoll] = useState(item.poll);
   const viewRecorded = useRef(false);
   const watchStartMs = useRef(0);
   const accumulatedWatchMs = useRef(0);
@@ -510,6 +515,7 @@ const ReelItem = React.memo(function ReelItem({
   useEffect(() => {
     setCoverSpinner(true);
     setProgress(0);
+    setReelPoll(item.poll);
     durationRef.current = 0;
     clearedSpinnerOnProgress.current = false;
     naturalEndSentRef.current = false;
@@ -689,6 +695,23 @@ const ReelItem = React.memo(function ReelItem({
         </View>
       )}
 
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 14,
+          right: 14,
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          zIndex: 12,
+        }}>
+        {reelsMuted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
+      </View>
+
       {/* Single tap: mute all reels. Long press: pause; release: resume. */}
       <Pressable
         style={{...StyleSheet.absoluteFillObject, zIndex: 1}}
@@ -819,6 +842,51 @@ const ReelItem = React.memo(function ReelItem({
             ellipsizeMode="tail">
             {captionLine}
           </Text>
+        ) : null}
+        {reelPoll?.options?.length ? (
+          <View style={{marginTop: 8, gap: 6}}>
+            {reelPoll.question ? (
+              <Text style={{color: '#fff', fontSize: 12, fontWeight: '800'}} numberOfLines={1}>
+                {reelPoll.question}
+              </Text>
+            ) : null}
+            {reelPoll.options.map((opt, idx) => {
+              const total = reelPoll?.votes?.reduce((s, v) => s + Number(v || 0), 0) ?? 0;
+              const count = Number(reelPoll?.votes?.[idx] ?? 0);
+              return (
+                <Pressable
+                  key={`${item._id}_poll_${idx}`}
+                  disabled={pollBusy}
+                  onPress={async () => {
+                    try {
+                      setPollBusy(true);
+                      const out = await votePostPoll(item._id, idx);
+                      setReelPoll(out.poll);
+                    } catch {
+                      /* ignore */
+                    } finally {
+                      setPollBusy(false);
+                    }
+                  }}
+                  style={{
+                    borderRadius: 8,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: 'rgba(255,255,255,0.32)',
+                    backgroundColor: 'rgba(0,0,0,0.35)',
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
+                  }}>
+                  <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}} numberOfLines={1}>
+                    {opt}
+                  </Text>
+                  <Text style={{color: 'rgba(255,255,255,0.82)', fontSize: 10}}>
+                    {count} votes
+                    {total > 0 ? ` • ${Math.round((count / total) * 100)}%` : ''}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         ) : null}
         {item.music ? (
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2}}>

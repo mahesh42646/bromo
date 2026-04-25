@@ -14,13 +14,13 @@ import {
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BadgeCheck, Bookmark, ChevronLeft, Heart, MessageCircle, MoreHorizontal, Send} from 'lucide-react-native';
+import {BadgeCheck, Bookmark, ChevronLeft, Heart, MessageCircle, MoreHorizontal, Send, Volume2, VolumeX} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {getPost, resolveVideoUrl, toggleLike, type Post} from '../api/postsApi';
+import {getPost, resolveVideoUrl, toggleLike, type Post, votePostPoll} from '../api/postsApi';
 import {EditMetaLayers} from '../components/media/EditMetaLayers';
 import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
@@ -55,6 +55,8 @@ export function PostDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [bookmarked, setBookmarked] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [videoMuted, setVideoMuted] = useState(true);
+  const [pollBusy, setPollBusy] = useState(false);
 
   useEffect(() => {
     getPost(postId)
@@ -203,18 +205,35 @@ export function PostDetailScreen() {
 
         {/* Media */}
         {post.mediaType === 'video' ? (
-          <PostVideoWithClientMeta
-            post={post}
-            context={isHlsDetail ? 'feed-hls' : 'feed'}
-            uri={playUriDetail}
-            fallbackUri={isHlsDetail ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
-            posterUri={postThumbnailUri(post) || undefined}
-            style={{width: '100%', aspectRatio: 1}}
-            repeat
-            muted={false}
-            paused={false}
-            posterOverlayUntilReady
-          />
+          <View style={{width: '100%', aspectRatio: 1, position: 'relative'}}>
+            <PostVideoWithClientMeta
+              post={post}
+              context={isHlsDetail ? 'feed-hls' : 'feed'}
+              uri={playUriDetail}
+              fallbackUri={isHlsDetail ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
+              posterUri={postThumbnailUri(post) || undefined}
+              style={{width: '100%', aspectRatio: 1}}
+              repeat
+              muted={videoMuted}
+              paused={false}
+              posterOverlayUntilReady
+            />
+            <Pressable
+              onPress={() => setVideoMuted(v => !v)}
+              style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+              }}>
+              {videoMuted ? <VolumeX size={17} color="#fff" /> : <Volume2 size={17} color="#fff" />}
+            </Pressable>
+          </View>
         ) : (
           <View style={{width: '100%', aspectRatio: 1, position: 'relative'}}>
             <Image
@@ -288,6 +307,53 @@ export function PostDetailScreen() {
             />
           </Pressable>
         </View>
+
+        {/* Poll (before caption) */}
+        {post.poll?.options?.length ? (
+          <View style={{paddingHorizontal: 14, paddingBottom: 8, gap: 8}}>
+            {post.poll.question ? (
+              <Text style={{color: palette.foreground, fontSize: 13, fontWeight: '800'}}>
+                {post.poll.question}
+              </Text>
+            ) : null}
+            {post.poll.options.map((opt, idx) => {
+              const total = post.poll?.votes?.reduce((s, v) => s + Number(v || 0), 0) ?? 0;
+              const count = Number(post.poll?.votes?.[idx] ?? 0);
+              const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+              return (
+                <Pressable
+                  key={`${post._id}_poll_${idx}`}
+                  disabled={pollBusy}
+                  onPress={async () => {
+                    try {
+                      setPollBusy(true);
+                      const out = await votePostPoll(post._id, idx);
+                      setPost(p => (p ? {...p, poll: out.poll} : p));
+                    } catch (e) {
+                      Alert.alert('Poll', e instanceof Error ? e.message : 'Try again');
+                    } finally {
+                      setPollBusy(false);
+                    }
+                  }}
+                  style={{
+                    borderRadius: 10,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: palette.border,
+                    backgroundColor: palette.card,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                  }}>
+                  <Text style={{color: palette.foreground, fontSize: 13, fontWeight: '700'}}>
+                    {opt}
+                  </Text>
+                  <Text style={{color: palette.mutedForeground, fontSize: 11, marginTop: 4}}>
+                    {count} votes ({pct}%)
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
 
         {/* Caption */}
         <View style={{paddingHorizontal: 14, paddingBottom: 8}}>

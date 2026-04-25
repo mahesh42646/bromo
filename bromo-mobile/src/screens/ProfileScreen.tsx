@@ -171,6 +171,11 @@ function SettingsModal({
                   const Icon = item.icon;
                   const accentColor = item.accent ?? palette.foreground;
                   return (
+                   
+                  <View style={styles.settingsRow}>
+                      <View style={[styles.settingsIconBox, {backgroundColor: `${accentColor}14`}]}>
+                        <Icon size={18} color={accentColor} />
+                      </View>
                     <Pressable
                       key={ii}
                       onPress={item.action}
@@ -179,9 +184,7 @@ function SettingsModal({
                         ii < group.items.length - 1 && [styles.settingsRowBorder, {borderBottomColor: palette.glass}],
                         {opacity: pressed ? 0.65 : 1},
                       ]}>
-                      <View style={[styles.settingsIconBox, {backgroundColor: `${accentColor}14`}]}>
-                        <Icon size={18} color={accentColor} />
-                      </View>
+                     
                       <View style={{flex: 1}}>
                         <Text style={[styles.settingsRowLabel, {color: accentColor}]}>
                           {item.label}
@@ -194,6 +197,7 @@ function SettingsModal({
                         <ChevronRight size={16} color={palette.borderHeavy} />
                       )}
                     </Pressable>
+                  </View>
                   );
                 })}
               </View>

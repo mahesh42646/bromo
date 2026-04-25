@@ -114,7 +114,7 @@ export function ChatListScreen() {
         />
       </View>
 
-      <FlatList
+      {/* <FlatList
         horizontal
         data={FILTERS}
         keyExtractor={i => i.id}
@@ -144,7 +144,7 @@ export function ChatListScreen() {
             </Pressable>
           );
         }}
-      />
+      /> */}
 
       {/* User search results for starting new chats */}
       {search.trim().length >= 2 && (
