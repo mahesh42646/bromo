@@ -10,11 +10,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  UIManager,
   View,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import MapView, { Callout, Marker, PROVIDER_GOOGLE, type LatLng } from 'react-native-maps';
 import {
   BadgeCheck,
   Bell,
@@ -90,36 +90,6 @@ type Region = {
   longitudeDelta: number;
 };
 
-type OptionalWebViewModule = {
-  WebView?: React.ComponentType<{
-    style?: object;
-    source: { html: string };
-    originWhitelist?: string[];
-    javaScriptEnabled?: boolean;
-    domStorageEnabled?: boolean;
-    scrollEnabled?: boolean;
-    nestedScrollEnabled?: boolean;
-    onMessage?: (event: { nativeEvent: { data: string } }) => void;
-  }>;
-};
-
-function loadWebViewModule(): OptionalWebViewModule | null {
-  try {
-    const webview = require('react-native-webview') as OptionalWebViewModule;
-    if (!webview?.WebView) return null;
-    return webview;
-  } catch {
-    return null;
-  }
-}
-
-const webViewModule = loadWebViewModule();
-const WebViewComponent = webViewModule?.WebView ?? null;
-const hasNativeWebView =
-  typeof UIManager.getViewManagerConfig === 'function'
-    ? Boolean(UIManager.getViewManagerConfig('RNCWebView'))
-    : Boolean((UIManager as unknown as Record<string, unknown>).RNCWebView);
-
 type StoreMarker = {
   store: BromoStore;
   latitude: number;
@@ -132,13 +102,13 @@ function getStoreMarker(store: BromoStore): StoreMarker | null {
   return { store, latitude, longitude };
 }
 
-function buildMapRegion(markers: StoreMarker[], latitude?: number | null, longitude?: number | null): Region {
+function buildMapRegion(markers: StoreMarker[], userLat?: number | null, userLng?: number | null): Region {
   const points = markers.map(marker => ({
     latitude: marker.latitude,
     longitude: marker.longitude,
   }));
-  if (latitude != null && longitude != null) {
-    points.push({ latitude, longitude });
+  if (userLat != null && userLng != null) {
+    points.push({ latitude: userLat, longitude: userLng });
   }
 
   if (points.length === 0) {
@@ -163,15 +133,6 @@ function buildMapRegion(markers: StoreMarker[], latitude?: number | null, longit
     latitudeDelta: Math.max((maxLatitude - minLatitude) * 1.5, 0.045),
     longitudeDelta: Math.max((maxLongitude - minLongitude) * 1.5, 0.045),
   };
-}
-
-function escapeHtmlForWebView(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 export function StoreScreen() {
@@ -205,8 +166,11 @@ export function StoreScreen() {
   const [checkout, setCheckout] = useState<CheckoutState | null>(null);
   const [paying, setPaying] = useState(false);
   const [likedStoreIds, setLikedStoreIds] = useState<Record<string, boolean>>({});
+  const [fullMapVisible, setFullMapVisible] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const mapRef = useRef<MapView | null>(null);
+  const fullMapRef = useRef<MapView | null>(null);
 
   const appTitle = contract.branding.appTitle || 'BROMO';
 
@@ -328,154 +292,40 @@ export function StoreScreen() {
 
   const mapRegion = useMemo(() => buildMapRegion(mapMarkers, userLat, userLng), [mapMarkers, userLat, userLng]);
 
-  const hasMapContent = mapMarkers.length > 0 || (userLat != null && userLng != null);
-  const mapHtml = useMemo(() => {
-    const payload = {
-      stores: mapMarkers.map(({ store, latitude, longitude }) => ({
-        id: store._id,
-        name: store.name,
-        category: store.category,
-        address: store.address || store.city,
-        latitude,
-        longitude,
-      })),
-      user: userLat != null && userLng != null ? { latitude: userLat, longitude: userLng } : null,
-      center: mapRegion,
-      palette: {
-        primary: palette.primary,
-        foreground: palette.foreground,
-        foregroundSubtle: palette.foregroundSubtle,
-        background: palette.background,
-        card: palette.card,
-        border: palette.border,
-      },
-      dark: isDark,
-    };
-    const json = escapeHtmlForWebView(JSON.stringify(payload));
-    return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=yes, viewport-fit=cover"
-    />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
-    <style>
-      html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; background: ${palette.background}; }
-      body { overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-      .leaflet-container { background: ${palette.background}; }
-      .leaflet-control-zoom a {
-        background: ${palette.card} !important;
-        color: ${palette.foreground} !important;
-        border-bottom-color: ${palette.border} !important;
-      }
-      .leaflet-popup-content-wrapper,
-      .leaflet-popup-tip {
-        background: ${palette.card};
-        color: ${palette.foreground};
-      }
-      .store-popup {
-        min-width: 160px;
-      }
-      .store-popup-title {
-        font-size: 13px;
-        font-weight: 800;
-        color: ${palette.foreground};
-      }
-      .store-popup-subtitle {
-        margin-top: 4px;
-        font-size: 11px;
-        color: ${palette.foregroundSubtle};
-      }
-      .store-popup-link {
-        margin-top: 8px;
-        font-size: 11px;
-        font-weight: 700;
-        color: ${palette.primary};
-      }
-      .store-dot {
-        width: 18px;
-        height: 18px;
-        border-radius: 999px;
-        background: ${palette.primary};
-        border: 3px solid ${palette.card};
-        box-shadow: 0 0 0 1px ${palette.border}, 0 4px 12px rgba(0, 0, 0, 0.22);
-      }
-      .user-dot {
-        width: 16px;
-        height: 16px;
-        border-radius: 999px;
-        background: #2563eb;
-        border: 3px solid rgba(255,255,255,0.95);
-        box-shadow: 0 0 0 1px rgba(37,99,235,0.35), 0 4px 10px rgba(37,99,235,0.35);
-      }
-    </style>
-  </head>
-  <body>
-    <div id="map"></div>
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
-    <script>
-      const payload = JSON.parse("${json}");
-      const map = L.map('map', {
-        zoomControl: true,
-        scrollWheelZoom: true,
-        doubleClickZoom: true,
-        touchZoom: true,
-      }).setView([payload.center.latitude, payload.center.longitude], 13);
+  const mapFitCoordinates = useMemo<LatLng[]>(() => {
+    const coordinates = mapMarkers.map(marker => ({
+      latitude: marker.latitude,
+      longitude: marker.longitude,
+    }));
+    if (userLat != null && userLng != null) {
+      coordinates.push({ latitude: userLat, longitude: userLng });
+    }
+    return coordinates;
+  }, [mapMarkers, userLat, userLng]);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map);
+  const fitMapToCoordinates = useCallback((ref: React.RefObject<MapView | null>, animated: boolean) => {
+    if (!ref.current || mapFitCoordinates.length === 0) return;
+    ref.current.fitToCoordinates(mapFitCoordinates, {
+      edgePadding: { top: 56, right: 56, bottom: 56, left: 56 },
+      animated,
+    });
+  }, [mapFitCoordinates]);
 
-      const bounds = [];
+  useEffect(() => {
+    if (mapFitCoordinates.length === 0) return;
+    const timer = setTimeout(() => {
+      fitMapToCoordinates(mapRef, true);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [fitMapToCoordinates, mapFitCoordinates]);
 
-      if (payload.user) {
-        const userIcon = L.divIcon({ className: '', html: '<div class="user-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
-        L.marker([payload.user.latitude, payload.user.longitude], { icon: userIcon })
-          .addTo(map)
-          .bindPopup('<div class="store-popup"><div class="store-popup-title">You are here</div></div>');
-        bounds.push([payload.user.latitude, payload.user.longitude]);
-      }
-
-      payload.stores.forEach(store => {
-        const storeIcon = L.divIcon({ className: '', html: '<div class="store-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
-        const popupHtml =
-          '<div class="store-popup">' +
-          '<div class="store-popup-title">' + store.name + '</div>' +
-          '<div class="store-popup-subtitle">' + store.category + '</div>' +
-          '<div class="store-popup-subtitle">' + store.address + '</div>' +
-          '<div class="store-popup-link">Tap marker again to open store</div>' +
-          '</div>';
-        const marker = L.marker([store.latitude, store.longitude], { icon: storeIcon }).addTo(map);
-        marker.bindPopup(popupHtml);
-        marker.on('click', () => {
-          if (window.ReactNativeWebView) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'openStore', storeId: store.id }));
-          }
-        });
-        bounds.push([store.latitude, store.longitude]);
-      });
-
-      if (bounds.length > 1) {
-        map.fitBounds(bounds, { padding: [30, 30] });
-      } else if (bounds.length === 1) {
-        map.setView(bounds[0], 14);
-      }
-    </script>
-  </body>
-</html>`;
-  }, [isDark, mapMarkers, mapRegion, palette.background, palette.border, palette.card, palette.foreground, palette.foregroundSubtle, palette.primary, userLat, userLng]);
+  useEffect(() => {
+    if (!fullMapVisible || mapFitCoordinates.length === 0) return;
+    const timer = setTimeout(() => {
+      fitMapToCoordinates(fullMapRef, true);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [fitMapToCoordinates, fullMapVisible, mapFitCoordinates]);
 
   const hasActiveFilters =
     Boolean(activeCategory) ||
@@ -498,13 +348,8 @@ export function StoreScreen() {
   }, [myStore?._id, navigation]);
 
   const openMapFullScreen = useCallback(() => {
-    if (userLat == null || userLng == null) {
-      Alert.alert('Location required', 'Turn on location to view nearby stores on map.');
-      return;
-    }
-    openExternalUrl(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`stores near ${userLat},${userLng}`)}`)
-      .catch(() => undefined);
-  }, [userLat, userLng]);
+    setFullMapVisible(true);
+  }, []);
 
   const startPlanCheckout = useCallback(async (plan: StorePlan) => {
     if (!myStore?._id) {
@@ -574,14 +419,43 @@ export function StoreScreen() {
     parentNavigate(navigation, 'StorePublicProfile', { storeId });
   }, [navigation]);
 
-  const onMapMessage = useCallback((event: { nativeEvent: { data: string } }) => {
-    try {
-      const payload = JSON.parse(event.nativeEvent.data) as { type?: string; storeId?: string };
-      if (payload.type === 'openStore' && payload.storeId) {
-        openStoreProfile(payload.storeId);
-      }
-    } catch {}
+  const openStoreFromFullMap = useCallback((storeId: string) => {
+    setFullMapVisible(false);
+    openStoreProfile(storeId);
   }, [openStoreProfile]);
+
+  const renderStoreMarkers = useCallback((onPressStore: (storeId: string) => void) => (
+    mapMarkers.map(({ store, latitude, longitude }) => {
+      const addressLine = store.address?.trim() || store.city?.trim() || 'Address unavailable';
+      return (
+        <Marker
+          key={store._id}
+          coordinate={{ latitude, longitude }}
+          onCalloutPress={() => onPressStore(store._id)}>
+          <View style={[s.storeMarkerOuter, { borderColor: palette.primary }]}>
+            <View style={[s.storeMarkerInner, { backgroundColor: palette.primary }]} />
+          </View>
+          <Callout tooltip>
+            <View style={[s.mapCallout, { backgroundColor: palette.card, borderColor: palette.border }]}>
+              {store.profilePhoto ? (
+                <Image source={{ uri: store.profilePhoto }} style={s.mapCalloutImage} resizeMode="cover" />
+              ) : null}
+              <Text style={[s.mapCalloutName, { color: palette.foreground }]} numberOfLines={1}>
+                {store.name}
+              </Text>
+              <Text style={[s.mapCalloutSubtle, { color: palette.foregroundSubtle }]} numberOfLines={1}>
+                {store.category}
+              </Text>
+              <Text style={[s.mapCalloutSubtle, { color: palette.foregroundSubtle }]} numberOfLines={2}>
+                {addressLine}
+              </Text>
+              <Text style={[s.mapCalloutCta, { color: palette.primary }]}>Tap to open →</Text>
+            </View>
+          </Callout>
+        </Marker>
+      );
+    })
+  ), [mapMarkers, palette.border, palette.card, palette.foreground, palette.foregroundSubtle, palette.primary]);
 
   return (
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
@@ -768,33 +642,35 @@ export function StoreScreen() {
               <Text style={{ color: palette.primary, fontSize: 12, fontWeight: '700' }}>View full map</Text>
             </Pressable>
           </View>
-          {hasMapContent && WebViewComponent && hasNativeWebView ? (
+          {loading ? (
+            <View style={[s.mapLoading, { borderColor: palette.border, backgroundColor: palette.input }]}>
+              <ActivityIndicator color={palette.primary} />
+            </View>
+          ) : (
             <View style={[s.mapPreviewWrap, { borderColor: palette.border, backgroundColor: palette.input }]}>
-              <WebViewComponent
+              <MapView
+                ref={mapRef}
                 style={s.mapPreview}
-                source={{ html: mapHtml }}
-                originWhitelist={['*']}
-                javaScriptEnabled
-                domStorageEnabled
+                provider={PROVIDER_GOOGLE}
+                initialRegion={mapRegion}
                 scrollEnabled={false}
-                nestedScrollEnabled
-                onMessage={onMapMessage}
-              />
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                toolbarEnabled={false}
+                showsCompass={false}
+                showsUserLocation={userLat != null && userLng != null}
+                onMapReady={() => fitMapToCoordinates(mapRef, false)}>
+                {renderStoreMarkers(openStoreProfile)}
+              </MapView>
               <View style={[s.mapHintPill, { backgroundColor: `${palette.background}D8`, borderColor: palette.border }]}>
                 <Text style={{ fontSize: 11, fontWeight: '700', color: palette.foreground }}>
                   {mapMarkers.length} stores pinned
                 </Text>
                 <Text style={{ fontSize: 10, color: palette.foregroundSubtle }}>
-                  Scroll and zoom the map, then tap a store marker to open it
+                  {mapMarkers.length > 0 ? 'Tap a marker, then tap the callout to open store' : 'Map centered to default region'}
                 </Text>
               </View>
-            </View>
-          ) : (
-            <View style={[s.mapEmpty, { borderColor: palette.border, backgroundColor: palette.input }]}>
-              <MapPin size={20} color={palette.foregroundSubtle} />
-              <Text style={{ fontSize: 12, color: palette.foregroundSubtle }}>
-                {hasMapContent ? 'Map preview unavailable in this build' : 'Enable location to load nearby map'}
-              </Text>
             </View>
           )}
         </View>
@@ -926,6 +802,51 @@ export function StoreScreen() {
           {myStore?._id ? 'My Store' : 'Create Store'}
         </Text>
       </Pressable>
+
+      <Modal
+        animationType="slide"
+        presentationStyle="fullScreen"
+        visible={fullMapVisible}
+        onRequestClose={() => setFullMapVisible(false)}>
+        <View style={[s.fullMapModal, { backgroundColor: palette.background }]}>
+          <View style={[s.fullMapHeader, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+            <Pressable
+              onPress={() => setFullMapVisible(false)}
+              style={[s.fullMapCloseBtn, { borderColor: palette.border, backgroundColor: palette.input }]}>
+              <X size={16} color={palette.foreground} />
+            </Pressable>
+            <View style={s.fullMapHeaderCenter}>
+              <Text style={{ fontSize: 16, fontWeight: '900', color: palette.foreground }}>Stores Near You</Text>
+              <Text style={{ fontSize: 12, color: palette.foregroundSubtle }}>{mapMarkers.length} stores</Text>
+            </View>
+            <View style={s.fullMapHeaderSpacer} />
+          </View>
+
+          <View style={s.fullMapBody}>
+            <MapView
+              ref={fullMapRef}
+              style={s.fullMap}
+              provider={PROVIDER_GOOGLE}
+              initialRegion={mapRegion}
+              scrollEnabled
+              zoomEnabled
+              rotateEnabled
+              pitchEnabled
+              toolbarEnabled
+              showsCompass
+              showsMyLocationButton
+              showsUserLocation={userLat != null && userLng != null}
+              onMapReady={() => fitMapToCoordinates(fullMapRef, false)}>
+              {renderStoreMarkers(openStoreFromFullMap)}
+            </MapView>
+            <View style={[s.fullMapHintBar, { backgroundColor: `${palette.background}E8`, borderColor: palette.border }]}>
+              <Text style={{ fontSize: 12, color: palette.foregroundSubtle }}>
+                {mapMarkers.length > 0 ? 'Tap a marker, then tap the callout to open store.' : 'No nearby stores pinned yet.'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         transparent
@@ -1128,7 +1049,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
   },
   mapPreview: {
-    height: 125,
+    height: 188,
     width: '100%',
   },
   mapPreviewWrap: {
@@ -1138,21 +1059,58 @@ const s = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
-  mapEmpty: {
-    height: 125,
+  mapLoading: {
+    height: 188,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+  },
+  storeMarkerOuter: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 3,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  storeMarkerInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   mapCallout: {
-    minWidth: 150,
-    maxWidth: 220,
+    minWidth: 190,
+    maxWidth: 240,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  mapCalloutImage: {
+    width: '100%',
+    height: 92,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  mapCalloutName: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  mapCalloutSubtle: {
+    marginTop: 2,
+    fontSize: 11,
+  },
+  mapCalloutCta: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: '700',
   },
   mapHintPill: {
     position: 'absolute',
@@ -1217,6 +1175,48 @@ const s = StyleSheet.create({
     shadowRadius: 9,
     shadowOffset: { width: 0, height: 5 },
     elevation: 8,
+  },
+  fullMapModal: {
+    flex: 1,
+  },
+  fullMapHeader: {
+    borderBottomWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fullMapCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullMapHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  fullMapHeaderSpacer: {
+    width: 34,
+    height: 34,
+  },
+  fullMapBody: {
+    flex: 1,
+  },
+  fullMap: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  fullMapHintBar: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 14,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   modalBackdrop: {
     flex: 1,

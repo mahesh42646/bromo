@@ -18,8 +18,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   ) -> Bool {
     FirebaseApp.configure()
     if let mapsApiKey = Bundle.main.object(forInfoDictionaryKey: "GoogleMapsAPIKey") as? String,
-       mapsApiKey.isEmpty == false {
-      GMSServices.provideAPIKey(mapsApiKey)
+       mapsApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+      GMSServices.provideAPIKey(mapsApiKey.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     let delegate = ReactNativeDelegate()

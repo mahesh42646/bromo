@@ -948,13 +948,14 @@
 			inputPaths = (
 				"$(SRCROOT)/.xcode.env.local",
 				"$(SRCROOT)/.xcode.env",
+				"$(SRCROOT)/../.env",
 			);
 			name = "Bundle React Native code and images";
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"\\\"$WITH_ENVIRONMENT\\\" \\\"$REACT_NATIVE_XCODE\\\"\"\n";
+			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"\\\"$WITH_ENVIRONMENT\\\" \\\"$REACT_NATIVE_XCODE\\\"\"\n\nENV_FILE=\"$PROJECT_DIR/../.env\"\nif [ -f \"$ENV_FILE\" ]; then\n  IOS_MAPS_API_KEY=$(grep -E '^GOOGLE_MAPS_API_KEY_IOS=' \"$ENV_FILE\" | tail -n 1 | cut -d '=' -f2- | tr -d '\\r')\n  if [ -n \"$IOS_MAPS_API_KEY\" ]; then\n    TARGET_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n    /usr/libexec/PlistBuddy -c \"Set :GoogleMapsAPIKey $IOS_MAPS_API_KEY\" \"$TARGET_PLIST\" >/dev/null 2>&1 || /usr/libexec/PlistBuddy -c \"Add :GoogleMapsAPIKey string $IOS_MAPS_API_KEY\" \"$TARGET_PLIST\"\n  fi\nfi\n";
 		};
 		00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;

@@ -82,6 +82,7 @@ yarn-error.log
 .env.*
 .env.local
 *.pem
+bromo-mobile/.env
 **/firebase-service-account.json
 
 # Keep Firebase client configs tracked (needed for app to run)
