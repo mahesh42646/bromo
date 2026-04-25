@@ -12,6 +12,7 @@ import { Store, type StoreDoc } from "../models/Store.js";
 import { StoreProduct } from "../models/StoreProduct.js";
 import { User } from "../models/User.js";
 import { uploadsRoot, publicUrlForUploadRelative } from "../utils/uploadFiles.js";
+import { mirrorUploadRelative } from "../services/s3Mirror.js";
 
 export const storeRouter = express.Router();
 
@@ -139,6 +140,9 @@ const uploadProductPhotos = multer({
 function fileToUrl(file: Express.Multer.File): string {
   const root = uploadsRoot();
   const rel = path.relative(root, file.path).split(path.sep).join("/");
+  mirrorUploadRelative(rel).catch((err) => {
+    console.warn("[storeRoutes] mirror upload failed:", rel, err);
+  });
   return publicUrlForUploadRelative(rel);
 }
 

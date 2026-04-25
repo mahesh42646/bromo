@@ -140,7 +140,7 @@ const ss = StyleSheet.create({
 
 export function SplashScreen() {
   const navigation = useNavigation<BootNav>();
-  const {ready, onboardingDone, firebaseUser, dbUser, needsEmailVerification, needsUsername} =
+  const {ready, firebaseUser, dbUser, needsEmailVerification, needsUsername} =
     useAuth();
   const {contract, palette, isDark} = useTheme();
 
@@ -161,14 +161,13 @@ export function SplashScreen() {
   useEffect(() => {
     if (!ready) return;
     const t = setTimeout(() => {
-      if (!onboardingDone) navigation.replace('Onboarding');
-      else if (!firebaseUser) navigation.replace('Auth');
+      if (!firebaseUser) navigation.replace('Auth');
       else if (needsEmailVerification) navigation.replace('Auth');
       else if (needsUsername || !dbUser?.onboardingComplete) navigation.replace('Auth');
       else navigation.replace('App');
     }, 1800);
     return () => clearTimeout(t);
-  }, [ready, onboardingDone, firebaseUser, dbUser, needsEmailVerification, needsUsername, navigation]);
+  }, [ready, firebaseUser, dbUser, needsEmailVerification, needsUsername, navigation]);
 
   return (
     <View style={[ss.fill, ss.center, {backgroundColor: palette.background}]}>

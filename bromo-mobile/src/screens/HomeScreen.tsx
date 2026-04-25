@@ -96,9 +96,13 @@ import {usePlaybackNetworkCap} from '../lib/usePlaybackNetworkCap';
 import {openExternalUrl} from '../lib/openExternalUrl';
 import {perfMark, perfMeasure, trackPerfEvent} from '../lib/perfTelemetry';
 import {perfFlags} from '../config/perfFlags';
-import {getFeaturedStores, type Store as BromoStore} from '../api/storeApi';
+import {listStores, type Store as BromoStore} from '../api/storeApi';
 
 type IconComp = ComponentType<{size?: number; color?: string}>;
+
+const MIN_TRENDING_REELS = 3;
+const MAX_TRENDING_REELS = 5;
+const MAX_TOP_VISITED_STORES = 5;
 
 const CATEGORIES: {id: string; label: string; Icon: IconComp}[] = [
   {id: 'home', label: 'For You', Icon: Home},
@@ -143,6 +147,12 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function clampTrendingReels(reels: Post[]): Post[] {
+  const unique = dedupePostsById(reels.filter(reel => reel.type === 'reel'));
+  if (unique.length <= MAX_TRENDING_REELS) return unique;
+  return unique.slice(0, MAX_TRENDING_REELS);
 }
 
 function HeaderBadge({count}: {count: number}) {
@@ -873,7 +883,7 @@ export function HomeScreen() {
       : false;
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [trendingReels, setTrendingReels] = useState<Post[]>([]);
-  const [featuredStores, setFeaturedStores] = useState<BromoStore[]>([]);
+  const [topVisitedStores, setTopVisitedStores] = useState<BromoStore[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const topicPageRef = useRef(1);
@@ -956,9 +966,9 @@ export function HomeScreen() {
         getUserSuggestions(6)
           .then(r => setSuggestions(r.users))
           .catch(() => null);
-        getFeaturedStores()
-          .then(s => setFeaturedStores(s))
-          .catch(() => null);
+        listStores({sortBy: 'popular', page: 1, limit: MAX_TOP_VISITED_STORES})
+          .then(res => setTopVisitedStores(res.stores.slice(0, MAX_TOP_VISITED_STORES)))
+          .catch(() => setTopVisitedStores([]));
         fetchAds('feed', 5)
           .then(a => setFeedAds(a))
           .catch(() => null);
@@ -966,8 +976,8 @@ export function HomeScreen() {
           .then(a => setStoryAds(a))
           .catch(() => null);
         if (isHome) {
-          getTrendingReels(3)
-            .then(r => setTrendingReels(r?.posts ?? []))
+          getTrendingReels(MAX_TRENDING_REELS)
+            .then(r => setTrendingReels(clampTrendingReels(r?.posts ?? [])))
             .catch(() => setTrendingReels([]));
         } else {
           setTrendingReels([]);
@@ -1269,26 +1279,38 @@ export function HomeScreen() {
     | {kind: 'suggestions'; key: string}
     | {kind: 'stories'; key: string}
     | {kind: 'trendingReels'; key: string}
-    | {kind: 'featuredStores'; key: string}
+    | {kind: 'topVisitedStores'; key: string}
     | {kind: 'ad'; ad: Ad; key: string};
 
   const feedItems = useMemo((): HomeFeedItem[] => {
     const items: HomeFeedItem[] = [];
     items.push({kind: 'stories', key: 'stories'});
-    if (activeCategory === 'home' && featuredStores.length > 0) {
-      items.push({kind: 'featuredStores', key: 'featured-stores'});
-    }
-    if (activeCategory === 'home' && trendingReels.length > 0) {
+    if (activeCategory === 'home' && trendingReels.length >= MIN_TRENDING_REELS) {
       items.push({kind: 'trendingReels', key: 'trending-reels'});
     }
-    posts.forEach((p, idx) => {
+    const leadPost = posts[0];
+    const secondPost = posts[1];
+    const remainingPosts = posts.slice(2);
+
+    if (leadPost) {
+      items.push({kind: 'post', post: leadPost, key: `post-${leadPost._id}`});
+    }
+    if (activeCategory === 'home' && topVisitedStores.length > 0) {
+      items.push({kind: 'topVisitedStores', key: 'top-visited-stores'});
+    }
+    if (secondPost) {
+      items.push({kind: 'post', post: secondPost, key: `post-${secondPost._id}`});
+    }
+    if (activeCategory === 'home' && suggestions.length > 0) {
+      items.push({kind: 'suggestions', key: 'suggestions'});
+    }
+    remainingPosts.forEach(p => {
       items.push({kind: 'post', post: p, key: `post-${p._id}`});
-      if (idx === 0 && suggestions.length > 0) {
-        items.push({kind: 'suggestions', key: 'suggestions'});
-      }
     });
     if (feedAds.length > 0) {
-      const postIndices = items.map((item, idx) => (item.kind === 'post' ? idx : -1)).filter(idx => idx !== -1);
+      const postIndices = items
+        .map((item, idx) => (item.kind === 'post' && idx > 0 ? idx : -1))
+        .filter(idx => idx !== -1);
       const seed = hashString(
         `${activeCategory}\0${posts.map(p => p._id).join(',')}\0${feedAds.map(a => a._id).join(',')}`,
       );
@@ -1303,7 +1325,7 @@ export function HomeScreen() {
       }
     }
     return items;
-  }, [activeCategory, trendingReels, featuredStores, posts, suggestions, feedAds]);
+  }, [activeCategory, trendingReels, topVisitedStores, posts, suggestions, feedAds]);
 
   useEffect(() => {
     if (feedAds.length > 0) prefetchAdMedia(feedAds);
@@ -1643,12 +1665,12 @@ export function HomeScreen() {
               );
             }
 
-            if (item.kind === 'featuredStores') {
+            if (item.kind === 'topVisitedStores') {
               return (
                 <View style={{borderBottomWidth: 1, borderBottomColor: palette.border, paddingBottom: 14}}>
                   <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10}}>
                     <ThemedText variant="heading" style={{fontSize: 15, fontWeight: '800'}}>
-                      Stores Near You
+                      Top Visited Stores
                     </ThemedText>
                     <Pressable onPress={() => parentNavigate(navigation, 'AllStores')} hitSlop={8}>
                       <Text style={{color: palette.primary, fontWeight: '800', fontSize: 12}}>SEE ALL</Text>
@@ -1658,7 +1680,7 @@ export function HomeScreen() {
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{paddingHorizontal: 14, gap: 12}}>
-                    {featuredStores.map(store => (
+                    {topVisitedStores.map(store => (
                       <Pressable
                         key={store._id}
                         onPress={() => parentNavigate(navigation, 'StorePublicProfile', {storeId: store._id})}
@@ -1666,24 +1688,35 @@ export function HomeScreen() {
                           width: 130,
                           opacity: pressed ? 0.8 : 1,
                         })}>
-                        <View style={{width: 130, height: 90, borderRadius: 12, overflow: 'hidden', backgroundColor: `${palette.primary}15`}}>
-                          {store.bannerImage ? (
-                            <Image source={{uri: store.bannerImage}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
-                          ) : store.profilePhoto ? (
-                            <Image source={{uri: store.profilePhoto}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
-                          ) : (
-                            <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
-                              <Text style={{color: palette.primary, fontSize: 28, fontWeight: '800'}}>{store.name[0]}</Text>
-                            </View>
-                          )}
-                          {store.hasDelivery && (
-                            <View style={{position: 'absolute', top: 6, right: 6, backgroundColor: palette.success, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2}}>
-                              <Text style={{color: '#fff', fontSize: 8, fontWeight: '800'}}>DELIVERY</Text>
-                            </View>
-                          )}
+                        <View style={{width: 130, alignItems: 'center'}}>
+                          <View
+                            style={{
+                              width: 84,
+                              height: 84,
+                              borderRadius: 42,
+                              overflow: 'hidden',
+                              backgroundColor: `${palette.primary}15`,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}>
+                            {store.profilePhoto ? (
+                              <Image source={{uri: store.profilePhoto}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
+                            ) : store.bannerImage ? (
+                              <Image source={{uri: store.bannerImage}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
+                            ) : (
+                              <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
+                                <Text style={{color: palette.primary, fontSize: 28, fontWeight: '800'}}>{store.name[0]}</Text>
+                              </View>
+                            )}
+                            {store.hasDelivery && (
+                              <View style={{position: 'absolute', top: 6, right: 6, backgroundColor: palette.success, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2}}>
+                                <Text style={{color: '#fff', fontSize: 8, fontWeight: '800'}}>DELIVERY</Text>
+                              </View>
+                            )}
+                          </View>
                         </View>
-                        <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '700', marginTop: 6}} numberOfLines={1}>{store.name}</Text>
-                        <Text style={{color: palette.primary, fontSize: 10, fontWeight: '600', marginTop: 1}} numberOfLines={1}>{store.category}</Text>
+                        <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '700', marginTop: 8, textAlign: 'center'}} numberOfLines={1}>{store.name}</Text>
+                        <Text style={{color: palette.primary, fontSize: 10, fontWeight: '600', marginTop: 1, textAlign: 'center'}} numberOfLines={1}>{store.category}</Text>
                       </Pressable>
                     ))}
                   </ScrollView>
@@ -1703,7 +1736,7 @@ export function HomeScreen() {
                       paddingBottom: 10,
                     }}>
                     <ThemedText variant="heading" style={{fontSize: 15, fontWeight: '800'}}>
-                      Top 3 trending reels
+                      Top Trending Reels
                     </ThemedText>
                     <Pressable onPress={() => parentNavigate(navigation, 'Reels')} hitSlop={8}>
                       <Text style={{color: palette.primary, fontWeight: '800', fontSize: 12}}>SEE MORE</Text>
@@ -1715,6 +1748,9 @@ export function HomeScreen() {
                     contentContainerStyle={{paddingHorizontal: 14, gap: 10}}>
                     {trendingReels.map(reel => {
                       const thumb = postThumbnailUri(reel);
+                      const rawVideoUrl = reel.mediaType === 'video' ? resolveVideoUrl(reel) : '';
+                      const reelVideoUri = rawVideoUrl ? resolveMediaUrl(rawVideoUrl) || rawVideoUrl : '';
+                      const showVideoPreview = reel.mediaType === 'video' && (!thumb || thumb === reelVideoUri);
                       return (
                         <Pressable
                           key={reel._id}
@@ -1724,11 +1760,26 @@ export function HomeScreen() {
                           }}
                           style={{width: 118}}>
                           <View style={{position: 'relative', borderRadius: 16, overflow: 'hidden', backgroundColor: palette.surface}}>
-                            <Image
-                              source={{uri: thumb}}
-                              style={{width: '100%', aspectRatio: 9 / 16, backgroundColor: palette.muted}}
-                              resizeMode="cover"
-                            />
+                            {showVideoPreview ? (
+                              <PostVideoWithClientMeta
+                                post={reel}
+                                context="feed"
+                                uri={reelVideoUri}
+                                fallbackUri={resolveMediaUrl(reel.mediaUrl) || undefined}
+                                style={{width: '100%', aspectRatio: 9 / 16, backgroundColor: palette.muted}}
+                                muted
+                                paused
+                                repeat={false}
+                                posterUri={thumb || undefined}
+                                posterOverlayUntilReady
+                              />
+                            ) : (
+                              <Image
+                                source={{uri: thumb}}
+                                style={{width: '100%', aspectRatio: 9 / 16, backgroundColor: palette.muted}}
+                                resizeMode="cover"
+                              />
+                            )}
                             <View
                               style={{
                                 position: 'absolute',

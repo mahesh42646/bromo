@@ -100,18 +100,49 @@ export type StoreProduct = {
   updatedAt: string;
 };
 
+function forceApiMediaUrl(url: string | undefined | null): string {
+  if (!url?.trim()) return '';
+  const input = url.trim();
+  const base = apiBase().replace(/\/+$/, '');
+  try {
+    const parsed = new URL(input);
+    if (parsed.pathname.startsWith('/uploads/')) {
+      return `${base}${parsed.pathname}${parsed.search}`;
+    }
+    return input;
+  } catch {
+    if (input.startsWith('/uploads/')) return `${base}${input}`;
+    return input;
+  }
+}
+
+function normalizeProduct(product: StoreProduct): StoreProduct {
+  return {
+    ...product,
+    photos: Array.isArray(product.photos) ? product.photos.map(p => forceApiMediaUrl(p)).filter(Boolean) : [],
+  };
+}
+
+function normalizeStore(store: Store): Store {
+  return {
+    ...store,
+    profilePhoto: forceApiMediaUrl(store.profilePhoto),
+    bannerImage: forceApiMediaUrl(store.bannerImage),
+  };
+}
+
 // ─── Store CRUD ──────────────────────────────────────────────────
 
 export async function getMyStore(): Promise<Store> {
   const res = await authorizedFetch(`${apiBase()}/stores/mine`);
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'No store');
-  return (await res.json()).store;
+  return normalizeStore((await res.json()).store);
 }
 
 export async function getStore(storeId: string): Promise<Store> {
   const res = await fetch(`${apiBase()}/stores/${storeId}`);
   if (!res.ok) throw new Error('Store not found');
-  return (await res.json()).store;
+  return normalizeStore((await res.json()).store);
 }
 
 export type StoresFilter = {
@@ -126,6 +157,7 @@ export type StoresFilter = {
   plan?: StorePlanId;
   sortBy?: 'nearest' | 'popular' | 'rating' | 'newest';
   page?: number;
+  limit?: number;
 };
 
 export async function listStores(filter: StoresFilter = {}): Promise<{stores: Store[]; total: number}> {
@@ -141,16 +173,21 @@ export async function listStores(filter: StoresFilter = {}): Promise<{stores: St
   if (filter.plan) params.set('plan', filter.plan);
   if (filter.sortBy) params.set('sortBy', filter.sortBy);
   if (filter.page) params.set('page', String(filter.page));
+  if (filter.limit != null) params.set('limit', String(filter.limit));
 
   const res = await fetch(`${apiBase()}/stores?${params.toString()}`);
   if (!res.ok) throw new Error('Failed to load stores');
-  return res.json();
+  const body = await res.json();
+  return {
+    ...body,
+    stores: Array.isArray(body.stores) ? body.stores.map(normalizeStore) : [],
+  };
 }
 
 export async function getFeaturedStores(): Promise<Store[]> {
   const res = await fetch(`${apiBase()}/stores/featured`);
   if (!res.ok) return [];
-  return (await res.json()).stores ?? [];
+  return ((await res.json()).stores ?? []).map(normalizeStore);
 }
 
 export async function getStorePlans(): Promise<StorePlan[]> {
@@ -187,7 +224,7 @@ export async function createStoreSubscriptionCheckout(planId: StorePlanId): Prom
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.message ?? 'Failed to start checkout');
-  return body;
+  return {...body, store: normalizeStore(body.store)};
 }
 
 export async function verifyStoreSubscriptionPayment(orderId: string, paymentId: string): Promise<{
@@ -203,7 +240,7 @@ export async function verifyStoreSubscriptionPayment(orderId: string, paymentId:
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.message ?? 'Payment verification failed');
-  return body;
+  return {...body, store: normalizeStore(body.store)};
 }
 
 export type CreateStorePayload = {
@@ -257,7 +294,7 @@ export async function createStore(payload: CreateStorePayload): Promise<Store> {
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.message ?? 'Failed to create store');
-  return body.store;
+  return normalizeStore(body.store);
 }
 
 export type UpdateStorePayload = Partial<Omit<CreateStorePayload, 'lat' | 'lng'>> & {
@@ -291,7 +328,7 @@ export async function updateStore(storeId: string, payload: UpdateStorePayload):
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.message ?? 'Failed to update store');
-  return body.store;
+  return normalizeStore(body.store);
 }
 
 // ─── Products ────────────────────────────────────────────────────
@@ -300,7 +337,7 @@ export async function listProducts(storeId: string, category?: string): Promise<
   const params = category ? `?category=${encodeURIComponent(category)}` : '';
   const res = await fetch(`${apiBase()}/stores/${storeId}/products${params}`);
   if (!res.ok) return [];
-  return (await res.json()).products ?? [];
+  return ((await res.json()).products ?? []).map(normalizeProduct);
 }
 
 export type CreateProductPayload = {
@@ -337,7 +374,7 @@ export async function createProduct(storeId: string, payload: CreateProductPaylo
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.message ?? 'Failed to add product');
-  return body.product;
+  return normalizeProduct(body.product);
 }
 
 export async function deleteProduct(storeId: string, productId: string): Promise<void> {

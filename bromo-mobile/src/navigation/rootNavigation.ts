@@ -17,6 +17,6 @@ export function resetToAuth() {
 
 export function resetToOnboarding() {
   navigationRef.dispatch(
-    CommonActions.reset({index: 0, routes: [{name: 'Onboarding'}]}),
+    CommonActions.reset({index: 0, routes: [{name: 'Auth'}]}),
   );
 }

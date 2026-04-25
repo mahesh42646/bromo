@@ -16,6 +16,7 @@ import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native'
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {ChevronLeft, Heart, Send, Share2} from 'lucide-react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {useMessaging} from '../messaging/MessagingContext';
@@ -73,6 +74,7 @@ export function StoryViewScreen() {
   const {palette} = useTheme();
   const {dbUser} = useAuth();
   const {openThreadForUser} = useMessaging();
+  const insets = useSafeAreaInsets();
   const {userId} = route.params;
 
   const [loading, setLoading] = useState(true);
@@ -248,7 +250,7 @@ export function StoryViewScreen() {
     return () => {
       alive = false;
     };
-  }, [current?._id, current?.mediaType, current?.mediaUrl, current?.hlsMasterUrl, isCellular]);
+  }, [current, isCellular]);
 
   const goNext = useCallback(() => {
     const leavingId = current?._id;
@@ -311,7 +313,7 @@ export function StoryViewScreen() {
     progressRef.current = anim;
     anim.start(({finished}) => { if (finished) goNext(); });
     return () => { anim.stop(); };
-  }, [current?._id, current?.mediaType, paused, showReply, goNext, mediaReady, storyDurationMs, progressAnim]);
+  }, [current, paused, showReply, goNext, mediaReady, storyDurationMs, progressAnim]);
 
   // Prefetch current + next stories
   useEffect(() => {
@@ -392,7 +394,7 @@ export function StoryViewScreen() {
 
   return (
     <View style={{flex: 1, backgroundColor: '#000'}}>
-      <StatusBar barStyle="light-content" hidden />
+      <StatusBar barStyle="light-content" hidden={false} backgroundColor="#000" />
 
       {/* ── Media / Background ──────────────────────────────────────────── */}
       {isColorBg ? (
@@ -497,7 +499,7 @@ export function StoryViewScreen() {
       ))}
 
       {/* ── Progress bars ──────────────────────────────────────────────────── */}
-      <View style={{position: 'absolute', top: 12, left: 8, right: 8, flexDirection: 'row', gap: 3}}>
+      <View style={{position: 'absolute', top: insets.top + 12, left: 8, right: 8, flexDirection: 'row', gap: 3}}>
         {stories.map((s, i) => (
           <View
             key={s._id}
@@ -523,7 +525,7 @@ export function StoryViewScreen() {
 
       {/* ── Author row ──────────────────────────────────────────────────────── */}
       <View style={{
-        position: 'absolute', top: 24, left: 12, right: 12,
+        position: 'absolute', top: insets.top + 24, left: 12, right: 12,
         flexDirection: 'row', alignItems: 'center', gap: 10,
       }}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
@@ -541,7 +543,14 @@ export function StoryViewScreen() {
       {/* ── Tap zones ───────────────────────────────────────────────────────── */}
       <View
         pointerEvents="box-none"
-        style={{position: 'absolute', top: 70, left: 0, right: 0, bottom: 100, flexDirection: 'row'}}>
+        style={{
+          position: 'absolute',
+          top: insets.top + 70,
+          left: 0,
+          right: 0,
+          bottom: insets.bottom + 100,
+          flexDirection: 'row',
+        }}>
         <Pressable
           style={{flex: 1}}
           onPress={goPrev}
@@ -562,7 +571,7 @@ export function StoryViewScreen() {
           position: 'absolute', bottom: 0, left: 0, right: 0,
           flexDirection: 'row', alignItems: 'center', gap: 10,
           backgroundColor: 'rgba(0,0,0,0.7)',
-          paddingHorizontal: 14, paddingVertical: 12, paddingBottom: 28,
+          paddingHorizontal: 14, paddingVertical: 12, paddingBottom: Math.max(insets.bottom, 16),
         }}>
           <TextInput
             ref={inputRef}
@@ -598,7 +607,7 @@ export function StoryViewScreen() {
         <View style={{
           position: 'absolute', bottom: 0, left: 0, right: 0,
           flexDirection: 'row', alignItems: 'center', gap: 14,
-          paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28,
+          paddingHorizontal: 16, paddingVertical: 14, paddingBottom: Math.max(insets.bottom, 16),
         }}>
           <Pressable
             onPress={() => { setShowReply(true); setPaused(true); }}

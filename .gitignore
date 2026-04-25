@@ -57,3 +57,7 @@
 # Keep Firebase client configs tracked (needed for app to run)
 !**/google-services.json
 !**/GoogleService-Info.plist
+
+
+# Added by code-review-graph
+.code-review-graph/

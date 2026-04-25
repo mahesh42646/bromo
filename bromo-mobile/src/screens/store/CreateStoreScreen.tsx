@@ -139,7 +139,7 @@ export function CreateStoreScreen() {
 
   const mapPreviewUrl =
     lat != null && lng != null
-      ? `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=600x180&markers=${lat},${lng},red-pushpin`
+      ? `https://static-maps.yandex.ru/1.x/?lang=en-US&ll=${lng},${lat}&z=14&size=650,300&l=map&pt=${lng},${lat},pm2rdm`
       : null;
 
   return (
