@@ -43,6 +43,43 @@ export async function generateVideoThumbnail(videoRelativePath: string): Promise
   });
 }
 
+/**
+ * Extract the video's embedded audio track to an m4a file under uploads/audio/<ownerId>/.
+ * Throws when the source has no usable audio stream.
+ */
+export async function extractOriginalAudioTrack(
+  videoRelativePath: string,
+  ownerId: string,
+): Promise<string> {
+  const clean = videoRelativePath.replace(/^\/+/, "").split("/").join(path.sep);
+  const videoPath = path.join(UPLOAD_DIR, clean);
+  const audioDir = path.join(UPLOAD_DIR, "audio", ownerId);
+  fs.mkdirSync(audioDir, { recursive: true });
+  const outAbs = path.join(audioDir, `${path.parse(clean).name}_${Date.now()}.m4a`);
+
+  return new Promise((resolve, reject) => {
+    ffmpeg(videoPath)
+      .noVideo()
+      .audioCodec("aac")
+      .audioBitrate("160k")
+      .outputOptions(["-vn", "-movflags +faststart"])
+      .output(outAbs)
+      .on("end", () => {
+        const rel = path.relative(UPLOAD_DIR, outAbs).split(path.sep).join("/");
+        resolve(rel);
+      })
+      .on("error", (err) => {
+        try {
+          if (fs.existsSync(outAbs)) fs.unlinkSync(outAbs);
+        } catch {
+          /* ignore */
+        }
+        reject(err);
+      })
+      .run();
+  });
+}
+
 type HlsResult = {
   masterPlaylist: string;  // filename of master.m3u8
   variants: {bitrate: string; playlist: string}[];

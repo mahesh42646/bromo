@@ -1,4 +1,5 @@
 import {authedFetch} from './authApi';
+import {DeviceEventEmitter} from 'react-native';
 
 export type UserProfile = {
   _id: string;
@@ -12,6 +13,11 @@ export type UserProfile = {
   postsCount: number;
   isPrivate: boolean;
   emailVerified: boolean;
+  isVerified?: boolean;
+  isCreator?: boolean;
+  creatorStatus?: 'none' | 'pending' | 'verified' | 'rejected';
+  creatorBadge?: boolean;
+  connectedStore?: {enabled?: boolean; website?: string; planId?: string};
   followStatus: 'none' | 'following' | 'requested';
 };
 
@@ -27,6 +33,19 @@ export async function searchUsers(q: string): Promise<{users: (SuggestedUser & {
   const res = await authedFetch(`/users/search?q=${encodeURIComponent(q)}`);
   if (!res.ok) throw new Error('Search failed');
   return res.json() as Promise<{users: (SuggestedUser & {followStatus: string})[]}>;
+}
+
+export async function getNearbyUsers(lat: number, lng: number): Promise<{users: Array<SuggestedUser & {distanceMeters?: number}>}> {
+  const res = await authedFetch(`/users/nearby?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`);
+  if (!res.ok) throw new Error('Failed to get nearby users');
+  return res.json() as Promise<{users: Array<SuggestedUser & {distanceMeters?: number}>}>;
+}
+
+export async function updateMyLocation(lat: number, lng: number): Promise<void> {
+  await authedFetch('/users/location', {
+    method: 'POST',
+    body: JSON.stringify({lat, lng}),
+  }).catch(() => null);
 }
 
 export async function getUserProfile(userId: string): Promise<{user: UserProfile}> {
@@ -53,12 +72,34 @@ export async function followUser(userId: string): Promise<{status: 'accepted' | 
     const body = await res.json().catch(() => ({}));
     throw new Error((body as {message?: string}).message ?? 'Failed to follow');
   }
-  return res.json() as Promise<{status: 'accepted' | 'pending'}>;
+  const out = (await res.json()) as {status: 'accepted' | 'pending'};
+  DeviceEventEmitter.emit('bromo:followChanged', {
+    userId,
+    following: out.status === 'accepted',
+    requested: out.status === 'pending',
+  });
+  return out;
 }
 
 export async function unfollowUser(userId: string): Promise<void> {
   const res = await authedFetch(`/users/${userId}/follow`, {method: 'DELETE'});
   if (!res.ok) throw new Error('Failed to unfollow');
+  DeviceEventEmitter.emit('bromo:followChanged', {userId, following: false, requested: false});
+}
+
+export async function blockUser(userId: string): Promise<void> {
+  const res = await authedFetch(`/users/${userId}/block`, {method: 'POST'});
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Failed to block user');
+  }
+  DeviceEventEmitter.emit('bromo:userBlocked', {userId});
+}
+
+export async function unblockUser(userId: string): Promise<void> {
+  const res = await authedFetch(`/users/${userId}/block`, {method: 'DELETE'});
+  if (!res.ok) throw new Error('Failed to unblock user');
+  DeviceEventEmitter.emit('bromo:userUnblocked', {userId});
 }
 
 export async function getFollowRequests(): Promise<{requests: {_id: string; from: SuggestedUser; createdAt: string}[]}> {

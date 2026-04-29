@@ -6,14 +6,15 @@ export type LedgerReason =
   | "promotion_refund"
   | "admin_credit"
   | "admin_debit"
-  | "referral_reward";
+  | "referral_reward"
+  | "store_redemption";
 
 export interface WalletLedgerDoc extends Document {
   userId: Types.ObjectId;
   delta: number; // positive = credit, negative = debit
   balanceAfter: number;
   reason: LedgerReason;
-  refType?: "Promotion" | "Admin";
+  refType?: "Promotion" | "Admin" | "Store";
   refId?: Types.ObjectId;
   meta?: Record<string, unknown>;
   idempotencyKey?: string;
@@ -27,10 +28,10 @@ const walletLedgerSchema = new Schema<WalletLedgerDoc>(
     balanceAfter: { type: Number, required: true },
     reason: {
       type: String,
-      enum: ["topup", "promotion_spend", "promotion_refund", "admin_credit", "admin_debit", "referral_reward"],
+      enum: ["topup", "promotion_spend", "promotion_refund", "admin_credit", "admin_debit", "referral_reward", "store_redemption"],
       required: true,
     },
-    refType: { type: String, enum: ["Promotion", "Admin"] },
+    refType: { type: String, enum: ["Promotion", "Admin", "Store"] },
     refId: { type: Schema.Types.ObjectId },
     meta: { type: Schema.Types.Mixed },
     idempotencyKey: { type: String, sparse: true },

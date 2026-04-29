@@ -69,21 +69,41 @@ export type PostAuthor = {
   profilePicture: string;
   isPrivate: boolean;
   emailVerified: boolean;
+  isVerified?: boolean;
+  verificationStatus?: 'none' | 'pending' | 'verified' | 'rejected';
+  isCreator?: boolean;
+  creatorStatus?: 'none' | 'pending' | 'verified' | 'rejected';
+  creatorBadge?: boolean;
+  connectedStore?: {enabled?: boolean; website?: string; planId?: string};
 };
 
 export type StoryOverlay = {
   id: string;
-  type: 'text' | 'emoji' | 'music';
+  type: 'text' | 'emoji' | 'music' | 'sticker' | 'mention' | 'link';
   content: string;
   x: number;
   y: number;
   color?: string;
   fontSize?: number;
+  scale?: number;
+  targetUserId?: string;
+  url?: string;
 };
 
 export type StoryMeta = {
   bgColor?: string;
   overlays?: StoryOverlay[];
+  canvas?: {x?: number; y?: number; scale?: number};
+};
+
+export type CarouselItem = {
+  mediaUrl: string;
+  mediaType: 'image' | 'video';
+  thumbnailUrl?: string;
+  order: number;
+  aspectRatio?: number;
+  width?: number;
+  height?: number;
 };
 
 export type PostPoll = {
@@ -102,6 +122,7 @@ export type Post = {
   mediaType: 'image' | 'video';
   /** Server-generated for video; use for grids and `<Image>` previews */
   thumbnailUrl?: string;
+  carouselItems?: CarouselItem[];
   /**
    * HLS master playlist URL — prefer this over mediaUrl for video playback.
    * Pass to NetworkVideo uri prop. Falls back to mediaUrl when absent (legacy posts).
@@ -121,6 +142,11 @@ export type Post = {
   viewsCount: number;
   impressionsCount: number;
   sharesCount: number;
+  repliesCount?: number;
+  linkTapsCount?: number;
+  mentionTapsCount?: number;
+  storeIconClicksCount?: number;
+  rewardPointsAccrued?: number;
   avgWatchTimeMs: number;
   trendingScore: number;
   isLiked: boolean;
@@ -130,6 +156,12 @@ export type Post = {
   deletedAt?: string;
   /** Home feed bucket (post/reel). */
   feedCategory?: string;
+  categoryName?: string;
+  showStoreIcon?: boolean;
+  originalAudioId?: string;
+  originalAudioTitle?: string;
+  remixOfPostId?: string;
+  remixCredit?: {postId?: string; creatorId?: string; username?: string};
   scheduledFor?: string;
   /** Story-only: overlays and background color */
   storyMeta?: StoryMeta;
@@ -373,6 +405,10 @@ export async function createPost(data: {
   tags?: string[];
   taggedUserIds?: string[];
   productIds?: string[];
+  collaboratorIds?: string[];
+  carouselItems?: CarouselItem[];
+  originalAudioId?: string;
+  remixOfPostId?: string;
   settings?: PostUploadSettings;
   durationMs?: number;
   storyMeta?: StoryMeta;
@@ -460,6 +496,41 @@ export async function markStorySeenPost(storyPostId: string): Promise<void> {
   }).catch(() => null);
 }
 
+export async function getStoryViewers(
+  storyPostId: string,
+): Promise<{viewers: Array<{viewedAt: string; user: PostAuthor}>}> {
+  const res = await authedFetch(`/posts/stories/${encodeURIComponent(storyPostId)}/viewers`);
+  if (!res.ok) throw new Error('Failed to fetch story viewers');
+  return res.json() as Promise<{viewers: Array<{viewedAt: string; user: PostAuthor}>}>;
+}
+
+export async function getStoryAnalytics(storyPostId: string): Promise<{
+  viewersCount: number;
+  impressions: number;
+  views: number;
+  replyCount: number;
+  linkTapCount: number;
+  mentionTapCount: number;
+}> {
+  const res = await authedFetch(`/posts/stories/${encodeURIComponent(storyPostId)}/analytics`);
+  if (!res.ok) throw new Error('Failed to fetch story analytics');
+  return res.json() as Promise<{
+    viewersCount: number;
+    impressions: number;
+    views: number;
+    replyCount: number;
+    linkTapCount: number;
+    mentionTapCount: number;
+  }>;
+}
+
+export async function recordStoryTap(storyPostId: string, type: 'mention' | 'link'): Promise<void> {
+  await authedFetch(`/posts/stories/${encodeURIComponent(storyPostId)}/tap`, {
+    method: 'POST',
+    body: JSON.stringify({type}),
+  }).catch(() => null);
+}
+
 /** Publish the given reel/video post as your story (server copies file + HLS/MP4 pipeline). */
 export async function createStoryFromReel(
   sourcePostId: string,
@@ -475,8 +546,36 @@ export async function createStoryFromReel(
   return res.json() as Promise<{post: Post; jobId?: string}>;
 }
 
-export async function recordShare(postId: string): Promise<void> {
-  await authedFetch(`/posts/${postId}/share`, {method: 'POST'}).catch(() => null);
+export async function recordShare(postId: string): Promise<{sharesCount?: number} | void> {
+  const res = await authedFetch(`/posts/${postId}/share`, {method: 'POST'}).catch(() => null);
+  if (!res?.ok) return;
+  return res.json().catch(() => undefined) as Promise<{sharesCount?: number} | void>;
+}
+
+export async function recordStoreClick(postId: string): Promise<void> {
+  await authedFetch(`/posts/${postId}/store-click`, {method: 'POST'}).catch(() => null);
+}
+
+export type OriginalAudio = {
+  _id: string;
+  sourcePostId?: string;
+  title: string;
+  audioUrl: string;
+  durationMs?: number;
+  useCount: number;
+  owner?: PostAuthor;
+};
+
+export async function searchOriginalAudios(q: string): Promise<{audios: OriginalAudio[]}> {
+  const res = await authedFetch(`/posts/audio/search?q=${encodeURIComponent(q)}`);
+  if (!res.ok) throw new Error('Failed to search audio');
+  return res.json() as Promise<{audios: OriginalAudio[]}>;
+}
+
+export async function useOriginalAudio(audioId: string): Promise<{audio: OriginalAudio}> {
+  const res = await authedFetch(`/posts/audio/${encodeURIComponent(audioId)}/use`, {method: 'POST'});
+  if (!res.ok) throw new Error('Failed to use audio');
+  return res.json() as Promise<{audio: OriginalAudio}>;
 }
 
 export async function likeComment(postId: string, commentId: string): Promise<{liked: boolean; likesCount: number}> {
@@ -495,6 +594,10 @@ export type PostAnalytics = {
   trendingScore: number;
   reachRate: number;
   engagementRate: number;
+  totalClicks?: number;
+  storeIconClicks?: number;
+  rewardPointsAccrued?: number;
+  estimatedEarnings?: number;
   ageHours: number;
 };
 
@@ -649,8 +752,11 @@ export type UploadMediaAsyncMeta = {
   feedCategory?: string;
   taggedUserIds?: string[];
   productIds?: string[];
+  originalAudioId?: string;
+  remixOfPostId?: string;
   locationMeta?: PostLocationMeta | null;
   settings?: PostUploadSettings | null;
+  storyMeta?: StoryMeta;
   durationMs?: number;
   scheduledFor?: string;
   /** JSON string: filters, trim, overlays (see packEditMetaForUpload). */
@@ -671,12 +777,15 @@ function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
   if (meta.feedCategory && meta.feedCategory !== 'general') form.append('feedCategory', meta.feedCategory);
   if (meta.taggedUserIds?.length) form.append('taggedUserIds', meta.taggedUserIds.join(','));
   if (meta.productIds?.length) form.append('productIds', meta.productIds.join(','));
+  if (meta.originalAudioId) form.append('originalAudioId', meta.originalAudioId);
+  if (meta.remixOfPostId) form.append('remixOfPostId', meta.remixOfPostId);
   if (meta.locationMeta?.name) {
     form.append('locationMeta', JSON.stringify(meta.locationMeta));
   }
   if (meta.settings && Object.keys(meta.settings).length > 0) {
     form.append('settings', JSON.stringify(meta.settings));
   }
+  if (meta.storyMeta) form.append('storyMeta', JSON.stringify(meta.storyMeta));
   if (typeof meta.durationMs === 'number' && !Number.isNaN(meta.durationMs)) {
     form.append('durationMs', String(Math.round(meta.durationMs)));
   }

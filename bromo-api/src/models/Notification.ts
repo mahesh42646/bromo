@@ -7,6 +7,7 @@ export type NotificationType =
   | "follow_request"
   | "follow_accept"
   | "mention"
+  | "collaboration_invite"
   | "new_post"
   | "message"
   | "milestone"
@@ -28,7 +29,7 @@ const notificationSchema = new Schema<NotificationDoc>(
     actorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     type: {
       type: String,
-      enum: ["like", "comment", "follow", "follow_request", "follow_accept", "mention", "new_post", "message", "milestone", "media_ready"],
+      enum: ["like", "comment", "follow", "follow_request", "follow_accept", "mention", "collaboration_invite", "new_post", "message", "milestone", "media_ready"],
       required: true,
     },
     postId: { type: Schema.Types.ObjectId, ref: "Post" },
@@ -64,6 +65,17 @@ export async function createNotification(data: {
     const rid = String(data.recipientId);
     void import("../services/socketService.js").then(({ emitNotificationUnreadForUser }) =>
       emitNotificationUnreadForUser(rid),
+    );
+    void import("../services/pushService.js").then(({ sendPushToUser }) =>
+      sendPushToUser(rid, {
+        title: "BROMO",
+        body: data.message,
+        data: {
+          type: data.type,
+          actorId: String(data.actorId),
+          postId: data.postId ? String(data.postId) : "",
+        },
+      }),
     );
   } catch {
     // never block the caller

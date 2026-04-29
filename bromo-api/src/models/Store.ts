@@ -24,6 +24,10 @@ export type StorePlanStatus = (typeof STORE_PLAN_STATUSES)[number];
 
 export const STORE_VERIFIED_BADGES = ["none", "standard", "premium", "gold"] as const;
 export type StoreVerifiedBadge = (typeof STORE_VERIFIED_BADGES)[number];
+export const STORE_TYPES = ["d2c", "b2b", "online"] as const;
+export type StoreType = (typeof STORE_TYPES)[number];
+export const STORE_APPROVAL_STATUSES = ["pending", "approved", "rejected"] as const;
+export type StoreApprovalStatus = (typeof STORE_APPROVAL_STATUSES)[number];
 
 export interface StoreDoc extends Document {
   owner: mongoose.Types.ObjectId;
@@ -40,6 +44,38 @@ export interface StoreDoc extends Document {
   bannerImage: string;
   category: StoreCategory;
   description: string;
+  storeType: StoreType;
+  approvalStatus: StoreApprovalStatus;
+  approvedAt?: Date;
+  approvedBy?: mongoose.Types.ObjectId;
+  rejectionReason: string;
+  requestPendingLabel: string;
+  termsAcceptedAt?: Date;
+  termsAcceptedIp: string;
+  termsPdfUrl: string;
+  kyc: {
+    gstNumber: string;
+    shopActLicense: string;
+    panCardUrl: string;
+    aadhaarCardUrl: string;
+    storePhotoUrls: string[];
+    addressProofUrl: string;
+  };
+  externalLinks: Array<{ label: string; url: string }>;
+  coinDiscountRule?: {
+    coinsRequired: number;
+    discountPercent: number;
+    minOrderInr: number;
+    active: boolean;
+  };
+  b2b: {
+    leadCount: number;
+    planId: StorePlanId;
+  };
+  notificationUsage: {
+    monthKey: string;
+    sentCount: number;
+  };
   isActive: boolean;
   totalProducts: number;
   totalViews: number;
@@ -88,7 +124,44 @@ const storeSchema = new Schema<StoreDoc>(
     bannerImage: { type: String, default: "" },
     category: { type: String, enum: STORE_CATEGORIES, required: true },
     description: { type: String, default: "", maxlength: 500 },
-    isActive: { type: Boolean, default: true },
+    storeType: { type: String, enum: STORE_TYPES, default: "d2c", index: true },
+    approvalStatus: { type: String, enum: STORE_APPROVAL_STATUSES, default: "pending", index: true },
+    approvedAt: { type: Date },
+    approvedBy: { type: Schema.Types.ObjectId, ref: "Admin" },
+    rejectionReason: { type: String, default: "" },
+    requestPendingLabel: { type: String, default: "Request Pending" },
+    termsAcceptedAt: { type: Date },
+    termsAcceptedIp: { type: String, default: "" },
+    termsPdfUrl: { type: String, default: "" },
+    kyc: {
+      gstNumber: { type: String, default: "" },
+      shopActLicense: { type: String, default: "" },
+      panCardUrl: { type: String, default: "" },
+      aadhaarCardUrl: { type: String, default: "" },
+      storePhotoUrls: [{ type: String }],
+      addressProofUrl: { type: String, default: "" },
+    },
+    externalLinks: [
+      {
+        label: { type: String, default: "" },
+        url: { type: String, default: "" },
+      },
+    ],
+    coinDiscountRule: {
+      coinsRequired: { type: Number, default: 0 },
+      discountPercent: { type: Number, default: 0 },
+      minOrderInr: { type: Number, default: 0 },
+      active: { type: Boolean, default: false },
+    },
+    b2b: {
+      leadCount: { type: Number, default: 0 },
+      planId: { type: String, enum: STORE_PLAN_IDS, default: "none" },
+    },
+    notificationUsage: {
+      monthKey: { type: String, default: "" },
+      sentCount: { type: Number, default: 0 },
+    },
+    isActive: { type: Boolean, default: false },
     totalProducts: { type: Number, default: 0 },
     totalViews: { type: Number, default: 0 },
     ratingAvg: { type: Number, default: 0 },

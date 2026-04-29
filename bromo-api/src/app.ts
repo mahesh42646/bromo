@@ -26,6 +26,7 @@ function contentTypeForUpload(absPath: string): string {
     ".gif": "image/gif",
     ".heic": "image/heic",
     ".heif": "image/heif",
+    ".pdf": "application/pdf",
   };
   return map[ext] ?? "application/octet-stream";
 }

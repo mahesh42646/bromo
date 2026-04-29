@@ -136,6 +136,28 @@ export function emitPostComment(postId: string, commentsCount: number, comment: 
   io?.emit("post:comment", {postId, commentsCount, comment});
 }
 
+export function emitPostShare(postId: string, sharesCount: number): void {
+  io?.emit("post:share", {postId, sharesCount});
+}
+
+export function emitChatMessage(conversationId: string, participantIds: string[], message: object): void {
+  for (const participantId of participantIds) {
+    io?.to(`user:${participantId}`).emit("chat:message", {conversationId, message});
+  }
+}
+
+export function emitChatMessageUpdated(conversationId: string, participantIds: string[], message: object): void {
+  for (const participantId of participantIds) {
+    io?.to(`user:${participantId}`).emit("chat:message_updated", {conversationId, message});
+  }
+}
+
+export function emitChatRead(conversationId: string, participantIds: string[], readerId: string): void {
+  for (const participantId of participantIds) {
+    io?.to(`user:${participantId}`).emit("chat:read", {conversationId, readerId});
+  }
+}
+
 export type PostDeleteMeta = {authorId?: string; type?: string};
 
 export function emitPostDelete(postId: string, meta?: PostDeleteMeta): void {

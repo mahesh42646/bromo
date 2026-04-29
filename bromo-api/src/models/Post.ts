@@ -2,7 +2,7 @@ import mongoose, { Schema, type Document, type Types } from "mongoose";
 
 export type StoryOverlay = {
   id: string;
-  type: "text" | "emoji" | "music";
+  type: "text" | "emoji" | "music" | "sticker" | "mention" | "link";
   content: string;
   /** 0–1 relative to screen width */
   x: number;
@@ -10,6 +10,9 @@ export type StoryOverlay = {
   y: number;
   color?: string;
   fontSize?: number;
+  scale?: number;
+  targetUserId?: Types.ObjectId;
+  url?: string;
 };
 
 export type StoryMeta = {
@@ -17,6 +20,21 @@ export type StoryMeta = {
   bgColor?: string;
   /** Text, emoji, and music badge overlays */
   overlays?: StoryOverlay[];
+  canvas?: {
+    x?: number;
+    y?: number;
+    scale?: number;
+  };
+};
+
+export type CarouselItem = {
+  mediaUrl: string;
+  mediaType: "image" | "video";
+  thumbnailUrl?: string;
+  order: number;
+  aspectRatio?: number;
+  width?: number;
+  height?: number;
 };
 
 export type ProcessingStatus = "pending" | "processing" | "ready" | "failed";
@@ -48,12 +66,14 @@ export interface PostDoc extends Document {
   mediaUrl: string;
   mediaType: "image" | "video";
   thumbnailUrl: string;
+  carouselItems: CarouselItem[];
   caption: string;
   location: string;
   locationMeta?: LocationMeta;
   tags: string[];
   taggedUserIds: Types.ObjectId[];
   productIds: Types.ObjectId[];
+  collaboratorIds: Types.ObjectId[];
   settings?: PostSettings;
   durationMs?: number;
   music: string;
@@ -63,6 +83,11 @@ export interface PostDoc extends Document {
   /** Unique accounts who saw the post (impressions = raw events including repeats) */
   impressionsCount: number;
   sharesCount: number;
+  repliesCount: number;
+  linkTapsCount: number;
+  mentionTapsCount: number;
+  storeIconClicksCount: number;
+  rewardPointsAccrued: number;
   totalWatchTimeMs: number;
   /** milliseconds — recomputed on each view update */
   avgWatchTimeMs: number;
@@ -81,6 +106,14 @@ export interface PostDoc extends Document {
   clientEditMeta?: Record<string, unknown>;
   /** Story-only: background color + draggable overlays */
   storyMeta?: StoryMeta;
+  originalAudioId?: Types.ObjectId;
+  originalAudioTitle?: string;
+  remixOfPostId?: Types.ObjectId;
+  remixCredit?: {
+    postId?: Types.ObjectId;
+    creatorId?: Types.ObjectId;
+    username?: string;
+  };
   /** HLS master playlist URL (served from /uploads/hls/<jobId>/master.m3u8). Preferred over mediaUrl for video. */
   hlsMasterUrl?: string;
   /** Processing pipeline status. Posts stay hidden until 'ready'. */
@@ -104,6 +137,17 @@ const postSchema = new Schema<PostDoc>(
     mediaUrl: { type: String, required: true },
     mediaType: { type: String, enum: ["image", "video"], required: true },
     thumbnailUrl: { type: String, default: "" },
+    carouselItems: [
+      {
+        mediaUrl: { type: String, required: true },
+        mediaType: { type: String, enum: ["image", "video"], required: true },
+        thumbnailUrl: { type: String, default: "" },
+        order: { type: Number, required: true, min: 0 },
+        aspectRatio: { type: Number },
+        width: { type: Number },
+        height: { type: Number },
+      },
+    ],
     caption: { type: String, default: "", maxlength: 2200 },
     location: { type: String, default: "" },
     locationMeta: {
@@ -116,6 +160,7 @@ const postSchema = new Schema<PostDoc>(
     tags: [{ type: String }],
     taggedUserIds: [{ type: Schema.Types.ObjectId, ref: "User", index: true }],
     productIds: [{ type: Schema.Types.ObjectId, ref: "AffiliateProduct" }],
+    collaboratorIds: [{ type: Schema.Types.ObjectId, ref: "User", index: true }],
     settings: {
       commentsOff: Boolean,
       hideLikes: Boolean,
@@ -129,6 +174,11 @@ const postSchema = new Schema<PostDoc>(
     viewsCount: { type: Number, default: 0 },
     impressionsCount: { type: Number, default: 0 },
     sharesCount: { type: Number, default: 0 },
+    repliesCount: { type: Number, default: 0 },
+    linkTapsCount: { type: Number, default: 0 },
+    mentionTapsCount: { type: Number, default: 0 },
+    storeIconClicksCount: { type: Number, default: 0 },
+    rewardPointsAccrued: { type: Number, default: 0 },
     totalWatchTimeMs: { type: Number, default: 0 },
     avgWatchTimeMs: { type: Number, default: 0 },
     trendingScore: { type: Number, default: 0 },
@@ -138,6 +188,14 @@ const postSchema = new Schema<PostDoc>(
     deletedAt: { type: Date },
     clientEditMeta: { type: Schema.Types.Mixed, default: undefined },
     storyMeta: { type: Schema.Types.Mixed, default: undefined },
+    originalAudioId: { type: Schema.Types.ObjectId, ref: "OriginalAudio" },
+    originalAudioTitle: { type: String, default: "" },
+    remixOfPostId: { type: Schema.Types.ObjectId, ref: "Post" },
+    remixCredit: {
+      postId: { type: Schema.Types.ObjectId, ref: "Post" },
+      creatorId: { type: Schema.Types.ObjectId, ref: "User" },
+      username: { type: String, default: "" },
+    },
     hlsMasterUrl: { type: String },
     processingStatus: {
       type: String,
@@ -163,6 +221,7 @@ postSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 // Fast feed/reels lookup — covers the query filter + _id sort in one index scan
 postSchema.index({ type: 1, isActive: 1, isDeleted: 1, _id: -1 });
 postSchema.index({ authorId: 1, type: 1, isActive: 1, isDeleted: 1, _id: -1 });
+postSchema.index({ collaboratorIds: 1, type: 1, isActive: 1, isDeleted: 1, _id: -1 });
 /** Story tray: type + visibility + author $in + expiresAt range + createdAt sort */
 postSchema.index({ type: 1, isActive: 1, isDeleted: 1, authorId: 1, expiresAt: 1, createdAt: -1 });
 // Explore sort (viewsCount desc) + trending

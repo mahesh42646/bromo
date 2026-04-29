@@ -84,6 +84,8 @@ function mapAsset(a: Asset): MediaAsset | null {
       type: 'video',
       duration: a.duration,
       fileName: a.fileName ?? null,
+      width: a.width,
+      height: a.height,
     };
   }
 
@@ -93,6 +95,8 @@ function mapAsset(a: Asset): MediaAsset | null {
       type: 'video',
       duration: a.duration,
       fileName: a.fileName ?? null,
+      width: a.width,
+      height: a.height,
     };
   }
 
@@ -103,6 +107,8 @@ function mapAsset(a: Asset): MediaAsset | null {
       type: 'video',
       duration: a.duration,
       fileName: a.fileName ?? null,
+      width: a.width,
+      height: a.height,
     };
   }
 
@@ -111,6 +117,8 @@ function mapAsset(a: Asset): MediaAsset | null {
     type: 'image',
     duration: a.duration,
     fileName: a.fileName ?? null,
+    width: a.width,
+    height: a.height,
   };
 }
 
@@ -209,9 +217,12 @@ export function CreateHubScreen() {
           .then(({post}) => {
             const title = post.music?.trim() ? post.music.trim() : 'Original audio';
             setSelectedAudio({
-              id: post._id,
-              title,
+              id: post.originalAudioId ?? post._id,
+              title: post.originalAudioTitle?.trim() || title,
               artist: `@${post.author.username}`,
+              url: post.mediaUrl,
+              originalAudioId: post.originalAudioId,
+              sourcePostId: post._id,
             });
           })
           .catch(() => null);
@@ -272,8 +283,8 @@ export function CreateHubScreen() {
     libraryPickerOpenRef.current = true;
     launchImageLibrary(
       {
-        mediaType: draft.mode === 'reel' ? 'video' : 'mixed',
-        selectionLimit: 1,
+        mediaType: draft.mode === 'reel' ? 'video' : draft.mode === 'post' ? 'photo' : 'mixed',
+        selectionLimit: draft.mode === 'post' ? 10 : 1,
         includeBase64: false,
         ...(Platform.OS === 'ios' ? {assetRepresentationMode: 'current' as const} : {}),
       },

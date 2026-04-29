@@ -3,7 +3,7 @@ import mongoose, { Schema, type Document, type Types } from "mongoose";
 export interface MessageDoc extends Document {
   conversationId: Types.ObjectId;
   senderId: Types.ObjectId;
-  type: "text" | "image" | "video" | "audio" | "gif" | "sticker" | "location";
+  type: "text" | "image" | "video" | "audio" | "gif" | "sticker" | "location" | "shared_post";
   text: string;
   mediaUrl: string;
   meta: Record<string, unknown>;
@@ -11,6 +11,7 @@ export interface MessageDoc extends Document {
   isUnsent: boolean;
   editedAt?: Date;
   reactions: Array<{ userId: Types.ObjectId; emoji: string }>;
+  readBy: Array<{ userId: Types.ObjectId; readAt: Date }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,7 +27,7 @@ const messageSchema = new Schema<MessageDoc>(
     senderId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     type: {
       type: String,
-      enum: ["text", "image", "video", "audio", "gif", "sticker", "location"],
+      enum: ["text", "image", "video", "audio", "gif", "sticker", "location", "shared_post"],
       required: true,
     },
     text: { type: String, default: "" },
@@ -39,6 +40,12 @@ const messageSchema = new Schema<MessageDoc>(
       {
         userId: { type: Schema.Types.ObjectId, ref: "User" },
         emoji: { type: String, required: true },
+      },
+    ],
+    readBy: [
+      {
+        userId: { type: Schema.Types.ObjectId, ref: "User" },
+        readAt: { type: Date, default: Date.now },
       },
     ],
   },

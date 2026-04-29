@@ -14,6 +14,7 @@ import { Post } from "../models/Post.js";
 import { User } from "../models/User.js";
 import { packageHls, encodeMezzanineMp4 } from "../services/hlsPackager.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
+import { ensureOriginalAudioForPost } from "../services/originalAudio.js";
 import { normalizeImage } from "../services/imageNormalize.js";
 import { createNotification } from "../models/Notification.js";
 import { emitNotification, emitPostNew, emitStoryNew } from "../services/socketService.js";
@@ -185,6 +186,12 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
     }
     await Post.updateOne({ _id: job.postDraftId }, { $set: readyPatch });
 
+    void ensureOriginalAudioForPost({
+      postId: job.postDraftId,
+      ownerId: job.userId,
+      sourceRelPath: mezzanineRel,
+    });
+
     if (activateNow) {
       await broadcastActivatedPost(String(job.postDraftId));
     }
@@ -291,5 +298,4 @@ function safeUnlinkRaw(relPath: string): void {
     console.warn("[mediaWorker] raw cleanup failed:", e);
   }
 }
-
 

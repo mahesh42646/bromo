@@ -17,13 +17,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {ChevronLeft, Heart, MoreVertical, Send, Share2} from 'lucide-react-native';
+import {AtSign, BarChart2, ChevronLeft, Heart, MoreVertical, Send, Share2, Users} from 'lucide-react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {useMessaging} from '../messaging/MessagingContext';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {deletePost, markStorySeenPost, toggleLike, resolveVideoUrl, type StoryGroup} from '../api/postsApi';
+import {
+  deletePost,
+  getStoryAnalytics,
+  getStoryViewers,
+  markStorySeenPost,
+  recordStoryTap,
+  resolveVideoUrl,
+  toggleLike,
+  type PostAuthor,
+  type StoryGroup,
+} from '../api/postsApi';
 import {loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
 import {prefetchStoryVideoToDisk, resolveStoryVideoPlayUri} from '../lib/storyVideoCache';
 import {prefetchHlsSegments} from '../lib/hlsPrefetch';
@@ -52,12 +62,14 @@ type StoryMediaCache = Record<string, number>;
 // Story overlay types stored in storyMeta
 type StoryOverlay = {
   id: string;
-  type: 'text' | 'emoji' | 'music';
+  type: 'text' | 'emoji' | 'music' | 'sticker' | 'mention' | 'link';
   content: string;
   x: number; // 0–1 relative to W
   y: number; // 0–1 relative to H
   color?: string;
   fontSize?: number;
+  targetUserId?: string;
+  scale?: number;
 };
 
 type StoryMeta = {
@@ -89,6 +101,17 @@ export function StoryViewScreen() {
   const [replyText, setReplyText] = useState('');
   const [showReply, setShowReply] = useState(false);
   const [ownMenuOpen, setOwnMenuOpen] = useState(false);
+  const [mentionsOpen, setMentionsOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [storyViewers, setStoryViewers] = useState<Array<{viewedAt: string; user: PostAuthor}>>([]);
+  const [storyAnalytics, setStoryAnalytics] = useState<{
+    viewersCount: number;
+    impressions: number;
+    views: number;
+    replyCount: number;
+    linkTapCount: number;
+    mentionTapCount: number;
+  } | null>(null);
   const [mediaReady, setMediaReady] = useState(false);
   const [storyDurationMs, setStoryDurationMs] = useState(STORY_DURATION_IMAGE_MS);
   /** null = resolving disk vs remote; avoids mounting the player on `https://` when a cache hit will use `file://`. */
@@ -394,7 +417,19 @@ export function StoryViewScreen() {
   const storyMeta = (current as unknown as {storyMeta?: StoryMeta}).storyMeta;
   const bgColor = storyMeta?.bgColor;
   const overlays: StoryOverlay[] = storyMeta?.overlays ?? [];
+  const mentionOverlays = overlays.filter(o => o.type === 'mention');
   const isColorBg = Boolean(bgColor) && (!mediaUri || mediaUri === 'color-bg');
+
+  const openOwnAnalytics = () => {
+    if (!current?._id) return;
+    setAnalyticsOpen(true);
+    Promise.all([getStoryViewers(current._id), getStoryAnalytics(current._id)])
+      .then(([viewers, analytics]) => {
+        setStoryViewers(viewers.viewers);
+        setStoryAnalytics(analytics);
+      })
+      .catch(() => null);
+  };
 
   return (
     <View style={{flex: 1, backgroundColor: '#000'}}>
@@ -449,6 +484,64 @@ export function StoryViewScreen() {
               }}>
               <Text style={{color: palette.destructive, fontSize: 16, fontWeight: '800'}}>Delete story</Text>
             </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={mentionsOpen} transparent animationType="fade" onRequestClose={() => setMentionsOpen(false)}>
+        <Pressable
+          style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end'}}
+          onPress={() => setMentionsOpen(false)}>
+          <Pressable
+            onPress={e => e.stopPropagation()}
+            style={{backgroundColor: palette.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, paddingBottom: Math.max(insets.bottom, 20)}}>
+            <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '900', marginBottom: 12}}>Mentions</Text>
+            {mentionOverlays.length === 0 ? (
+              <Text style={{color: palette.foregroundMuted}}>No mentions on this story.</Text>
+            ) : (
+              mentionOverlays.map(mention => (
+                <Text key={mention.id} style={{color: palette.foreground, fontSize: 15, fontWeight: '700', paddingVertical: 8}}>
+                  {mention.content.startsWith('@') ? mention.content : `@${mention.content}`}
+                </Text>
+              ))
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={analyticsOpen} transparent animationType="slide" onRequestClose={() => setAnalyticsOpen(false)}>
+        <Pressable
+          style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end'}}
+          onPress={() => setAnalyticsOpen(false)}>
+          <Pressable
+            onPress={e => e.stopPropagation()}
+            style={{maxHeight: H * 0.72, backgroundColor: palette.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, paddingBottom: Math.max(insets.bottom, 20)}}>
+            <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '900'}}>Story analytics</Text>
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14}}>
+              {[
+                ['Views', storyAnalytics?.views ?? 0],
+                ['Impressions', storyAnalytics?.impressions ?? 0],
+                ['Replies', storyAnalytics?.replyCount ?? 0],
+                ['Mention taps', storyAnalytics?.mentionTapCount ?? 0],
+                ['Link taps', storyAnalytics?.linkTapCount ?? 0],
+              ].map(([label, value]) => (
+                <View key={String(label)} style={{width: '30%', minWidth: 92, padding: 10, borderRadius: 12, backgroundColor: palette.surfaceHigh}}>
+                  <Text style={{color: palette.foreground, fontWeight: '900'}}>{String(value)}</Text>
+                  <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 2}}>{String(label)}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={{color: palette.foreground, fontSize: 14, fontWeight: '900', marginTop: 18, marginBottom: 8}}>Viewers</Text>
+            {storyViewers.length === 0 ? (
+              <Text style={{color: palette.foregroundMuted}}>No viewers yet.</Text>
+            ) : (
+              storyViewers.map(row => (
+                <View key={`${row.user._id}-${row.viewedAt}`} style={{flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8}}>
+                  <Image source={{uri: row.user.profilePicture || `https://ui-avatars.com/api/?name=${row.user.displayName}`}} style={{width: 34, height: 34, borderRadius: 17}} />
+                  <Text style={{color: palette.foreground, fontWeight: '700'}}>{row.user.displayName}</Text>
+                </View>
+              ))
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -530,6 +623,7 @@ export function StoryViewScreen() {
             position: 'absolute',
             left: o.x * W,
             top: o.y * H,
+            transform: [{scale: o.scale ?? 1}],
           }}>
           {o.type === 'music' ? (
             <View style={{
@@ -539,6 +633,17 @@ export function StoryViewScreen() {
             }}>
               <Text style={{fontSize: 16}}>🎵</Text>
               <Text style={{color: '#fff', fontSize: 13, fontWeight: '700'}}>{o.content}</Text>
+            </View>
+          ) : o.type === 'sticker' || o.type === 'mention' ? (
+            <View style={{
+              backgroundColor: o.type === 'mention' ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.55)',
+              borderRadius: 18,
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+            }}>
+              <Text style={{color: o.type === 'mention' ? '#111' : '#fff', fontSize: o.fontSize ?? 15, fontWeight: '900'}}>
+                {o.type === 'mention' && !o.content.startsWith('@') ? `@${o.content}` : o.content}
+              </Text>
             </View>
           ) : (
             <Text style={{
@@ -595,10 +700,29 @@ export function StoryViewScreen() {
         <Text style={{color: '#fff', fontWeight: '700', fontSize: 14, flex: 1}}>
           @{group.author.username}
         </Text>
-        {viewingOwnStories ? (
-          <Pressable onPress={() => setOwnMenuOpen(true)} hitSlop={12} style={{padding: 4}}>
-            <MoreVertical color="#fff" size={22} />
+        {mentionOverlays.length > 0 ? (
+          <Pressable
+            onPress={() => {
+              setMentionsOpen(true);
+              if (current?._id) void recordStoryTap(current._id, 'mention');
+            }}
+            hitSlop={12}
+            style={{padding: 4}}>
+            <AtSign color="#fff" size={21} />
           </Pressable>
+        ) : null}
+        {viewingOwnStories ? (
+          <>
+            <Pressable onPress={openOwnAnalytics} hitSlop={12} style={{padding: 4}}>
+              <BarChart2 color="#fff" size={21} />
+            </Pressable>
+            <Pressable onPress={openOwnAnalytics} hitSlop={12} style={{padding: 4}}>
+              <Users color="#fff" size={21} />
+            </Pressable>
+            <Pressable onPress={() => setOwnMenuOpen(true)} hitSlop={12} style={{padding: 4}}>
+              <MoreVertical color="#fff" size={22} />
+            </Pressable>
+          </>
         ) : null}
       </View>
 

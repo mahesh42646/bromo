@@ -16,6 +16,7 @@ import {
   View,
   type ViewabilityConfig,
   type ViewToken,
+  useWindowDimensions,
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import { EditMetaLayers } from '../components/media/EditMetaLayers';
@@ -74,9 +75,12 @@ import {
   getReelsInitial,
   getTrendingReels,
   toggleLike,
+  toggleSavePost,
   hidePost,
   reportPost,
   recordView,
+  recordShare,
+  recordStoreClick,
   resolveVideoUrl,
   deletePost,
   type Post,
@@ -92,7 +96,7 @@ import { AdStoryViewer } from '../components/AdStoryViewer';
 import { clearStoriesFeedCache, loadStoriesFeed, loadStoriesFeedDeduped, peekStoriesFromCache } from '../lib/storiesFeedCache';
 import { peekHomeFeedCache, saveHomeFeedCache } from '../lib/homeFeedCache';
 import { saveReelFeedCache } from '../lib/reelFeedCache';
-import { getUserSuggestions, followUser, unfollowUser, type SuggestedUser } from '../api/followApi';
+import { blockUser, getUserSuggestions, followUser, unfollowUser, type SuggestedUser } from '../api/followApi';
 import { getUnreadCount } from '../api/notificationsApi';
 import { getConversations } from '../api/chatApi';
 import { socketService } from '../services/socketService';
@@ -136,6 +140,20 @@ function dedupePostsById(posts: Post[]): Post[] {
     if (!m.has(p._id)) m.set(p._id, p);
   }
   return [...m.values()];
+}
+
+function postDisplayAspectRatio(post: Post): number {
+  const raw = post.carouselItems?.[0]?.aspectRatio;
+  const fallback = post.type === 'reel' ? 9 / 16 : 1;
+  const n = Number(raw || fallback);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(0.42, Math.min(2.2, n));
+}
+
+function feedCategoryLabel(category?: string): string {
+  const value = (category || 'general').replace(/-/g, ' ').trim();
+  if (!value) return 'General';
+  return value.replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function enrichFeedChunk(posts: Post[]): Post[] {
@@ -202,6 +220,7 @@ type PostCardProps = {
   onLikeToggle: (postId: string) => void;
   onHide: (postId: string) => void;
   onPostDeleted: (postId: string) => void;
+  onCategoryPress: (category: string) => void;
   navigation: Nav;
   isVideoVisible?: boolean;
   isFeedItemVisible?: boolean;
@@ -212,12 +231,14 @@ const PostCard = React.memo(function PostCard({
   onLikeToggle,
   onHide,
   onPostDeleted,
+  onCategoryPress,
   navigation,
   isVideoVisible = false,
   isFeedItemVisible = false,
 }: PostCardProps) {
   const { palette, contract } = useTheme();
   const { dbUser } = useAuth();
+  const { width: windowW } = useWindowDimensions();
   const { homeFeedMuted, toggleHomeFeedMuted } = usePlaybackMute();
   const { isCellular, maxBitRate } = usePlaybackNetworkCap();
   const [bookmarked, setBookmarked] = useState(false);
@@ -225,6 +246,7 @@ const PostCard = React.memo(function PostCard({
   const [following, setFollowing] = useState(post.isFollowing);
   const [videoEnded, setVideoEnded] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
+  const [carouselIndex, setCarouselIndex] = useState(0);
   const viewRecordedRef = useRef(false);
   const viewImpressionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promoImpressionLoggedRef = useRef(false);
@@ -250,9 +272,35 @@ const PostCard = React.memo(function PostCard({
     onHide(post._id);
   };
 
+  const handleSave = async () => {
+    try {
+      const out = await toggleSavePost(post._id);
+      setBookmarked(out.saved);
+    } catch {
+      /* ignore */
+    }
+    setMenuOpen(false);
+  };
+
   const handleReport = async () => {
     setMenuOpen(false);
     reportPost(post._id, 'inappropriate');
+  };
+
+  const handleBlock = async () => {
+    setMenuOpen(false);
+    Alert.alert('Block account?', `You will stop seeing @${post.author.username}'s content.`, [
+      {text: 'Cancel', style: 'cancel'},
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: () => {
+          blockUser(post.author._id)
+            .then(() => onHide(post._id))
+            .catch(e => Alert.alert('Block failed', e instanceof Error ? e.message : 'Try again.'));
+        },
+      },
+    ]);
   };
 
   const avatarUri = post.author.profilePicture || `https://ui-avatars.com/api/?name=${post.author.displayName}`;
@@ -303,6 +351,10 @@ const PostCard = React.memo(function PostCard({
   }, [post._id]);
 
   useEffect(() => {
+    setFollowing(post.isFollowing);
+  }, [post.isFollowing]);
+
+  useEffect(() => {
     if (isVideoVisible && post.mediaType === 'video') {
       setVideoEnded(false);
     }
@@ -312,6 +364,8 @@ const PostCard = React.memo(function PostCard({
   const playUri = rawVideoUrl ? resolveMediaUrl(rawVideoUrl) || rawVideoUrl : '';
   const isHls = rawVideoUrl.endsWith('.m3u8');
   const thumbForVideo = postThumbnailUri(post) || playUri;
+  const mediaAspect = postDisplayAspectRatio(post);
+  const carouselItems = post.carouselItems?.length ? post.carouselItems : [];
 
   const openReelsAtThisPost = () => {
     parentNavigate(navigation, 'Reels', { initialPostId: post._id });
@@ -403,16 +457,14 @@ const PostCard = React.memo(function PostCard({
         label: 'Share Post',
         onPress: () => {
           setMenuOpen(false);
+          void recordShare(post._id);
           parentNavigate(navigation, 'ShareSend', { postId: post._id });
         },
       },
       {
         icon: <Bookmark size={20} color={palette.foreground} />,
         label: 'Save',
-        onPress: () => {
-          setMenuOpen(false);
-          setBookmarked(true);
-        },
+        onPress: handleSave,
       },
       {
         icon: <EyeOff size={20} color={palette.foreground} />,
@@ -426,6 +478,12 @@ const PostCard = React.memo(function PostCard({
             label: 'Report',
             danger: true,
             onPress: handleReport,
+          },
+          {
+            icon: <X size={20} color={palette.destructive} />,
+            label: 'Block account',
+            danger: true,
+            onPress: handleBlock,
           },
         ]
         : []),
@@ -526,6 +584,38 @@ const PostCard = React.memo(function PostCard({
         </View>
       ) : null}
 
+      {post.feedCategory && post.feedCategory !== 'general' && post.feedCategory !== 'followers' ? (
+        <View style={{paddingHorizontal: 14, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10}}>
+          <View style={{paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: palette.surfaceHigh}}>
+            <Text style={{color: palette.foreground, fontSize: 11, fontWeight: '900'}}>
+              {feedCategoryLabel(post.feedCategory)}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => {
+              onCategoryPress(post.feedCategory!);
+            }}
+            style={{paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: palette.primary}}>
+            <Text style={{color: palette.primaryForeground, fontSize: 11, fontWeight: '900'}}>Read More</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {post.showStoreIcon ? (
+        <View style={{paddingHorizontal: 14, paddingBottom: 10}}>
+          <Pressable
+            onPress={() => {
+              void recordStoreClick(post._id);
+              const url = post.author.connectedStore?.website;
+              if (url) void openExternalUrl(url);
+            }}
+            style={{alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: palette.surfaceHigh, borderWidth: 1, borderColor: palette.border}}>
+            <ShoppingBag size={14} color={palette.primary} />
+            <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '900'}}>View Store</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       {post.type === 'reel' ? (
         <Pressable onPress={openReelsAtThisPost}>
           {post.mediaType === 'video' ? (
@@ -538,7 +628,7 @@ const PostCard = React.memo(function PostCard({
                 fallbackUri={isHls ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
                 posterUri={thumbForVideo || undefined}
                 maxBitRate={isHls ? maxBitRate : undefined}
-                style={{ width: '100%', aspectRatio: 1 }}
+                style={{ width: '100%', aspectRatio: mediaAspect, backgroundColor: '#000' }}
                 repeat={false}
                 muted={homeFeedMuted}
                 paused={!isVideoVisible || videoEnded}
@@ -604,10 +694,10 @@ const PostCard = React.memo(function PostCard({
               ) : null}
             </View>
           ) : (
-            <View style={{ width: '100%', aspectRatio: 1, position: 'relative' }}>
+            <View style={{ width: '100%', aspectRatio: mediaAspect, position: 'relative', backgroundColor: '#000' }}>
               <Image
                 source={{ uri: resolveMediaUrl(post.mediaUrl) }}
-                style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
+                style={{ width: '100%', height: '100%', resizeMode: 'contain' }}
               />
               <EditMetaLayers clientEditMeta={post.clientEditMeta} />
             </View>
@@ -625,7 +715,7 @@ const PostCard = React.memo(function PostCard({
                 fallbackUri={isHls ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
                 posterUri={thumbForVideo || undefined}
                 maxBitRate={isHls ? maxBitRate : undefined}
-                style={{ width: '100%', aspectRatio: 1 }}
+                style={{ width: '100%', aspectRatio: mediaAspect, backgroundColor: '#000' }}
                 repeat={false}
                 muted={homeFeedMuted}
                 paused={!isVideoVisible || videoEnded}
@@ -684,11 +774,37 @@ const PostCard = React.memo(function PostCard({
               ) : null}
             </View>
           ) : (
-            <View style={{ width: '100%', aspectRatio: 1, position: 'relative' }}>
-              <Image
-                source={{ uri: resolveMediaUrl(post.mediaUrl) }}
-                style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
-              />
+            <View style={{ width: '100%', aspectRatio: mediaAspect, position: 'relative', backgroundColor: '#000' }}>
+              {carouselItems.length > 1 ? (
+                <>
+                  <FlatList
+                    data={carouselItems}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    keyExtractor={(item, idx) => `${item.mediaUrl}_${idx}`}
+                    onMomentumScrollEnd={e => {
+                      setCarouselIndex(Math.round(e.nativeEvent.contentOffset.x / Math.max(1, windowW)));
+                    }}
+                    renderItem={({item}) => (
+                      <Image
+                        source={{uri: resolveMediaUrl(item.mediaUrl)}}
+                        style={{width: windowW, aspectRatio: mediaAspect, resizeMode: 'contain'}}
+                      />
+                    )}
+                  />
+                  <View style={{position: 'absolute', top: 10, right: 10, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.55)'}}>
+                    <Text style={{color: '#fff', fontSize: 11, fontWeight: '900'}}>
+                      {carouselIndex + 1}/{carouselItems.length}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <Image
+                  source={{ uri: resolveMediaUrl(post.mediaUrl) }}
+                  style={{ width: '100%', height: '100%', resizeMode: 'contain' }}
+                />
+              )}
               <EditMetaLayers clientEditMeta={post.clientEditMeta} />
             </View>
           )}
@@ -786,11 +902,17 @@ const PostCard = React.memo(function PostCard({
             <MessageCircle size={24} color={palette.foreground} />
             <ThemedText variant="label">{formatCount(post.commentsCount)}</ThemedText>
           </Pressable>
-          <Pressable onPress={() => parentNavigate(navigation, 'ShareSend', { postId: post._id })}>
+          <Pressable
+            onPress={() => {
+              void recordShare(post._id);
+              parentNavigate(navigation, 'ShareSend', { postId: post._id });
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Send size={24} color={palette.foreground} />
+            <ThemedText variant="label">{formatCount(post.sharesCount)}</ThemedText>
           </Pressable>
         </View>
-        <Pressable onPress={() => setBookmarked(p => !p)}>
+        <Pressable onPress={handleSave}>
           <Bookmark
             size={24}
             color={bookmarked ? palette.primary : palette.foreground}
@@ -881,6 +1003,13 @@ export function HomeScreen() {
   const navigation = useNavigation() as Nav;
   const tabBarHeight = useBottomTabBarHeight();
   const [activeCategory, setActiveCategory] = useState('home');
+  const categoryChips = useMemo(() => {
+    if (CATEGORIES.some(cat => cat.id === activeCategory)) return CATEGORIES;
+    return [
+      ...CATEGORIES,
+      {id: activeCategory, label: feedCategoryLabel(activeCategory), Icon: Landmark},
+    ];
+  }, [activeCategory]);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [notificationUnread, setNotificationUnread] = useState(0);
@@ -1322,6 +1451,35 @@ export function HomeScreen() {
     return () => sub.remove();
   }, [authReady, refreshHeaderCounts]);
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      'bromo:followChanged',
+      ({userId, following}: {userId: string; following: boolean}) => {
+        setPosts(prev =>
+          prev.map(p =>
+            String(p.author._id) === String(userId) ? {...p, isFollowing: following} : p,
+          ),
+        );
+        setTrendingReels(prev =>
+          prev.map(p =>
+            String(p.author._id) === String(userId) ? {...p, isFollowing: following} : p,
+          ),
+        );
+      },
+    );
+    const blockSub = DeviceEventEmitter.addListener(
+      'bromo:userBlocked',
+      ({userId}: {userId: string}) => {
+        setPosts(prev => prev.filter(p => String(p.author._id) !== String(userId)));
+        setTrendingReels(prev => prev.filter(p => String(p.author._id) !== String(userId)));
+      },
+    );
+    return () => {
+      sub.remove();
+      blockSub.remove();
+    };
+  }, []);
+
   // Real-time feed: listen for new posts, likes, story arrivals, and header counter updates
   useEffect(() => {
     const unsubLike = socketService.on('post:like', ({ postId, likesCount, liked }) => {
@@ -1349,6 +1507,14 @@ export function HomeScreen() {
         prev.map(p => p._id === postId ? { ...p, commentsCount } : p),
       );
     });
+    const unsubShare = socketService.on('post:share' as 'post:share', ({postId, sharesCount}: {postId: string; sharesCount: number}) => {
+      setPosts(prev =>
+        prev.map(p => (p._id === postId ? {...p, sharesCount} : p)),
+      );
+      setTrendingReels(prev =>
+        prev.map(p => (p._id === postId ? {...p, sharesCount} : p)),
+      );
+    });
     const unsubStory = socketService.on('story:new', () => {
       void clearStoriesFeedCache()
         .then(() => loadStoriesFeed({ force: true }))
@@ -1359,7 +1525,7 @@ export function HomeScreen() {
       if (p.type === 'story') return;
       const cat = activeCategoryRef.current;
       if (cat === 'trending') return;
-      if (['politics', 'sports', 'shopping', 'tech'].includes(cat) && p.feedCategory !== cat) return;
+      if (cat !== 'home' && p.feedCategory !== cat) return;
       const myId = dbUser?._id;
       const aid = p.author?._id;
       const isSelf = Boolean(myId && aid && String(aid) === String(myId));
@@ -1390,6 +1556,7 @@ export function HomeScreen() {
       unsubDelete();
       unsubStoryDel();
       unsubComment();
+      unsubShare();
       unsubStory();
       unsubNew();
       unsubSeen.remove();
@@ -1619,7 +1786,7 @@ export function HomeScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}
         style={{ borderBottomWidth: 1, borderBottomColor: palette.border, maxHeight: 54, minHeight: 54 }}>
-        {CATEGORIES.map(cat => {
+        {categoryChips.map(cat => {
           const CatIcon = cat.Icon;
           const chipOn = activeCategory === cat.id;
           return (
@@ -1968,6 +2135,7 @@ export function HomeScreen() {
                   onLikeToggle={handleLikeToggle}
                   onHide={handleHidePost}
                   onPostDeleted={handleHidePost}
+                  onCategoryPress={setActiveCategory}
                   navigation={navigation}
                   isVideoVisible={item.post.mediaType === 'video' && item.post._id === visiblePostId}
                   isFeedItemVisible={item.post._id === visibleFeedPostId}

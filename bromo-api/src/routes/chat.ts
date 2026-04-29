@@ -7,7 +7,13 @@ import {
 import { Conversation } from "../models/Conversation.js";
 import { Message } from "../models/Message.js";
 import { User } from "../models/User.js";
-import { emitChatUnreadForUser } from "../services/socketService.js";
+import { createNotification } from "../models/Notification.js";
+import {
+  emitChatMessage,
+  emitChatMessageUpdated,
+  emitChatRead,
+  emitChatUnreadForUser,
+} from "../services/socketService.js";
 
 export const chatRouter = Router();
 
@@ -95,7 +101,7 @@ chatRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
-      const { id } = req.params;
+      const id = String(req.params.id);
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = (page - 1) * MSG_PAGE;
 
@@ -118,8 +124,17 @@ chatRouter.get(
       counts.set(String(user._id), 0);
       conversation.unreadCounts = counts;
       await conversation.save();
+      await Message.updateMany(
+        {
+          conversationId: id,
+          senderId: {$ne: user._id},
+          "readBy.userId": {$ne: user._id},
+        },
+        {$push: {readBy: {userId: user._id, readAt: new Date()}}},
+      );
 
       void emitChatUnreadForUser(String(user._id));
+      emitChatRead(id, conversation.participants.map(String), String(user._id));
 
       return res.json({
         messages: messages.reverse(),
@@ -133,6 +148,67 @@ chatRouter.get(
   },
 );
 
+// ── GET /chat/conversations/:id/shared-media ───────────────────────
+chatRouter.get(
+  "/conversations/:id/shared-media",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const conversation = await Conversation.findOne({_id: req.params.id, participants: user._id}).lean();
+      if (!conversation) return res.status(404).json({message: "Conversation not found"});
+      const messages = await Message.find({
+        conversationId: req.params.id,
+        isUnsent: {$ne: true},
+        type: {$in: ["image", "video"]},
+      })
+        .sort({createdAt: -1})
+        .limit(200)
+        .populate("senderId", USER_SELECT)
+        .lean();
+      return res.json({media: messages});
+    } catch (err) {
+      console.error("[chat] shared media error:", err);
+      return res.status(500).json({message: "Failed to fetch shared media"});
+    }
+  },
+);
+
+// ── POST /chat/conversations/:id/mute ──────────────────────────────
+chatRouter.post(
+  "/conversations/:id/mute",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const conversation = await Conversation.findOne({_id: req.params.id, participants: user._id}).select("_id").lean();
+      if (!conversation) return res.status(404).json({message: "Conversation not found"});
+      await User.updateOne({_id: user._id}, {$addToSet: {mutedConversationIds: conversation._id}});
+      return res.json({muted: true});
+    } catch (err) {
+      console.error("[chat] mute error:", err);
+      return res.status(500).json({message: "Failed to mute conversation"});
+    }
+  },
+);
+
+chatRouter.delete(
+  "/conversations/:id/mute",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const id = String(req.params.id);
+      if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({message: "Invalid conversation id"});
+      await User.updateOne({_id: user._id}, {$pull: {mutedConversationIds: new mongoose.Types.ObjectId(id)}});
+      return res.json({muted: false});
+    } catch (err) {
+      console.error("[chat] unmute error:", err);
+      return res.status(500).json({message: "Failed to unmute conversation"});
+    }
+  },
+);
+
 // ── POST /chat/conversations/:id/messages ───────────────────────────
 chatRouter.post(
   "/conversations/:id/messages",
@@ -140,7 +216,7 @@ chatRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const user = req.dbUser!;
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { type, text, mediaUrl, meta, replyToId } = req.body as {
         type: string;
         text?: string;
@@ -166,6 +242,7 @@ chatRouter.post(
         mediaUrl: mediaUrl ?? "",
         meta: meta ?? {},
         replyToId: replyToId || undefined,
+        readBy: [{userId: user._id, readAt: new Date()}],
       });
 
       // Update conversation
@@ -185,12 +262,31 @@ chatRouter.post(
       for (const pid of conversation.participants) {
         if (String(pid) !== String(user._id)) {
           void emitChatUnreadForUser(String(pid));
+          void User.findById(pid)
+            .select("mutedConversationIds")
+            .lean()
+            .then((recipient) => {
+              const muted = ((recipient?.mutedConversationIds ?? []) as unknown[]).some(
+                (cid) => String(cid) === String(conversation._id),
+              );
+              if (muted) return;
+              return createNotification({
+                recipientId: pid,
+                actorId: user._id,
+                type: "message",
+                message: `${user.displayName} sent you a message`,
+              });
+            })
+            .catch(() => null);
         }
       }
 
       const populated = await Message.findById(message._id)
         .populate("senderId", USER_SELECT)
         .lean();
+      if (populated) {
+        emitChatMessage(id, conversation.participants.map(String), populated);
+      }
 
       return res.status(201).json({ message: populated });
     } catch (err) {
@@ -216,6 +312,8 @@ chatRouter.put(
       message.text = "";
       message.mediaUrl = "";
       await message.save();
+      const conversation = await Conversation.findById(message.conversationId).select("participants").lean();
+      emitChatMessageUpdated(String(message.conversationId), (conversation?.participants ?? []).map(String), message.toObject());
       return res.json({ unsent: true });
     } catch (err) {
       console.error("[chat] unsend error:", err);
@@ -244,6 +342,8 @@ chatRouter.put(
       message.text = text.trim();
       message.editedAt = new Date();
       await message.save();
+      const conversation = await Conversation.findById(message.conversationId).select("participants").lean();
+      emitChatMessageUpdated(String(message.conversationId), (conversation?.participants ?? []).map(String), message.toObject());
 
       return res.json({ message });
     } catch (err) {
@@ -299,8 +399,17 @@ chatRouter.post(
       counts.set(String(user._id), 0);
       conversation.unreadCounts = counts;
       await conversation.save();
+      await Message.updateMany(
+        {
+          conversationId: req.params.id,
+          senderId: {$ne: user._id},
+          "readBy.userId": {$ne: user._id},
+        },
+        {$push: {readBy: {userId: user._id, readAt: new Date()}}},
+      );
 
       void emitChatUnreadForUser(String(user._id));
+      emitChatRead(String(conversation._id), conversation.participants.map(String), String(user._id));
 
       return res.json({ ok: true });
     } catch (err) {

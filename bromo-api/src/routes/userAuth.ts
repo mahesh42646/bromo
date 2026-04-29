@@ -256,3 +256,93 @@ userAuthRouter.patch(
     }
   },
 );
+
+// ── POST /device-token ─────────────────────────────────────────────
+userAuthRouter.post(
+  "/device-token",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const token = String((req.body as {token?: unknown}).token ?? "").trim();
+      if (!token) return res.status(400).json({message: "token is required"});
+      await User.updateOne({_id: req.dbUser!._id}, {$addToSet: {fcmTokens: token}});
+      return res.json({ok: true});
+    } catch (err) {
+      console.error("[userAuth] device token error:", err);
+      return res.status(500).json({message: "Failed to save device token"});
+    }
+  },
+);
+
+userAuthRouter.delete(
+  "/device-token",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const token = String((req.body as {token?: unknown}).token ?? "").trim();
+      if (!token) return res.status(400).json({message: "token is required"});
+      await User.updateOne({_id: req.dbUser!._id}, {$pull: {fcmTokens: token}});
+      return res.json({ok: true});
+    } catch (err) {
+      console.error("[userAuth] remove device token error:", err);
+      return res.status(500).json({message: "Failed to remove device token"});
+    }
+  },
+);
+
+// ── POST /creator-form ─────────────────────────────────────────────
+userAuthRouter.post(
+  "/creator-form",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const body = req.body as Record<string, unknown>;
+      const documents = Array.isArray(body.documents)
+        ? body.documents.map((v) => String(v).trim()).filter(Boolean).slice(0, 10)
+        : [];
+      user.creatorStatus = "pending";
+      user.isCreator = false;
+      user.creatorBadge = false;
+      user.creatorForm = {
+        fullName: String(body.fullName ?? user.displayName).trim().slice(0, 120),
+        category: String(body.category ?? "").trim().slice(0, 120),
+        bio: String(body.bio ?? user.bio ?? "").trim().slice(0, 500),
+        website: String(body.website ?? user.website ?? "").trim().slice(0, 300),
+        documents,
+        submittedAt: new Date(),
+        rejectionReason: "",
+      };
+      await user.save();
+      return res.json({user});
+    } catch (err) {
+      console.error("[userAuth] creator form error:", err);
+      return res.status(500).json({message: "Failed to submit creator form"});
+    }
+  },
+);
+
+// ── POST /connected-store ──────────────────────────────────────────
+userAuthRouter.post(
+  "/connected-store",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const website = String((req.body as {website?: unknown}).website ?? "").trim();
+      const planId = String((req.body as {planId?: unknown}).planId ?? "connect_store").trim();
+      if (!website) return res.status(400).json({message: "website is required"});
+      user.connectedStore = {
+        enabled: true,
+        website,
+        planId,
+        purchasedAt: new Date(),
+      };
+      await user.save();
+      return res.json({user});
+    } catch (err) {
+      console.error("[userAuth] connected store error:", err);
+      return res.status(500).json({message: "Failed to connect store"});
+    }
+  },
+);

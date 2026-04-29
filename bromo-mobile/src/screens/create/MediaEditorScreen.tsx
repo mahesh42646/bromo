@@ -469,6 +469,7 @@ export function MediaEditorScreen() {
   const styles = makeStyles(palette);
   const {
     draft,
+    reorderAssets,
     setActiveAssetIndex,
     setFilterForActive,
     setAdjustForActive,
@@ -605,6 +606,18 @@ export function MediaEditorScreen() {
       carouselRef.current?.scrollToIndex({ index: idx, animated: true });
     },
     [setActiveAssetIndex],
+  );
+
+  const moveActiveAsset = useCallback(
+    (direction: -1 | 1) => {
+      const next = Math.max(0, Math.min(assets.length - 1, i + direction));
+      if (next === i) return;
+      reorderAssets(i, next);
+      requestAnimationFrame(() => {
+        carouselRef.current?.scrollToIndex({index: next, animated: true});
+      });
+    },
+    [assets.length, i, reorderAssets],
   );
 
   const addOverlayText = useCallback(() => {
@@ -846,6 +859,26 @@ export function MediaEditorScreen() {
                   />
                 </Pressable>
               ))}
+            </View>
+            <View style={styles.orderPanel}>
+              <Pressable
+                disabled={i === 0}
+                onPress={() => moveActiveAsset(-1)}
+                style={[styles.orderButton, i === 0 && styles.orderButtonDisabled]}>
+                <ChevronLeft size={16} color={palette.foreground} />
+                <Text style={styles.orderButtonText}>Move left</Text>
+              </Pressable>
+              <View style={styles.orderBadge}>
+                <Text style={styles.orderBadgeText}>{i + 1}</Text>
+                <Text style={styles.orderBadgeSub}>of {assets.length}</Text>
+              </View>
+              <Pressable
+                disabled={i === assets.length - 1}
+                onPress={() => moveActiveAsset(1)}
+                style={[styles.orderButton, i === assets.length - 1 && styles.orderButtonDisabled]}>
+                <Text style={styles.orderButtonText}>Move right</Text>
+                <ArrowRight size={16} color={palette.foreground} />
+              </Pressable>
             </View>
           </>
         ) : (
@@ -1441,6 +1474,41 @@ function makeStyles(p: ThemePalette) {
       marginTop: 10,
     },
     dot: { width: 6, height: 6, borderRadius: 3 },
+    orderPanel: {
+      marginTop: 10,
+      width: '100%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      paddingHorizontal: 4,
+    },
+    orderButton: {
+      flex: 1,
+      minHeight: 38,
+      borderRadius: 19,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: p.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: p.borderMid,
+    },
+    orderButtonDisabled: {opacity: 0.35},
+    orderButtonText: {color: p.foreground, fontSize: 12, fontWeight: '800'},
+    orderBadge: {
+      minWidth: 58,
+      minHeight: 42,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: p.surfaceElevated,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: p.borderHeavy,
+    },
+    orderBadgeText: {color: p.foreground, fontSize: 15, fontWeight: '900'},
+    orderBadgeSub: {color: p.muted, fontSize: 10, fontWeight: '800'},
     previewFrame: {
       backgroundColor: '#000',
       borderRadius: 18,

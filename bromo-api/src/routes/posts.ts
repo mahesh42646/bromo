@@ -10,6 +10,7 @@ import {
 } from "../middleware/firebaseAuth.js";
 import { Post, type PostDoc } from "../models/Post.js";
 import { MediaJob } from "../models/MediaJob.js";
+import { OriginalAudio } from "../models/OriginalAudio.js";
 import { StorySeen } from "../models/StorySeen.js";
 import { Like } from "../models/Like.js";
 import { Comment } from "../models/Comment.js";
@@ -22,6 +23,7 @@ import {
   emitPostNew,
   emitPostLike,
   emitPostComment,
+  emitPostShare,
   emitStoryNew,
   emitNotification,
 } from "../services/socketService.js";
@@ -33,6 +35,7 @@ import {
   uploadsRoot,
 } from "../utils/uploadFiles.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
+import { ensureOriginalAudioForPost } from "../services/originalAudio.js";
 import { enqueueMediaJob } from "../workers/mediaWorker.js";
 import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 import { normalizeFeedCategory } from "../utils/feedCategory.js";
@@ -128,6 +131,7 @@ postsRouter.post("/views/batch", requireFirebaseToken, async (req: FirebaseAuthe
         })
         .catch(() => null);
       recomputeTrending(postId);
+      if (agg.get(postId)?.impression) awardReelViewPoint(postId);
     }
   }
 
@@ -148,7 +152,8 @@ const feedPageCache = new LRUCache<string, FeedPageResult>({
   ttl: 30_000,
 });
 
-const AUTHOR_SELECT = "username displayName profilePicture isPrivate emailVerified followersCount";
+const AUTHOR_SELECT =
+  "username displayName profilePicture isPrivate emailVerified followersCount isVerified verificationStatus isCreator creatorStatus creatorBadge connectedStore storeId";
 const DELIVERY_FREQ_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Public listings: active, not soft-deleted, and not still processing. */
@@ -182,6 +187,149 @@ function campaignPlacementOr(placementKeys: string[]) {
 
 function normalizeCategory(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function objectIdOrNull(value: unknown): mongoose.Types.ObjectId | null {
+  const raw = typeof value === "string" ? value : value != null ? String(value) : "";
+  return raw && mongoose.Types.ObjectId.isValid(raw) ? new mongoose.Types.ObjectId(raw) : null;
+}
+
+function objectIdsFromStrings(values: unknown, max: number): mongoose.Types.ObjectId[] {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  const out: mongoose.Types.ObjectId[] = [];
+  for (const v of values) {
+    const oid = objectIdOrNull(v);
+    if (!oid) continue;
+    const sid = String(oid);
+    if (seen.has(sid)) continue;
+    seen.add(sid);
+    out.push(oid);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function blockedIdsForUser(user: FirebaseAuthedRequest["dbUser"]): mongoose.Types.ObjectId[] {
+  return ((user?.blockedUserIds ?? []) as unknown[])
+    .map((id) => objectIdOrNull(id))
+    .filter((id): id is mongoose.Types.ObjectId => id != null);
+}
+
+function authorClause(
+  includeIds: mongoose.Types.ObjectId[] | undefined,
+  blockedIds: mongoose.Types.ObjectId[],
+): Record<string, unknown> {
+  const clause: Record<string, unknown> = {};
+  if (includeIds?.length) clause.$in = includeIds;
+  if (blockedIds.length) clause.$nin = blockedIds;
+  return Object.keys(clause).length ? { authorId: clause } : {};
+}
+
+function sanitizeCarouselItems(raw: unknown): Array<{
+  mediaUrl: string;
+  mediaType: "image" | "video";
+  thumbnailUrl: string;
+  order: number;
+  aspectRatio?: number;
+  width?: number;
+  height?: number;
+}> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => {
+      const row = item as Record<string, unknown>;
+      const mediaUrl = typeof row.mediaUrl === "string" ? row.mediaUrl.trim() : "";
+      const mediaType: "image" | "video" = row.mediaType === "video" ? "video" : "image";
+      const thumbnailUrl = typeof row.thumbnailUrl === "string" ? row.thumbnailUrl.trim() : "";
+      const width = typeof row.width === "number" && Number.isFinite(row.width) ? row.width : undefined;
+      const height = typeof row.height === "number" && Number.isFinite(row.height) ? row.height : undefined;
+      const aspectRatio =
+        typeof row.aspectRatio === "number" && Number.isFinite(row.aspectRatio) && row.aspectRatio > 0
+          ? row.aspectRatio
+          : width && height
+            ? width / height
+            : undefined;
+      return {
+        mediaUrl,
+        mediaType,
+        thumbnailUrl,
+        order: Number.isFinite(Number(row.order)) ? Number(row.order) : index,
+        aspectRatio,
+        width,
+        height,
+      };
+    })
+    .filter((item) => Boolean(item.mediaUrl))
+    .sort((a, b) => a.order - b.order)
+    .slice(0, 10)
+    .map((item, index) => ({ ...item, order: index }));
+}
+
+function sanitizeStoryMeta(raw: unknown): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const sm = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  if (typeof sm.bgColor === "string") out.bgColor = sm.bgColor.trim().slice(0, 32);
+  if (sm.canvas && typeof sm.canvas === "object") out.canvas = sm.canvas;
+  if (Array.isArray(sm.overlays)) {
+    out.overlays = sm.overlays.slice(0, 50).map((overlay, index) => {
+      const row = overlay as Record<string, unknown>;
+      const type =
+        row.type === "sticker" || row.type === "mention" || row.type === "link" || row.type === "music" || row.type === "emoji"
+          ? row.type
+          : "text";
+      const targetUserId = objectIdOrNull(row.targetUserId);
+      return {
+        id: typeof row.id === "string" ? row.id.slice(0, 80) : `overlay-${index}`,
+        type,
+        content: typeof row.content === "string" ? row.content.slice(0, 300) : "",
+        x: typeof row.x === "number" ? row.x : 0.5,
+        y: typeof row.y === "number" ? row.y : 0.5,
+        color: typeof row.color === "string" ? row.color.slice(0, 32) : undefined,
+        fontSize: typeof row.fontSize === "number" ? row.fontSize : undefined,
+        scale: typeof row.scale === "number" ? row.scale : undefined,
+        url: typeof row.url === "string" ? row.url.slice(0, 500) : undefined,
+        targetUserId: targetUserId ?? undefined,
+      };
+    });
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function mentionedIdsFromStoryMeta(storyMeta: Record<string, unknown> | undefined): mongoose.Types.ObjectId[] {
+  const overlays = Array.isArray(storyMeta?.overlays) ? storyMeta.overlays : [];
+  const ids: mongoose.Types.ObjectId[] = [];
+  const seen = new Set<string>();
+  for (const overlay of overlays) {
+    const row = overlay as Record<string, unknown>;
+    const oid = objectIdOrNull(row.targetUserId);
+    if (!oid) continue;
+    const sid = String(oid);
+    if (seen.has(sid)) continue;
+    seen.add(sid);
+    ids.push(oid);
+  }
+  return ids;
+}
+
+function awardReelViewPoint(postId: string): void {
+  if (!mongoose.Types.ObjectId.isValid(postId)) return;
+  Post.findOneAndUpdate(
+    {_id: postId, type: "reel", isActive: true, isDeleted: {$ne: true}},
+    {$inc: {rewardPointsAccrued: 1}},
+    {new: true},
+  )
+    .select("authorId")
+    .lean()
+    .then((post) => {
+      if (!post) return;
+      return User.updateOne(
+        {_id: post.authorId, isCreator: true, creatorStatus: "verified"},
+        {$inc: {rewardPoints: 1}},
+      );
+    })
+    .catch(() => null);
 }
 
 const interestScoreCache = new LRUCache<string, Map<string, number>>({
@@ -655,12 +803,31 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
   const rawFc = (p as { feedCategory?: unknown }).feedCategory;
   const feedCategory =
     typeof rawFc === "string" && rawFc.trim() ? rawFc.trim() : "general";
+  const rawCarousel = Array.isArray((p as { carouselItems?: unknown }).carouselItems)
+    ? ((p as { carouselItems: Array<Record<string, unknown>> }).carouselItems ?? [])
+    : [];
+  const carouselItems = rawCarousel
+    .slice()
+    .sort((a, b) => Number(a.order) - Number(b.order))
+    .map((item) => ({
+      ...item,
+      mediaUrl: typeof item.mediaUrl === "string" ? rewritePublicMediaUrl(item.mediaUrl) : item.mediaUrl,
+      thumbnailUrl:
+        typeof item.thumbnailUrl === "string" && item.thumbnailUrl.trim()
+          ? rewritePublicMediaUrl(item.thumbnailUrl)
+          : item.thumbnailUrl,
+    }));
+  const isVerifiedCreator =
+    Boolean(author?.isCreator && author?.creatorStatus === "verified") || Boolean(author?.isVerified);
+  const connectedStore = author?.connectedStore as { enabled?: boolean; website?: string } | undefined;
   return {
     ...p,
     mediaUrl,
     thumbnailUrl,
     hlsMasterUrl,
+    carouselItems,
     feedCategory,
+    categoryName: feedCategory,
     likesCount: Number(p.likesCount) || 0,
     commentsCount: Number(p.commentsCount) || 0,
     viewsCount: Number(p.viewsCount) || 0,
@@ -674,6 +841,11 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
       followersCount: Number(author.followersCount) || 0,
     } : null,
     isFollowing,
+    showStoreIcon:
+      isVerifiedCreator &&
+      ((Array.isArray((p as { productIds?: unknown }).productIds) &&
+        ((p as { productIds?: unknown[] }).productIds ?? []).length > 0) ||
+        Boolean(connectedStore?.enabled && connectedStore.website)),
     authorId: undefined,
   };
 }
@@ -704,8 +876,8 @@ postsRouter.get(
       const dbUser = req.dbUser;
       const tabRaw = String(req.query.tab ?? "for-you").toLowerCase();
       let tab = tabRaw === "home" ? "for-you" : tabRaw;
-      if (tab !== "for-you" && tab !== "trending" && !FEED_TOPIC_TABS.has(tab)) {
-        tab = "for-you";
+      if (tab !== "for-you" && tab !== "trending") {
+        tab = normalizeFeedCategory(tab);
       }
 
       const [follows, likes] = dbUser
@@ -716,6 +888,7 @@ postsRouter.get(
         : [[] as Array<{ followingId: mongoose.Types.ObjectId }>, [] as Array<{ targetId: mongoose.Types.ObjectId }>];
       const followingIds = follows.map((f) => f.followingId);
       const hasFollows = followingIds.length > 0;
+      const blockedIds = blockedIdsForUser(dbUser);
 
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
       const followingSet = new Set(followingIds.map(String));
@@ -733,7 +906,7 @@ postsRouter.get(
 
         // No follows: home still uses "friends" phase but only surfaces promoted content (no organic stranger posts).
         if (fyPhase === "friends" && dbUser && !hasFollows) {
-          const promotedRaw = await getPromotedPostDocs(dbUser._id, [dbUser._id], ["feed", "explore"], 8);
+          const promotedRaw = await getPromotedPostDocs(dbUser._id, [dbUser._id, ...blockedIds], ["feed", "explore"], 8);
           const onlyPromoted = promotedRaw.map((p) =>
             normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
           );
@@ -767,7 +940,7 @@ postsRouter.get(
           }
 
           const baseQuery = {
-            authorId: { $in: [...followingIds, dbUser._id] },
+            ...authorClause([...followingIds, dbUser._id], blockedIds),
             ...FEED_TYPES,
             ...VISIBLE_POST,
           };
@@ -787,7 +960,7 @@ postsRouter.get(
 
           let friendPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
           if (!cf && dbUser) {
-            const excludeAuthors = [...followingIds, dbUser._id] as mongoose.Types.ObjectId[];
+            const excludeAuthors = [...followingIds, dbUser._id, ...blockedIds] as mongoose.Types.ObjectId[];
             const promotedRaw = await getPromotedPostDocs(dbUser._id, excludeAuthors, ["feed", "explore"], 2);
             friendPosts = splicePromotedIntoFeed(
               friendPosts,
@@ -818,7 +991,7 @@ postsRouter.get(
         }
 
         const excludeAuthors =
-          hasFollows && dbUser ? [...followingIds, dbUser._id] : dbUser ? [dbUser._id] : [];
+          hasFollows && dbUser ? [...followingIds, dbUser._id, ...blockedIds] : dbUser ? [dbUser._id, ...blockedIds] : blockedIds;
 
         // For-you "general" is deprecated for the home firehose: no organic stranger wall posts here (use /posts/explore).
         // Only promoted injections reach non-followers on this tab.
@@ -864,6 +1037,7 @@ postsRouter.get(
           ...FEED_TYPES,
           ...VISIBLE_POST,
           ...DISCOVER_PUBLIC_POST,
+          ...authorClause(undefined, blockedIds),
           createdAt: { $gte: since },
         })
           .sort({ trendingScore: -1, _id: -1 })
@@ -880,7 +1054,7 @@ postsRouter.get(
         });
       }
 
-      if (FEED_TOPIC_TABS.has(tab)) {
+      if (tab !== "for-you" && tab !== "trending") {
         const page = Math.max(1, parseInt(req.query.page as string) || 1);
         const skip = (page - 1) * PAGE_SIZE;
 
@@ -888,6 +1062,7 @@ postsRouter.get(
           ...FEED_TYPES,
           ...VISIBLE_POST,
           ...DISCOVER_PUBLIC_POST,
+          ...authorClause(undefined, blockedIds),
           feedCategory: tab,
         })
           .sort({ _id: -1 })
@@ -924,6 +1099,7 @@ postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthe
     ]);
     const followingIds = follows.map((f) => f.followingId);
     const hasFollows = followingIds.length > 0;
+    const blockedIds = blockedIdsForUser(dbUser);
     const likedSet = new Set(likes.map((l) => String(l.targetId)));
     const followingSet = new Set(followingIds.map(String));
 
@@ -932,7 +1108,7 @@ postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthe
 
     // Match GET /posts/feed for-you: no follows → promoted-only surface (not an empty authorId $in).
     if (!hasFollows) {
-      const promotedRaw = await getPromotedPostDocs(dbUser._id, [dbUser._id], ["feed", "explore"], 8);
+      const promotedRaw = await getPromotedPostDocs(dbUser._id, [dbUser._id, ...blockedIds], ["feed", "explore"], 8);
       const onlyPromoted = promotedRaw.map((p) =>
         normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
       );
@@ -940,7 +1116,7 @@ postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthe
     }
 
     const posts = await Post.find({
-      authorId: { $in: [...followingIds, dbUser._id] },
+      ...authorClause([...followingIds, dbUser._id], blockedIds),
       ...FEED_TYPES,
       ...VISIBLE_POST,
     })
@@ -953,7 +1129,7 @@ postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthe
     const nextCursor = hasMoreFriends ? String(posts[posts.length - 1]._id) : null;
 
     let friendPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
-    const excludeAuthors = [...followingIds, dbUser._id] as mongoose.Types.ObjectId[];
+    const excludeAuthors = [...followingIds, dbUser._id, ...blockedIds] as mongoose.Types.ObjectId[];
     const promotedRaw = await getPromotedPostDocs(dbUser._id, excludeAuthors, ["feed", "explore"], 2);
     friendPosts = splicePromotedIntoFeed(
       friendPosts,
@@ -985,10 +1161,11 @@ postsRouter.get("/feed/next", requireFirebaseToken, async (req: FirebaseAuthedRe
       Like.find({ userId: dbUser._id, targetType: "post" }).select("targetId").lean(),
     ]);
     const followingIds = follows.map((f) => f.followingId);
+    const blockedIds = blockedIdsForUser(dbUser);
     const likedSet = new Set(likes.map((l) => String(l.targetId)));
     const followingSet = new Set(followingIds.map(String));
     const posts = await Post.find({
-      authorId: { $in: [...followingIds, dbUser._id] },
+      ...authorClause([...followingIds, dbUser._id], blockedIds),
       ...FEED_TYPES,
       ...VISIBLE_POST,
       _id: { $lt: new mongoose.Types.ObjectId(cursor) },
@@ -1032,6 +1209,7 @@ postsRouter.get(
       }
 
       const hiddenIds: mongoose.Types.ObjectId[] = [];
+      const blockedIds = blockedIdsForUser(dbUser);
       if (dbUser) {
         const hides = await mongoose.connection
           .collection("post_hides")
@@ -1055,7 +1233,7 @@ postsRouter.get(
         : hiddenIds.length
           ? {_id: {$nin: hiddenIds}}
           : {};
-      const query = {...baseQuery, ...idClause};
+      const query = {...baseQuery, ...idClause, ...authorClause(undefined, blockedIds)};
 
       // Fetch posts + likes + follows all in parallel — was 3 sequential round-trips
       const [posts, likes, follows] = await Promise.all([
@@ -1084,7 +1262,7 @@ postsRouter.get(
       if (!cursor && page === 1 && dbUser) {
         const promotedRaw = await getPromotedPostDocs(
           dbUser._id,
-          [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
+          [...followingIds, dbUser._id, ...blockedIds] as mongoose.Types.ObjectId[],
           ["reels", "feed", "explore"],
           1,
           "reel",
@@ -1127,6 +1305,7 @@ postsRouter.get("/reels/initial", requireFirebaseToken, async (req: FirebaseAuth
     }
 
     const hiddenIds: mongoose.Types.ObjectId[] = [];
+    const blockedIds = blockedIdsForUser(dbUser);
     const hides = await mongoose.connection
       .collection("post_hides")
       .find({ userId: dbUser._id })
@@ -1139,7 +1318,7 @@ postsRouter.get("/reels/initial", requireFirebaseToken, async (req: FirebaseAuth
 
     const baseQuery = { type: "reel" as const, ...VISIBLE_POST };
     const idClause = hiddenIds.length ? {_id: {$nin: hiddenIds}} : {};
-    const query = {...baseQuery, ...idClause};
+    const query = {...baseQuery, ...idClause, ...authorClause(undefined, blockedIds)};
 
     const [posts, likes, follows] = await Promise.all([
       Post.find(query)
@@ -1161,7 +1340,7 @@ postsRouter.get("/reels/initial", requireFirebaseToken, async (req: FirebaseAuth
 
     const promotedRaw = await getPromotedPostDocs(
       dbUser._id,
-      [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
+      [...followingIds, dbUser._id, ...blockedIds] as mongoose.Types.ObjectId[],
       ["reels", "feed", "explore"],
       1,
       "reel",
@@ -1196,6 +1375,7 @@ postsRouter.get("/reels/next", requireFirebaseToken, async (req: FirebaseAuthedR
     }
 
     const hiddenIds: mongoose.Types.ObjectId[] = [];
+    const blockedIds = blockedIdsForUser(dbUser);
     const hides = await mongoose.connection
       .collection("post_hides")
       .find({ userId: dbUser._id })
@@ -1210,6 +1390,7 @@ postsRouter.get("/reels/next", requireFirebaseToken, async (req: FirebaseAuthedR
       Post.find({
         type: "reel",
         ...VISIBLE_POST,
+        ...authorClause(undefined, blockedIds),
         _id: {
           $lt: new mongoose.Types.ObjectId(cursor),
           ...(hiddenIds.length ? {$nin: hiddenIds} : {}),
@@ -1309,16 +1490,17 @@ postsRouter.get(
         ? await Follow.find({followerId: dbUser._id, status: "accepted"}).select("followingId").lean()
         : [];
       const followingIds = follows.map((f) => f.followingId);
-      const excludeIds = dbUser ? [...followingIds, dbUser._id] : [];
+      const blockedIds = blockedIdsForUser(dbUser);
+      const excludeIds = dbUser ? [...followingIds, dbUser._id, ...blockedIds] : blockedIds;
 
       const query = excludeIds.length
         ? {
             type: { $in: ["post", "reel"] },
             ...VISIBLE_POST,
             ...DISCOVER_PUBLIC_POST,
-            authorId: { $nin: excludeIds },
+            ...authorClause(undefined, excludeIds as mongoose.Types.ObjectId[]),
           }
-        : { type: { $in: ["post", "reel"] }, ...VISIBLE_POST, ...DISCOVER_PUBLIC_POST };
+        : { type: { $in: ["post", "reel"] }, ...VISIBLE_POST, ...DISCOVER_PUBLIC_POST, ...authorClause(undefined, blockedIds) };
 
       const posts = await Post.find(query)
         .sort({ viewsCount: -1, createdAt: -1 })
@@ -1346,7 +1528,7 @@ postsRouter.get(
       if (page === 1 && dbUser) {
         const promotedRaw = await getPromotedPostDocs(
           dbUser._id,
-          [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
+          [...followingIds, dbUser._id, ...blockedIds] as mongoose.Types.ObjectId[],
           ["explore", "feed"],
           2,
         );
@@ -1385,11 +1567,13 @@ postsRouter.get(
         ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
         : [];
       const followingIds = follows.map((f) => f.followingId);
+      const blockedIds = blockedIdsForUser(dbUser);
       const followingSet = new Set(followingIds.map(String));
 
       const candidates = await Post.find({
         type: "reel" as const,
         ...VISIBLE_POST,
+        ...authorClause(undefined, blockedIds),
         createdAt: { $gte: since },
       })
         .sort({ trendingScore: -1, _id: -1 })
@@ -1422,7 +1606,7 @@ postsRouter.get(
       if (dbUser) {
         const promotedRaw = await getPromotedPostDocs(
           dbUser._id,
-          [...followingIds, dbUser._id] as mongoose.Types.ObjectId[],
+          [...followingIds, dbUser._id, ...blockedIds] as mongoose.Types.ObjectId[],
           ["reels", "feed", "explore"],
           1,
           "reel",
@@ -1463,7 +1647,8 @@ postsRouter.get(
         followerId: dbUser._id,
         status: "accepted",
       }).select("followingId").lean();
-      const followingIds = follows.map((f) => f.followingId);
+      const blockedSet = new Set(blockedIdsForUser(dbUser).map(String));
+      const followingIds = follows.map((f) => f.followingId).filter((id) => !blockedSet.has(String(id)));
       const authorIds = [dbUser._id, ...followingIds];
 
       // Heal legacy story docs missing expiresAt — fire-and-forget.
@@ -1602,16 +1787,170 @@ postsRouter.post(
         }
       }
 
-      await StorySeen.updateOne(
+      const seenResult = await StorySeen.updateOne(
         { viewerId: dbUser._id, storyPostId },
         { $set: { viewerId: dbUser._id, storyPostId } },
         { upsert: true },
+      );
+      await Post.updateOne(
+        {_id: storyPostId},
+        {$inc: seenResult.upsertedCount ? {viewsCount: 1, impressionsCount: 1} : {impressionsCount: 1}},
       );
 
       return res.json({ ok: true });
     } catch (err) {
       console.error("[posts] story seen error:", err);
       return res.status(500).json({ message: "Failed to mark story seen" });
+    }
+  },
+);
+
+// ── GET /posts/stories/:storyPostId/viewers ────────────────────────
+postsRouter.get(
+  "/stories/:storyPostId/viewers",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const storyPostId = String(req.params.storyPostId);
+      const story = await Post.findOne({_id: storyPostId, type: "story", authorId: user._id}).select("_id").lean();
+      if (!story) return res.status(404).json({message: "Story not found"});
+      const rows = await StorySeen.find({storyPostId})
+        .sort({updatedAt: -1})
+        .populate("viewerId", "username displayName profilePicture")
+        .lean();
+      return res.json({
+        viewers: rows.map((row) => ({
+          viewedAt: row.updatedAt,
+          user: row.viewerId,
+        })),
+      });
+    } catch (err) {
+      console.error("[posts] story viewers error:", err);
+      return res.status(500).json({message: "Failed to fetch story viewers"});
+    }
+  },
+);
+
+// ── GET /posts/stories/:storyPostId/analytics ──────────────────────
+postsRouter.get(
+  "/stories/:storyPostId/analytics",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const storyPostId = String(req.params.storyPostId);
+      const story = await Post.findOne({_id: storyPostId, type: "story", authorId: user._id})
+        .select("viewsCount impressionsCount repliesCount linkTapsCount mentionTapsCount sharesCount")
+        .lean();
+      if (!story) return res.status(404).json({message: "Story not found"});
+      const uniqueViewers = await StorySeen.countDocuments({storyPostId});
+      return res.json({
+        viewersCount: uniqueViewers,
+        impressions: Number(story.impressionsCount) || 0,
+        views: Number(story.viewsCount) || uniqueViewers,
+        replyCount: Number(story.repliesCount) || 0,
+        linkTapCount: Number(story.linkTapsCount) || 0,
+        mentionTapCount: Number(story.mentionTapsCount) || 0,
+        sharesCount: Number(story.sharesCount) || 0,
+      });
+    } catch (err) {
+      console.error("[posts] story analytics error:", err);
+      return res.status(500).json({message: "Failed to fetch story analytics"});
+    }
+  },
+);
+
+// ── POST /posts/stories/:storyPostId/tap ───────────────────────────
+postsRouter.post(
+  "/stories/:storyPostId/tap",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const tapType = String((req.body as {type?: unknown}).type ?? "");
+      const inc =
+        tapType === "mention"
+          ? {mentionTapsCount: 1}
+          : tapType === "link"
+            ? {linkTapsCount: 1}
+            : null;
+      if (!inc) return res.status(400).json({message: "type must be mention or link"});
+      const updated = await Post.findOneAndUpdate(
+        {_id: req.params.storyPostId, type: "story", ...VISIBLE_POST},
+        {$inc: inc},
+        {new: true},
+      ).select("mentionTapsCount linkTapsCount");
+      if (!updated) return res.status(404).json({message: "Story not found"});
+      return res.json({
+        mentionTapCount: updated.mentionTapsCount,
+        linkTapCount: updated.linkTapsCount,
+      });
+    } catch (err) {
+      console.error("[posts] story tap error:", err);
+      return res.status(500).json({message: "Failed to record story tap"});
+    }
+  },
+);
+
+// ── GET /posts/audio/search ────────────────────────────────────────
+postsRouter.get(
+  "/audio/search",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const q = String(req.query.q ?? "").trim();
+      const limit = Math.min(30, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20));
+      const query: Record<string, unknown> = {isActive: true};
+      if (q) query.title = {$regex: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")};
+      const audios = await OriginalAudio.find(query)
+        .sort(q ? {useCount: -1, createdAt: -1} : {useCount: -1, createdAt: -1})
+        .limit(limit)
+        .populate("ownerId", "username displayName profilePicture")
+        .lean();
+      return res.json({
+        audios: audios.map((audio) => ({
+          ...audio,
+          audioUrl: rewritePublicMediaUrl(audio.audioUrl),
+          owner: audio.ownerId,
+          ownerId: undefined,
+        })),
+      });
+    } catch (err) {
+      console.error("[posts] audio search error:", err);
+      return res.status(500).json({message: "Failed to search audio"});
+    }
+  },
+);
+
+// ── POST /posts/audio/:audioId/use ─────────────────────────────────
+postsRouter.post(
+  "/audio/:audioId/use",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const audioId = String(req.params.audioId);
+      if (!mongoose.Types.ObjectId.isValid(audioId)) {
+        return res.status(400).json({message: "Invalid audio id"});
+      }
+      const audio = await OriginalAudio.findOneAndUpdate(
+        {_id: audioId, isActive: true},
+        {$inc: {useCount: 1}},
+        {new: true},
+      )
+        .populate("ownerId", "username displayName profilePicture")
+        .lean();
+      if (!audio) return res.status(404).json({message: "Audio not found"});
+      return res.json({
+        audio: {
+          ...audio,
+          audioUrl: rewritePublicMediaUrl(audio.audioUrl),
+          owner: audio.ownerId,
+          ownerId: undefined,
+        },
+      });
+    } catch (err) {
+      console.error("[posts] audio use error:", err);
+      return res.status(500).json({message: "Failed to use audio"});
     }
   },
 );
@@ -1735,12 +2074,13 @@ postsRouter.get(
         ? new mongoose.Types.ObjectId(userId)
         : userId;
 
-      const base = { authorId: authorIdFilter, ...listVisibility };
+      const profileOwnerClause = {$or: [{authorId: authorIdFilter}, {collaboratorIds: authorIdFilter}]};
+      const base = { ...profileOwnerClause, ...listVisibility };
       const matchAgg = {...base, type: {$in: ["post", "reel"] as const}};
 
       const [postCount, reelCount, agg] = await Promise.all([
-        Post.countDocuments({...base, type: "post"}),
-        Post.countDocuments({...base, type: "reel"}),
+        Post.countDocuments({...profileOwnerClause, ...listVisibility, type: "post"}),
+        Post.countDocuments({...profileOwnerClause, ...listVisibility, type: "reel"}),
         Post.aggregate([
           {$match: matchAgg},
           {
@@ -1876,10 +2216,11 @@ postsRouter.get(
           : type === "all"
             ? { type: { $in: ["post", "reel"] as const } }
             : { type: "post" as const };
+      const profileOwnerClause = {$or: [{authorId: authorIdFilter}, {collaboratorIds: authorIdFilter}]};
 
       const [posts, follows] = await Promise.all([
         Post.find({
-          authorId: authorIdFilter,
+          ...profileOwnerClause,
           ...typeFilter,
           ...listVisibility,
         })
@@ -2111,9 +2452,13 @@ postsRouter.post(
         tags,
         taggedUserIds,
         productIds,
+        collaboratorIds,
         settings,
         durationMs,
         storyMeta,
+        carouselItems: carouselItemsRaw,
+        originalAudioId: originalAudioIdRaw,
+        remixOfPostId: remixOfPostIdRaw,
         poll: pollRaw,
         feedCategory: feedCategoryRaw,
         scheduledFor: scheduledForRaw,
@@ -2130,9 +2475,13 @@ postsRouter.post(
         tags?: string[];
         taggedUserIds?: string[];
         productIds?: string[];
+        collaboratorIds?: string[];
         settings?: { commentsOff?: boolean; hideLikes?: boolean; allowRemix?: boolean; closeFriendsOnly?: boolean };
         durationMs?: number;
-        storyMeta?: { bgColor?: string; overlays?: unknown[] };
+        storyMeta?: { bgColor?: string; overlays?: unknown[]; canvas?: unknown };
+        carouselItems?: unknown[];
+        originalAudioId?: string;
+        remixOfPostId?: string;
         poll?: { question?: string; options?: string[] };
         feedCategory?: string;
         scheduledFor?: string;
@@ -2166,17 +2515,25 @@ postsRouter.post(
           : undefined,
       );
       const poll = sanitizePollInput(pollRaw) ?? pollFromMeta;
+      const carouselItems = sanitizeCarouselItems(carouselItemsRaw);
+      if (type === "post" && carouselItems.length > 10) {
+        return res.status(400).json({ message: "Carousel can contain a maximum of 10 items" });
+      }
+      const primaryCarousel = carouselItems[0];
+      const effectiveMediaUrl = primaryCarousel?.mediaUrl ?? mediaUrl;
+      const effectiveMediaType = primaryCarousel?.mediaType ?? mediaType;
 
       // For color-background stories, mediaUrl may be the sentinel "color-bg"
-      const isColorBgStory = type === "story" && storyMeta?.bgColor && (!mediaUrl || mediaUrl === "color-bg");
-      if (!isColorBgStory && (!mediaUrl || !mediaType || !type)) {
+      const safeStoryMeta = sanitizeStoryMeta(storyMeta);
+      const isColorBgStory = type === "story" && safeStoryMeta?.bgColor && (!effectiveMediaUrl || effectiveMediaUrl === "color-bg");
+      if (!isColorBgStory && (!effectiveMediaUrl || !effectiveMediaType || !type)) {
         return res.status(400).json({ message: "mediaUrl, mediaType and type are required" });
       }
       if (!type) {
         return res.status(400).json({ message: "type is required" });
       }
 
-      if (type === "reel" && mediaType !== "video") {
+      if (type === "reel" && effectiveMediaType !== "video") {
         return res.status(400).json({ message: "Reels must use video media (not HEIC/photos)." });
       }
 
@@ -2194,21 +2551,42 @@ postsRouter.post(
               ? normalizeFeedCategory(feedCategoryRaw)
               : "followers";
 
-      const safeTaggedUserIds = (taggedUserIds ?? [])
-        .filter((x) => typeof x === "string" && mongoose.Types.ObjectId.isValid(x))
-        .slice(0, 20)
-        .map((x) => new mongoose.Types.ObjectId(x));
-      const safeProductIds = (productIds ?? [])
-        .filter((x) => typeof x === "string" && mongoose.Types.ObjectId.isValid(x))
-        .slice(0, 6)
-        .map((x) => new mongoose.Types.ObjectId(x));
+      const safeTaggedUserIds = [
+        ...objectIdsFromStrings(taggedUserIds, 20),
+        ...mentionedIdsFromStoryMeta(safeStoryMeta),
+      ]
+        .filter((id, idx, arr) => arr.findIndex((x) => String(x) === String(id)) === idx)
+        .slice(0, 20);
+      const safeProductIds = objectIdsFromStrings(productIds, 6);
+      const creatorCanTagProducts = Boolean(user.isCreator && user.creatorStatus === "verified");
+      if (safeProductIds.length && !creatorCanTagProducts) {
+        return res.status(403).json({ message: "Only verified creators can tag products" });
+      }
+      const safeCollaboratorIds = objectIdsFromStrings(collaboratorIds, 3)
+        .filter((id) => String(id) !== String(user._id));
+      const originalAudioId = objectIdOrNull(originalAudioIdRaw);
+      const remixOfPostId = objectIdOrNull(remixOfPostIdRaw);
+      let remixCredit: Record<string, unknown> | undefined;
+      if (remixOfPostId) {
+        const original = await Post.findOne({_id: remixOfPostId, type: "reel", ...VISIBLE_POST})
+          .populate("authorId", "username displayName")
+          .lean();
+        if (!original) return res.status(404).json({message: "Original reel not found"});
+        const originalAuthor = original.authorId as {_id?: unknown; username?: string; displayName?: string} | null;
+        remixCredit = {
+          postId: original._id,
+          creatorId: originalAuthor?._id,
+          username: originalAuthor?.username || originalAuthor?.displayName || "creator",
+        };
+      }
 
       const post = await Post.create({
         authorId: user._id,
         type,
-        mediaUrl: mediaUrl ?? "color-bg",
-        thumbnailUrl: thumbnailUrl ?? "",
-        mediaType: mediaType ?? "image",
+        mediaUrl: effectiveMediaUrl ?? "color-bg",
+        thumbnailUrl: primaryCarousel?.thumbnailUrl || thumbnailUrl || "",
+        mediaType: effectiveMediaType ?? "image",
+        ...(carouselItems.length ? {carouselItems} : {}),
         caption: type === "story" ? "" : (caption?.trim() ?? ""),
         location: location?.trim() ?? "",
         ...(locationMeta && locationMeta.name ? { locationMeta } : {}),
@@ -2216,20 +2594,27 @@ postsRouter.post(
         tags: tags ?? [],
         ...(safeTaggedUserIds.length ? { taggedUserIds: safeTaggedUserIds } : {}),
         ...(safeProductIds.length ? { productIds: safeProductIds } : {}),
+        ...(safeCollaboratorIds.length ? { collaboratorIds: safeCollaboratorIds } : {}),
         ...(settings ? { settings } : {}),
         ...(typeof durationMs === "number" ? { durationMs } : {}),
         ...(clientEditMeta ? { clientEditMeta } : {}),
+        ...(originalAudioId ? { originalAudioId } : {}),
+        ...(remixOfPostId ? { remixOfPostId } : {}),
+        ...(remixCredit ? { remixCredit } : {}),
         expiresAt,
         isDeleted: false,
         ...(isScheduled ? { scheduledFor } : {}),
         ...(isScheduled ? { isActive: false } : {}),
         feedCategory,
-        ...(type === "story" && storyMeta ? { storyMeta } : {}),
+        ...(type === "story" && safeStoryMeta ? { storyMeta: safeStoryMeta } : {}),
         ...(poll ? { poll } : {}),
       });
 
       if (!isScheduled && (type === "post" || type === "reel")) {
-        await User.findByIdAndUpdate(user._id, { $inc: { postsCount: 1 } });
+        const countIds = [user._id, ...safeCollaboratorIds].filter(
+          (id, idx, arr) => arr.findIndex((x) => String(x) === String(id)) === idx,
+        );
+        await User.updateMany({_id: {$in: countIds}}, { $inc: { postsCount: 1 } });
       }
 
       const populated = await Post.findById(post._id)
@@ -2257,6 +2642,32 @@ postsRouter.post(
             }),
           ),
         );
+      }
+      if (safeCollaboratorIds.length) {
+        await Promise.allSettled(
+          safeCollaboratorIds.map((collaboratorId) =>
+            createNotification({
+              recipientId: collaboratorId,
+              actorId: user._id,
+              type: "collaboration_invite",
+              postId: post._id,
+              message: `${user.username} added you as a collaborator on a ${type}.`,
+            }),
+          ),
+        );
+      }
+      if (originalAudioId) {
+        void OriginalAudio.updateOne({_id: originalAudioId}, {$inc: {useCount: 1}}).catch(() => null);
+      }
+      if ((type === "reel" || type === "post") && effectiveMediaType === "video") {
+        const rel = uploadRelativePathFromUrl(String(effectiveMediaUrl ?? ""));
+        if (rel) {
+          void ensureOriginalAudioForPost({
+            postId: post._id,
+            ownerId: user._id,
+            sourceRelPath: rel,
+          });
+        }
       }
 
       const followers = await Follow.find({
@@ -2437,6 +2848,9 @@ postsRouter.patch(
           .filter((x) => typeof x === "string" && mongoose.Types.ObjectId.isValid(x))
           .slice(0, 6)
           .map((x) => new mongoose.Types.ObjectId(x as string));
+        if (safeProductIds.length && !(user.isCreator && user.creatorStatus === "verified")) {
+          return res.status(403).json({ message: "Only verified creators can tag products" });
+        }
         $set.productIds = safeProductIds;
       }
 
@@ -2671,6 +3085,7 @@ postsRouter.post(
           Post.updateOne({_id: postId}, {$set: {avgWatchTimeMs: avg}}).catch(() => null);
         }
         recomputeTrending(postId);
+        if (watchMs <= 0) awardReelViewPoint(postId);
       })
       .catch(() => null);
 
@@ -3124,11 +3539,41 @@ postsRouter.post(
   "/:id/share",
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
-    Post.findOneAndUpdate(
-      { _id: req.params.id, isActive: true, isDeleted: { $ne: true } },
-      { $inc: { sharesCount: 1 } },
-    ).then(() => recomputeTrending(String(req.params.id))).catch(() => null);
-    return res.json({ ok: true });
+    try {
+      const updated = await Post.findOneAndUpdate(
+        { _id: req.params.id, isActive: true, isDeleted: { $ne: true } },
+        { $inc: { sharesCount: 1 } },
+        { new: true },
+      ).select("sharesCount");
+      if (!updated) return res.status(404).json({message: "Post not found"});
+      const sharesCount = Number(updated.sharesCount) || 0;
+      emitPostShare(String(updated._id), sharesCount);
+      recomputeTrending(String(req.params.id));
+      return res.json({ ok: true, sharesCount });
+    } catch (err) {
+      console.error("[posts] share error:", err);
+      return res.status(500).json({message: "Failed to share post"});
+    }
+  },
+);
+
+// ── POST /posts/:id/store-click ─────────────────────────────────────
+postsRouter.post(
+  "/:id/store-click",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const updated = await Post.findOneAndUpdate(
+        {_id: req.params.id, isActive: true, isDeleted: {$ne: true}},
+        {$inc: {storeIconClicksCount: 1}},
+        {new: true},
+      ).select("storeIconClicksCount");
+      if (!updated) return res.status(404).json({message: "Post not found"});
+      return res.json({ok: true, storeIconClicksCount: updated.storeIconClicksCount});
+    } catch (err) {
+      console.error("[posts] store click error:", err);
+      return res.status(500).json({message: "Failed to record store click"});
+    }
   },
 );
 
@@ -3165,7 +3610,7 @@ postsRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const post = await Post.findById(req.params.id)
-        .select("viewsCount impressionsCount likesCount commentsCount sharesCount avgWatchTimeMs trendingScore authorId mediaType createdAt")
+        .select("viewsCount impressionsCount likesCount commentsCount sharesCount avgWatchTimeMs trendingScore authorId mediaType createdAt storeIconClicksCount rewardPointsAccrued")
         .lean();
       if (!post) return res.status(404).json({ message: "Post not found" });
       if (String(post.authorId) !== String(req.dbUser!._id)) {
@@ -3184,6 +3629,10 @@ postsRouter.get(
         engagementRate: post.viewsCount > 0
           ? Number(((post.likesCount + post.commentsCount) / post.viewsCount * 100).toFixed(2))
           : 0,
+        totalClicks: Number(post.storeIconClicksCount) || 0,
+        storeIconClicks: Number(post.storeIconClicksCount) || 0,
+        rewardPointsAccrued: Number(post.rewardPointsAccrued) || 0,
+        estimatedEarnings: Number(post.rewardPointsAccrued) || 0,
         ageHours: Math.round(ageHours),
       });
     } catch (err) {
@@ -3200,7 +3649,8 @@ postsRouter.get(
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
       const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
-      const posts = await Post.find({ isActive: true, isDeleted: { $ne: true } })
+      const blockedIds = blockedIdsForUser(req.dbUser);
+      const posts = await Post.find({ isActive: true, isDeleted: { $ne: true }, ...authorClause(undefined, blockedIds) })
         .sort({ trendingScore: -1, createdAt: -1 })
         .limit(limit)
         .populate("authorId", AUTHOR_SELECT)

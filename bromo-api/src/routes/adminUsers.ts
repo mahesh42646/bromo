@@ -3,11 +3,13 @@ import mongoose from "mongoose";
 import { User } from "../models/User.js";
 import { Admin } from "../models/Admin.js";
 import { Post } from "../models/Post.js";
+import { Store } from "../models/Store.js";
 import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 import { requireAdminToken, requireSuperAdminToken, type AuthedRequest } from "../middleware/authBearer.js";
 import { emitPostDelete } from "../services/socketService.js";
 import { hardDeletePostWithTrash } from "../services/postDeletion.js";
 import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
+import { generatePartnerCertificatePdf, sendTransactionalEmail } from "../services/emailService.js";
 
 const router = Router();
 
@@ -193,6 +195,56 @@ router.patch("/users/:id", requireAdminToken, async (req: AuthedRequest, res) =>
   }
 });
 
+router.patch("/users/:id/verification", requireAdminToken, async (req: AuthedRequest, res) => {
+  try {
+    const status = String(req.body?.status ?? "");
+    if (status !== "verified" && status !== "rejected" && status !== "pending") {
+      return res.status(400).json({message: "status must be verified, rejected or pending"});
+    }
+    const update: Record<string, unknown> = {
+      verificationStatus: status,
+      isVerified: status === "verified",
+      verificationReviewedBy: req.admin?.id,
+    };
+    if (status === "verified") update.verifiedAt = new Date();
+    const user = await User.findByIdAndUpdate(req.params.id, {$set: update}, {new: true, select: "-firebaseUid -__v"}).lean();
+    if (!user) return res.status(404).json({message: "User not found"});
+    return res.json(user);
+  } catch (err) {
+    console.error("adminUsers PATCH /users/:id/verification", err);
+    return res.status(500).json({message: "Internal server error"});
+  }
+});
+
+router.patch("/users/:id/creator", requireAdminToken, async (req: AuthedRequest, res) => {
+  try {
+    const status = String(req.body?.status ?? "");
+    if (status !== "verified" && status !== "rejected" && status !== "pending") {
+      return res.status(400).json({message: "status must be verified, rejected or pending"});
+    }
+    const update: Record<string, unknown> = {
+      creatorStatus: status,
+      isCreator: status === "verified",
+      creatorBadge: status === "verified",
+      "creatorForm.reviewedAt": new Date(),
+      "creatorForm.rejectionReason": status === "rejected" ? String(req.body?.reason ?? "") : "",
+    };
+    const user = await User.findByIdAndUpdate(req.params.id, {$set: update}, {new: true, select: "-firebaseUid -__v"}).lean();
+    if (!user) return res.status(404).json({message: "User not found"});
+    if (status === "verified") {
+      void sendTransactionalEmail({
+        to: user.email,
+        subject: "Your BROMO Creator account is verified",
+        body: "Your Creator Form was verified. Creator Dashboard and Creator badge are now active.",
+      });
+    }
+    return res.json(user);
+  } catch (err) {
+    console.error("adminUsers PATCH /users/:id/creator", err);
+    return res.status(500).json({message: "Internal server error"});
+  }
+});
+
 router.delete("/users/:id", requireAdminToken, async (req: AuthedRequest, res) => {
   try {
     const result = await User.findByIdAndDelete(req.params.id);
@@ -201,6 +253,70 @@ router.delete("/users/:id", requireAdminToken, async (req: AuthedRequest, res) =
   } catch (err) {
     console.error("adminUsers DELETE /users/:id", err);
     return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+/* ── Store approvals ──────────────────────────────────────────────────────── */
+
+router.get("/stores/pending", requireAdminToken, async (req: AuthedRequest, res) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10)));
+    const [stores, total] = await Promise.all([
+      Store.find({approvalStatus: "pending"})
+        .sort({createdAt: -1})
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate("owner", "username displayName email phone profilePicture")
+        .lean(),
+      Store.countDocuments({approvalStatus: "pending"}),
+    ]);
+    return res.json({stores, total, page, limit, pages: Math.ceil(total / limit)});
+  } catch (err) {
+    console.error("adminUsers GET /stores/pending", err);
+    return res.status(500).json({message: "Internal server error"});
+  }
+});
+
+router.patch("/stores/:id/approval", requireAdminToken, async (req: AuthedRequest, res) => {
+  try {
+    const status = String(req.body?.status ?? "");
+    if (status !== "approved" && status !== "rejected") {
+      return res.status(400).json({message: "status must be approved or rejected"});
+    }
+    const store = await Store.findById(req.params.id).populate("owner", "displayName email").exec();
+    if (!store) return res.status(404).json({message: "Store not found"});
+    store.approvalStatus = status;
+    store.isActive = status === "approved";
+    store.rejectionReason = status === "rejected" ? String(req.body?.reason ?? "").slice(0, 500) : "";
+    if (status === "approved") {
+      store.approvedAt = new Date();
+      if (req.admin?.id && mongoose.Types.ObjectId.isValid(req.admin.id)) {
+        store.approvedBy = new mongoose.Types.ObjectId(req.admin.id);
+      }
+    }
+    await store.save();
+
+    const owner = store.owner as unknown as {displayName?: string; email?: string};
+    if (status === "approved" && owner?.email) {
+      const certificateUrl = generatePartnerCertificatePdf({
+        storeId: String(store._id),
+        ownerName: owner.displayName ?? store.name,
+        storeName: store.name,
+        approvedAt: store.approvedAt ?? new Date(),
+      });
+      void sendTransactionalEmail({
+        to: owner.email,
+        subject: "Official Insay Business Partner Certificate",
+        body: "Your store is approved and live. You are now an official Insay Business Partner.",
+        attachmentUrl: certificateUrl,
+      });
+    }
+
+    return res.json({store});
+  } catch (err) {
+    console.error("adminUsers PATCH /stores/:id/approval", err);
+    return res.status(500).json({message: "Internal server error"});
   }
 });
 

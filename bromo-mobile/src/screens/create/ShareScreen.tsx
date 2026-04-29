@@ -1104,6 +1104,40 @@ export function ShareScreen() {
           allowRemix: true,
           closeFriendsOnly: draft.visibility === 'close_friends',
         };
+        const storyMeta =
+          draft.mode === 'story'
+            ? {
+                overlays: [
+                  ...draft.textOverlays.map(o => ({
+                    id: o.id,
+                    type: 'text' as const,
+                    content: o.text,
+                    x: Math.max(0, Math.min(1, o.x / previewBoxW)),
+                    y: Math.max(0, Math.min(1, o.y / previewBoxH)),
+                    color: o.color,
+                    fontSize: o.fontSize,
+                  })),
+                  ...draft.tagged.map((t, idx) => ({
+                    id: `mention-${t.id || idx}`,
+                    type: 'mention' as const,
+                    content: t.username.startsWith('@') ? t.username : `@${t.username}`,
+                    x: 0.12,
+                    y: 0.2 + idx * 0.06,
+                    targetUserId: t.id,
+                    fontSize: 16,
+                  })),
+                  ...draft.stickers.map(sticker => ({
+                    id: sticker.id,
+                    type: 'sticker' as const,
+                    content: sticker.label,
+                    x: Math.max(0, Math.min(1, sticker.x / previewBoxW)),
+                    y: Math.max(0, Math.min(1, sticker.y / previewBoxH)),
+                    fontSize: 14,
+                  })),
+                ],
+                canvas: {x: 0.5, y: 0.5, scale: 1},
+              }
+            : undefined;
 
         const taggedUserIds = draft.tagged.map(t => t.id).filter(Boolean);
         const productIds = draft.products.map(p => p.id).filter(Boolean);
@@ -1119,13 +1153,64 @@ export function ShareScreen() {
             : undefined;
         const durationMs = effectiveTrimmedDurationMs(draft, asset);
         const clientEditMeta = packEditMetaForUpload(draft);
+        const originalAudioId = draft.selectedAudio?.originalAudioId;
+        const remixOfPostId = draft.selectedAudio?.sourcePostId;
+        const carouselAssets =
+          draft.mode === 'post'
+            ? draft.assets.filter(item => item.type === 'image').slice(0, 10)
+            : [];
+        const isCarouselPost = carouselAssets.length > 1;
         const useAsync =
+          !isCarouselPost &&
           asset.type === 'video' &&
           (draft.mode === 'reel' ||
             draft.mode === 'story' ||
             draft.mode === 'post');
 
-        if (useAsync) {
+        if (isCarouselPost) {
+          const uploaded = [];
+          for (let index = 0; index < carouselAssets.length; index += 1) {
+            const item = carouselAssets[index];
+            const result = await uploadMedia(item.uri, {
+              type: 'image',
+              fileName: item.fileName,
+              category: 'posts',
+            });
+            setUploadProgress((index + 1) / carouselAssets.length);
+            uploaded.push({
+              mediaUrl: result.url,
+              mediaType: 'image' as const,
+              thumbnailUrl: result.thumbnailUrl,
+              order: index,
+              aspectRatio:
+                item.width && item.height
+                  ? item.width / item.height
+                  : aspectRatioFromCrop(normalizeCropForMode(draft.cropByAsset[index], draft.mode)),
+              width: item.width,
+              height: item.height,
+            });
+          }
+          const first = uploaded[0];
+          await createPost({
+            type: 'post',
+            mediaUrl: first.mediaUrl,
+            thumbnailUrl: first.thumbnailUrl,
+            mediaType: 'image',
+            carouselItems: uploaded,
+            caption,
+            location: draft.location?.name,
+            locationMeta: locationMeta ?? undefined,
+            music: draft.selectedAudio?.title,
+            tags: draft.tagged.map(t => t.username),
+            taggedUserIds,
+            productIds,
+            settings,
+            clientEditMeta,
+            poll: pollPayload,
+            ...(feedCategory ? {feedCategory} : {}),
+            scheduledFor: scheduleIso ?? undefined,
+          });
+        } else if (useAsync) {
           await uploadMediaAsync(
             asset.uri,
             {
@@ -1139,9 +1224,12 @@ export function ShareScreen() {
               feedCategory,
               taggedUserIds,
               productIds,
+              originalAudioId,
+              remixOfPostId,
               locationMeta: locationMeta ?? null,
               settings,
               durationMs,
+              storyMeta,
               clientEditMeta,
               scheduledFor: scheduleIso ?? undefined,
             },
@@ -1177,8 +1265,11 @@ export function ShareScreen() {
             tags: draft.tagged.map(t => t.username),
             taggedUserIds,
             productIds,
+            originalAudioId,
+            remixOfPostId,
             settings,
             durationMs,
+            storyMeta,
             clientEditMeta,
             poll: pollPayload,
             ...(postType !== 'story' && feedCategory ? {feedCategory} : {}),

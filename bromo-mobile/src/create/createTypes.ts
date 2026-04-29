@@ -8,6 +8,8 @@ export type MediaAsset = {
   type: 'image' | 'video';
   duration?: number;
   fileName?: string | null;
+  width?: number;
+  height?: number;
 };
 
 export type Visibility = 'public' | 'followers' | 'close_friends' | 'private';
@@ -37,7 +39,14 @@ export type PollState = {
   votes: number[];
 };
 
-export type AudioTrack = { id: string; title: string; artist: string };
+export type AudioTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  url?: string;
+  originalAudioId?: string;
+  sourcePostId?: string;
+};
 
 export type TextOverlay = {
   id: string;

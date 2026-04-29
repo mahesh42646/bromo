@@ -9,10 +9,14 @@ import {
   type FirebaseAuthedRequest,
 } from "../middleware/firebaseAuth.js";
 import { Store, type StoreDoc } from "../models/Store.js";
+import { StoreLead } from "../models/StoreLead.js";
 import { StoreProduct } from "../models/StoreProduct.js";
+import { StoreRedemption } from "../models/StoreRedemption.js";
 import { User } from "../models/User.js";
 import { uploadsRoot, publicUrlForUploadRelative } from "../utils/uploadFiles.js";
 import { mirrorUploadRelative } from "../services/s3Mirror.js";
+import { sendPushToUser } from "../services/pushService.js";
+import { debitWallet } from "./wallet.js";
 
 export const storeRouter = express.Router();
 
@@ -116,7 +120,7 @@ function makeStoreStorage(subDir: string) {
 }
 
 const storeImgFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
-  const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+  const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"];
   cb(null, allowed.includes(file.mimetype));
 };
 
@@ -127,6 +131,10 @@ const uploadStoreMedia = multer({
 }).fields([
   { name: "profilePhoto", maxCount: 1 },
   { name: "bannerImage", maxCount: 1 },
+  { name: "panCard", maxCount: 1 },
+  { name: "aadhaarCard", maxCount: 1 },
+  { name: "addressProof", maxCount: 1 },
+  { name: "storePhotos", maxCount: 6 },
 ]);
 
 const uploadProductPhotos = multer({
@@ -143,6 +151,53 @@ function fileToUrl(file: Express.Multer.File): string {
   mirrorUploadRelative(rel).catch((err) => {
     console.warn("[storeRoutes] mirror upload failed:", rel, err);
   });
+  return publicUrlForUploadRelative(rel);
+}
+
+function escapePdfText(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function writeTermsAcceptancePdf(input: {
+  userId: string;
+  userName: string;
+  acceptedAt: Date;
+  ip: string;
+}): string {
+  const rel = `legal/${input.userId}/terms-${input.acceptedAt.getTime()}.pdf`;
+  const abs = path.join(uploadsRoot(), ...rel.split("/"));
+  fs.mkdirSync(path.dirname(abs), {recursive: true});
+  const lines = [
+    "BROMO / INSAY STORE TERMS ACCEPTANCE",
+    `Name: ${input.userName}`,
+    `Date: ${input.acceptedAt.toISOString().slice(0, 10)}`,
+    `Timestamp: ${input.acceptedAt.toISOString()}`,
+    `IP: ${input.ip}`,
+    "The store owner accepted the mandatory Terms and Conditions during registration.",
+  ];
+  const text = lines.map((line, index) => `BT /F1 12 Tf 72 ${740 - index * 24} Td (${escapePdfText(line)}) Tj ET`).join("\n");
+  const objects = [
+    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
+    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
+    `5 0 obj << /Length ${Buffer.byteLength(text)} >> stream\n${text}\nendstream endobj`,
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const obj of objects) {
+    offsets.push(Buffer.byteLength(body));
+    body += `${obj}\n`;
+  }
+  const xrefAt = Buffer.byteLength(body);
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  body += offsets
+    .slice(1)
+    .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
+    .join("");
+  body += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  fs.writeFileSync(abs, body);
+  void mirrorUploadRelative(rel).catch(() => null);
   return publicUrlForUploadRelative(rel);
 }
 
@@ -484,6 +539,14 @@ storeRouter.post(
         hasDelivery,
         category,
         description,
+        storeType = "d2c",
+        gstNumber,
+        shopActLicense,
+        acceptedTerms,
+        externalLinks,
+        coinsRequired,
+        discountPercent,
+        minOrderInr,
         removeProfilePhoto,
         removeBannerImage,
       } = req.body as Record<string, string>;
@@ -491,10 +554,47 @@ storeRouter.post(
       if (!name || !phone || !city || !address || !lat || !lng || !category) {
         return res.status(400).json({ message: "Missing required fields" });
       }
+      if (acceptedTerms !== "true") {
+        return res.status(400).json({message: "Accept Terms & Conditions is required"});
+      }
+      if (!gstNumber?.trim() && !shopActLicense?.trim()) {
+        return res.status(400).json({message: "GST Number or Shop Act License is required"});
+      }
 
       const files = req.files as Record<string, Express.Multer.File[]>;
       const profilePhoto = files?.profilePhoto?.[0] ? fileToUrl(files.profilePhoto[0]) : "";
       const bannerImage = files?.bannerImage?.[0] ? fileToUrl(files.bannerImage[0]) : "";
+      const panCardUrl = files?.panCard?.[0] ? fileToUrl(files.panCard[0]) : "";
+      const aadhaarCardUrl = files?.aadhaarCard?.[0] ? fileToUrl(files.aadhaarCard[0]) : "";
+      const addressProofUrl = files?.addressProof?.[0] ? fileToUrl(files.addressProof[0]) : "";
+      const storePhotoUrls = (files?.storePhotos ?? []).map(fileToUrl);
+      if (!panCardUrl || !aadhaarCardUrl || !addressProofUrl || storePhotoUrls.length === 0) {
+        return res.status(400).json({message: "PAN Card, Aadhaar Card, store photos and address proof are required"});
+      }
+      const acceptedAt = new Date();
+      const termsPdfUrl = writeTermsAcceptancePdf({
+        userId: String(req.dbUser!._id),
+        userName: req.dbUser!.displayName,
+        acceptedAt,
+        ip: req.ip ?? "",
+      });
+      let parsedLinks: Array<{label: string; url: string}> = [];
+      if (externalLinks) {
+        try {
+          const raw = JSON.parse(externalLinks) as Array<{label?: unknown; url?: unknown}>;
+          parsedLinks = Array.isArray(raw)
+            ? raw
+                .map((row) => ({
+                  label: String(row.label ?? "").trim().slice(0, 80),
+                  url: String(row.url ?? "").trim().slice(0, 500),
+                }))
+                .filter((row) => row.url)
+                .slice(0, 10)
+            : [];
+        } catch {
+          parsedLinks = [];
+        }
+      }
 
       const store = await Store.create({
         owner: req.dbUser!._id,
@@ -511,6 +611,28 @@ storeRouter.post(
         bannerImage,
         category,
         description: (description ?? "").trim(),
+        storeType: storeType === "b2b" || storeType === "online" ? storeType : "d2c",
+        approvalStatus: "pending",
+        isActive: false,
+        requestPendingLabel: "Request Pending",
+        termsAcceptedAt: acceptedAt,
+        termsAcceptedIp: req.ip,
+        termsPdfUrl,
+        kyc: {
+          gstNumber: (gstNumber ?? "").trim(),
+          shopActLicense: (shopActLicense ?? "").trim(),
+          panCardUrl,
+          aadhaarCardUrl,
+          storePhotoUrls,
+          addressProofUrl,
+        },
+        externalLinks: parsedLinks,
+        coinDiscountRule: {
+          coinsRequired: Math.max(0, Number(coinsRequired) || 0),
+          discountPercent: Math.min(90, Math.max(0, Number(discountPercent) || 0)),
+          minOrderInr: Math.max(0, Number(minOrderInr) || 0),
+          active: storeType !== "b2b" && Number(coinsRequired) > 0 && Number(discountPercent) > 0,
+        },
       });
 
       // Save storeId on user
@@ -578,6 +700,194 @@ storeRouter.put(
     }
   },
 );
+
+/** GET /stores/:id/dashboard — owner metrics */
+storeRouter.get("/:id/dashboard", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const store = await Store.findById(req.params.id).lean();
+    if (!store) return res.status(404).json({message: "Store not found"});
+    if (String(store.owner) !== String(req.dbUser!._id)) return res.status(403).json({message: "Forbidden"});
+    const [products, leads, redemptions] = await Promise.all([
+      StoreProduct.countDocuments({store: store._id, isActive: true}),
+      StoreLead.countDocuments({store: store._id}),
+      StoreRedemption.find({store: store._id}).sort({createdAt: -1}).limit(50).lean(),
+    ]);
+    const redeemedCoins = redemptions.reduce((sum, row) => sum + Number(row.coinsDeducted || 0), 0);
+    return res.json({
+      reviews: [],
+      ratings: {average: store.ratingAvg ?? 0, count: store.ratingCount ?? 0},
+      dailyReach: store.totalViews ?? 0,
+      engagement: {favorites: (store.favoritedBy ?? []).length, leads, redemptions: redemptions.length},
+      views: store.totalViews ?? 0,
+      products,
+      redeemedCoins,
+      recentRedemptions: redemptions,
+    });
+  } catch (err) {
+    console.error("[storeRoutes] dashboard error:", err);
+    res.status(500).json({message: "Server error"});
+  }
+});
+
+/** GET /stores/:id/leads — B2B owner leads */
+storeRouter.get("/:id/leads", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const store = await Store.findById(req.params.id).lean();
+    if (!store) return res.status(404).json({message: "Store not found"});
+    if (String(store.owner) !== String(req.dbUser!._id)) return res.status(403).json({message: "Forbidden"});
+    const leads = await StoreLead.find({store: store._id}).sort({createdAt: -1}).limit(200).lean();
+    res.json({leads});
+  } catch (err) {
+    console.error("[storeRoutes] leads list error:", err);
+    res.status(500).json({message: "Server error"});
+  }
+});
+
+/** POST /stores/:id/b2b-leads — create bulk inquiry lead */
+storeRouter.post("/:id/b2b-leads", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const store = await Store.findOne({_id: req.params.id, isActive: true, approvalStatus: "approved"}).lean();
+    if (!store) return res.status(404).json({message: "Store not found"});
+    if (store.storeType !== "b2b") return res.status(400).json({message: "This store is not a B2B store"});
+    const body = req.body as Record<string, unknown>;
+    const contactName = String(body.contactName ?? req.dbUser!.displayName).trim();
+    const contactPhone = String(body.contactPhone ?? "").trim();
+    if (!contactPhone) return res.status(400).json({message: "contactPhone is required"});
+    const lead = await StoreLead.create({
+      store: store._id,
+      buyer: req.dbUser!._id,
+      owner: store.owner,
+      contactName,
+      phone: contactPhone,
+      quantity: String(body.quantity ?? "").trim(),
+      details: String(body.details ?? "").trim(),
+    });
+    await Store.updateOne({_id: store._id}, {$inc: {"b2b.leadCount": 1}});
+    res.status(201).json({lead});
+  } catch (err) {
+    console.error("[storeRoutes] b2b lead error:", err);
+    res.status(500).json({message: "Server error"});
+  }
+});
+
+function calculateDiscount(totalInr: number, rule: StoreDoc["coinDiscountRule"]) {
+  const coinsRequired = Math.max(0, Number(rule?.coinsRequired) || 0);
+  const discountPercent = Math.min(90, Math.max(0, Number(rule?.discountPercent) || 0));
+  const minOrderInr = Math.max(0, Number(rule?.minOrderInr) || 0);
+  const eligible = Boolean(rule?.active && coinsRequired > 0 && discountPercent > 0 && totalInr >= minOrderInr);
+  const discountInr = eligible ? Math.round(totalInr * discountPercent) / 100 : 0;
+  const payableInr = Math.max(0, Math.round((totalInr - discountInr) * 100) / 100);
+  return {eligible, coinsRequired, discountPercent, minOrderInr, discountInr, payableInr};
+}
+
+/** POST /stores/:id/redeem-calc — quote coin discount */
+storeRouter.post("/:id/redeem-calc", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const store = await Store.findOne({_id: req.params.id, isActive: true, approvalStatus: "approved"}).lean();
+    if (!store) return res.status(404).json({message: "Store not found"});
+    const totalInr = Math.max(0, Number((req.body as {totalInr?: unknown}).totalInr) || 0);
+    const quote = calculateDiscount(totalInr, store.coinDiscountRule);
+    res.json({
+      ...quote,
+      message: quote.eligible ? `Pay ₹${quote.payableInr} to Store` : "Offer not available for this order",
+    });
+  } catch (err) {
+    console.error("[storeRoutes] redeem calc error:", err);
+    res.status(500).json({message: "Server error"});
+  }
+});
+
+/** POST /stores/:id/redeem — QR/physical-store coin redemption */
+storeRouter.post("/:id/redeem", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const store = await Store.findOne({_id: req.params.id, isActive: true, approvalStatus: "approved"});
+    if (!store) return res.status(404).json({message: "Store not found"});
+    const totalInr = Math.max(0, Number((req.body as {totalInr?: unknown}).totalInr) || 0);
+    const quote = calculateDiscount(totalInr, store.coinDiscountRule);
+    if (!quote.eligible) return res.status(400).json({message: "Offer not available for this order"});
+    const debit = await debitWallet(
+      req.dbUser!._id,
+      quote.coinsRequired,
+      "store_redemption",
+      "Store",
+      store._id,
+      {totalInr, discountInr: quote.discountInr, payableInr: quote.payableInr},
+      `store:${store._id}:user:${req.dbUser!._id}:${Date.now()}`,
+    );
+    if (!debit.success) return res.status(402).json({message: "Not enough coins", balance: debit.balance});
+    const redemption = await StoreRedemption.create({
+      store: store._id,
+      user: req.dbUser!._id,
+      owner: store.owner,
+      orderTotalInr: totalInr,
+      coinsDeducted: quote.coinsRequired,
+      discountPercent: quote.discountPercent,
+      payableInr: quote.payableInr,
+      qrToken: `redeem_${Date.now()}_${randomBytes(6).toString("hex")}`,
+      status: "redeemed",
+      redeemedAt: new Date(),
+    });
+    res.status(201).json({
+      redemption,
+      balance: debit.balance,
+      message: `Pay ₹${quote.payableInr} to Store`,
+      ownerMessage: `Collect only ₹${quote.payableInr} from this customer`,
+    });
+  } catch (err) {
+    console.error("[storeRoutes] redeem error:", err);
+    res.status(500).json({message: "Server error"});
+  }
+});
+
+const STORE_PUSH_LIMITS: Record<StorePaidPlanId, number> = {
+  basic: 5,
+  premium: 50,
+  gold: Number.MAX_SAFE_INTEGER,
+};
+
+/** POST /stores/:id/push — plan-limited customer push */
+storeRouter.post("/:id/push", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const store = await Store.findById(req.params.id);
+    if (!store) return res.status(404).json({message: "Store not found"});
+    if (String(store.owner) !== String(req.dbUser!._id)) return res.status(403).json({message: "Forbidden"});
+    if (store.approvalStatus !== "approved" || !store.isActive) {
+      return res.status(403).json({message: "Store must be approved before sending push notifications"});
+    }
+    const planId = store.subscription.planId;
+    if (!isPaidPlanId(planId) || store.subscription.status !== "active") {
+      return res.status(402).json({message: "Active Basic, Premium or Gold plan is required"});
+    }
+    const monthKey = new Date().toISOString().slice(0, 7);
+    if (store.notificationUsage.monthKey !== monthKey) {
+      store.notificationUsage.monthKey = monthKey;
+      store.notificationUsage.sentCount = 0;
+    }
+    const limit = STORE_PUSH_LIMITS[planId];
+    if (store.notificationUsage.sentCount >= limit) {
+      return res.status(429).json({message: "Monthly notification limit reached"});
+    }
+    const title = String((req.body as {title?: unknown}).title ?? store.name).trim().slice(0, 80);
+    const body = String((req.body as {body?: unknown}).body ?? "").trim().slice(0, 240);
+    if (!body) return res.status(400).json({message: "body is required"});
+    const favoriteUsers = await User.find({_id: {$in: store.favoritedBy ?? []}}).select("_id").limit(2000).lean();
+    await Promise.allSettled(
+      favoriteUsers.map((user) =>
+        sendPushToUser(String(user._id), {
+          title,
+          body,
+          data: {type: "store_push", storeId: String(store._id), planId},
+        }),
+      ),
+    );
+    store.notificationUsage.sentCount += 1;
+    await store.save();
+    res.json({ok: true, sentTo: favoriteUsers.length, remaining: limit === Number.MAX_SAFE_INTEGER ? null : limit - store.notificationUsage.sentCount});
+  } catch (err) {
+    console.error("[storeRoutes] push error:", err);
+    res.status(500).json({message: "Server error"});
+  }
+});
 
 // ─── Products ────────────────────────────────────────────────────
 

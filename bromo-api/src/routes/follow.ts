@@ -8,10 +8,20 @@ import {
 import { Follow } from "../models/Follow.js";
 import { User } from "../models/User.js";
 import { createNotification, checkFollowerMilestone } from "../models/Notification.js";
+import { emitNotification } from "../services/socketService.js";
 
 export const followRouter = Router();
 
 const USER_SELECT = "username displayName profilePicture followersCount followingCount postsCount isPrivate emailVerified";
+
+function toObjectIds(values: unknown[]): mongoose.Types.ObjectId[] {
+  return values
+    .map((value) => {
+      const raw = value != null ? String(value) : "";
+      return mongoose.Types.ObjectId.isValid(raw) ? new mongoose.Types.ObjectId(raw) : null;
+    })
+    .filter((id): id is mongoose.Types.ObjectId => id != null);
+}
 
 // ── GET /users/suggestions ───────────────────────────────────────────
 followRouter.get(
@@ -25,7 +35,11 @@ followRouter.get(
       let excludeIds: mongoose.Types.ObjectId[] = [];
       if (dbUser) {
         const follows = await Follow.find({ followerId: dbUser._id }).select("followingId");
-        excludeIds = [dbUser._id, ...follows.map((f) => f.followingId)];
+        excludeIds = [
+          dbUser._id,
+          ...follows.map((f) => f.followingId),
+          ...toObjectIds((dbUser.blockedUserIds ?? []) as unknown[]),
+        ];
       }
 
       const query = excludeIds.length
@@ -64,7 +78,8 @@ followRouter.get(
 
       const regex = new RegExp(q, "i");
       const dbUser = req.dbUser;
-      const excludeSelf = dbUser ? { _id: { $ne: dbUser._id } } : {};
+      const blockedIds = dbUser ? toObjectIds((dbUser.blockedUserIds ?? []) as unknown[]) : [];
+      const excludeSelf = dbUser ? { _id: { $nin: [dbUser._id, ...blockedIds] } } : {};
       const users = await User.find({
         ...excludeSelf,
         isActive: true,
@@ -109,6 +124,70 @@ followRouter.get(
   },
 );
 
+// ── GET /users/nearby?lat=&lng= ─────────────────────────────────────
+followRouter.get(
+  "/nearby",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const dbUser = req.dbUser;
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      const maxDistance = Math.min(100_000, Math.max(100, Number(req.query.maxDistance) || 25_000));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({message: "lat and lng are required"});
+      }
+      const blockedIds = dbUser ? toObjectIds((dbUser.blockedUserIds ?? []) as unknown[]) : [];
+      const users = await User.aggregate([
+        {
+          $geoNear: {
+            near: {type: "Point", coordinates: [lng, lat]},
+            distanceField: "distanceMeters",
+            spherical: true,
+            maxDistance,
+            query: {
+              isActive: true,
+              onboardingComplete: true,
+              ...(dbUser ? {_id: {$nin: [dbUser._id, ...blockedIds]}} : {}),
+            },
+          },
+        },
+        {$limit: 30},
+        {$project: {username: 1, displayName: 1, profilePicture: 1, followersCount: 1, distanceMeters: 1}},
+      ]);
+      return res.json({users});
+    } catch (err) {
+      console.error("[follow] nearby error:", err);
+      return res.status(500).json({message: "Failed to find nearby users"});
+    }
+  },
+);
+
+// ── POST /users/location ────────────────────────────────────────────
+followRouter.post(
+  "/location",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const {lat, lng} = req.body as {lat?: number; lng?: number};
+      if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+        return res.status(400).json({message: "lat and lng are required"});
+      }
+      user.currentLocation = {
+        type: "Point",
+        coordinates: [Number(lng), Number(lat)],
+        updatedAt: new Date(),
+      };
+      await user.save();
+      return res.json({ok: true});
+    } catch (err) {
+      console.error("[follow] location error:", err);
+      return res.status(500).json({message: "Failed to update location"});
+    }
+  },
+);
+
 // ── GET /users/:userId/profile ──────────────────────────────────────
 followRouter.get(
   "/:userId/profile",
@@ -117,9 +196,12 @@ followRouter.get(
     try {
       const dbUser = req.dbUser;
       const target = await User.findById(req.params.userId)
-        .select(USER_SELECT + " bio website email createdAt")
+        .select(USER_SELECT + " bio website email createdAt isVerified verificationStatus isCreator creatorStatus creatorBadge connectedStore")
         .lean();
       if (!target) return res.status(404).json({ message: "User not found" });
+      if (dbUser && ((dbUser.blockedUserIds ?? []) as unknown[]).some((id) => String(id) === String(target._id))) {
+        return res.status(403).json({message: "User is blocked"});
+      }
 
       let followStatus: "none" | "following" | "requested" = "none";
       if (dbUser) {
@@ -136,6 +218,59 @@ followRouter.get(
     } catch (err) {
       console.error("[follow] profile error:", err);
       return res.status(500).json({ message: "Failed to get profile" });
+    }
+  },
+);
+
+// ── POST /users/:userId/block ───────────────────────────────────────
+followRouter.post(
+  "/:userId/block",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const targetId = String(req.params.userId);
+      if (!mongoose.Types.ObjectId.isValid(targetId)) {
+        return res.status(400).json({message: "Invalid user id"});
+      }
+      if (String(user._id) === targetId) {
+        return res.status(400).json({message: "Cannot block yourself"});
+      }
+      const target = await User.findById(targetId).select("_id").lean();
+      if (!target) return res.status(404).json({message: "User not found"});
+      await Promise.all([
+        User.updateOne({_id: user._id}, {$addToSet: {blockedUserIds: target._id}}),
+        Follow.deleteMany({
+          $or: [
+            {followerId: user._id, followingId: target._id},
+            {followerId: target._id, followingId: user._id},
+          ],
+        }),
+      ]);
+      return res.json({blocked: true});
+    } catch (err) {
+      console.error("[follow] block error:", err);
+      return res.status(500).json({message: "Failed to block user"});
+    }
+  },
+);
+
+// ── DELETE /users/:userId/block ────────────────────────────────────
+followRouter.delete(
+  "/:userId/block",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const user = req.dbUser!;
+      const targetId = String(req.params.userId);
+      if (!mongoose.Types.ObjectId.isValid(targetId)) {
+        return res.status(400).json({message: "Invalid user id"});
+      }
+      await User.updateOne({_id: user._id}, {$pull: {blockedUserIds: new mongoose.Types.ObjectId(targetId)}});
+      return res.json({blocked: false});
+    } catch (err) {
+      console.error("[follow] unblock error:", err);
+      return res.status(500).json({message: "Failed to unblock user"});
     }
   },
 );
@@ -255,24 +390,38 @@ followRouter.post(
           User.findByIdAndUpdate(targetId, { $inc: { followersCount: 1 } }, { new: true }),
         ]);
         // Persist follow notification
-        createNotification({
+        void createNotification({
           recipientId: targetId,
           actorId: follower._id,
           type: "follow",
           message: `${follower.displayName} started following you`,
         });
+        emitNotification(
+          String(targetId),
+          "follow",
+          String(follower._id),
+          String(follower._id),
+          `${follower.displayName} started following you`,
+        );
         // Milestone check
         if (updatedTarget) {
-          checkFollowerMilestone(targetId, updatedTarget.followersCount ?? 0);
+          void checkFollowerMilestone(targetId, updatedTarget.followersCount ?? 0);
         }
       } else {
         // pending request notification
-        createNotification({
+        void createNotification({
           recipientId: targetId,
           actorId: follower._id,
           type: "follow_request",
           message: `${follower.displayName} requested to follow you`,
         });
+        emitNotification(
+          String(targetId),
+          "follow_request",
+          String(follower._id),
+          String(follower._id),
+          `${follower.displayName} requested to follow you`,
+        );
       }
 
       return res.json({ status });
@@ -334,13 +483,20 @@ followRouter.patch(
         User.findByIdAndUpdate(user._id, { $inc: { followersCount: 1 } }, { new: true }),
       ]);
       // Notify the requester that their request was accepted
-      createNotification({
+      void createNotification({
         recipientId: follow.followerId,
         actorId: user._id,
         type: "follow_accept",
         message: `${user.displayName} accepted your follow request`,
       });
-      if (updatedMe) checkFollowerMilestone(String(user._id), updatedMe.followersCount ?? 0);
+      emitNotification(
+        String(follow.followerId),
+        "follow_accept",
+        String(user._id),
+        String(user._id),
+        `${user.displayName} accepted your follow request`,
+      );
+      if (updatedMe) void checkFollowerMilestone(String(user._id), updatedMe.followersCount ?? 0);
 
       return res.json({ accepted: true });
     } catch (err) {

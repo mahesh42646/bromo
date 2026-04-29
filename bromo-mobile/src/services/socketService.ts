@@ -12,6 +12,7 @@ type SocketEvents = {
   'post:new': (post: Post) => void;
   'post:like': (data: {postId: string; likesCount: number; liked: boolean; userId: string}) => void;
   'post:comment': (data: {postId: string; commentsCount: number; comment: object}) => void;
+  'post:share': (data: {postId: string; sharesCount: number}) => void;
   'post:delete': (data: {postId: string; authorId?: string; type?: string}) => void;
   /** Accurate notification badge — prefer this over polling `/notifications/unread-count`. */
   'notification:unread': (data: {count: number}) => void;

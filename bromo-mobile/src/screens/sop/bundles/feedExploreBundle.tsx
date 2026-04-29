@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Alert, FlatList, Image, Pressable, Share, Text, TouchableOpacity, View} from 'react-native';
+import {ActivityIndicator, Alert, FlatList, Image, Pressable, Share, Text, TextInput, TouchableOpacity, View} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
@@ -11,6 +11,7 @@ import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {getFollowing, type SuggestedUser} from '../../../api/followApi';
+import {searchOriginalAudios, useOriginalAudio, type OriginalAudio} from '../../../api/postsApi';
 import {parentNavigate} from '../../../navigation/parentNavigate';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
@@ -270,14 +271,57 @@ export function MusicPickerScreen() {
   const route = useRoute();
   const mode = (route.params as {mode?: 'reel' | 'story' | 'post'} | undefined)?.mode ?? 'reel';
   const navigation = useNavigation();
+  const {palette} = useTheme();
+  const [query, setQuery] = useState('');
+  const [audios, setAudios] = useState<OriginalAudio[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const timer = setTimeout(() => {
+      searchOriginalAudios(query)
+        .then(res => setAudios(res.audios))
+        .catch(() => setAudios([]))
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
   return (
     <SopChrome title="Music / audio">
-      <SopMeta label={`Pick track for ${mode}. Trending + library.`} />
-      <SopRow
-        title="Original · Marathi Beats"
-        onPress={() => parentNavigate(navigation, 'AudioDetail', {trackId: 't1'})}
+      <SopMeta label={`Pick track for ${mode}. Trending songs and creator original audio.`} />
+      <Text style={{color: palette.foreground, fontSize: 12, fontWeight: '800', marginBottom: 6}}>Search audio</Text>
+      <TextInput
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search song or original audio"
+        placeholderTextColor={palette.mutedForeground}
+        style={{
+          color: palette.foreground,
+          borderWidth: 1,
+          borderColor: palette.border,
+          borderRadius: 12,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          marginBottom: 12,
+        }}
       />
-      <SopRow title="Trending club mix" />
+      {loading ? <ActivityIndicator color={palette.primary} /> : null}
+      {audios.map(audio => (
+        <SopRow
+          key={audio._id}
+          title={audio.title}
+          sub={`${audio.useCount} uses`}
+          onPress={() => {
+            useOriginalAudio(audio._id).catch(() => null);
+            parentNavigate(navigation, 'CreateFlow', {
+              mode: 'reel',
+              bootstrapTs: Date.now(),
+              remixSourcePostId: audio.sourcePostId ?? audio._id,
+            });
+          }}
+        />
+      ))}
     </SopChrome>
   );
 }

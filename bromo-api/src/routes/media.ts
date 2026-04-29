@@ -254,6 +254,18 @@ mediaRouter.post(
       }
     }
 
+    let storyMeta: Record<string, unknown> | undefined;
+    if (body.storyMeta && typeof body.storyMeta === "string") {
+      try {
+        const parsed = JSON.parse(body.storyMeta) as unknown;
+        if (parsed && typeof parsed === "object") {
+          storyMeta = parsed as Record<string, unknown>;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
     // Thumbnail for immediate preview (sync, lightweight)
     let thumbnailUrl = "";
     if (mediaType === "video") {
@@ -276,6 +288,17 @@ mediaRouter.post(
       .slice(0, 20)
       .map((x) => new mongooseRef.Types.ObjectId(x));
     const safeProductIds = productIdStrs.map((x) => new mongooseRef.Types.ObjectId(x));
+    if (safeProductIds.length && !(dbUser.isCreator && dbUser.creatorStatus === "verified")) {
+      return res.status(403).json({ message: "Only verified creators can tag products" });
+    }
+    const originalAudioId =
+      body.originalAudioId && mongooseRef.Types.ObjectId.isValid(body.originalAudioId)
+        ? new mongooseRef.Types.ObjectId(body.originalAudioId)
+        : undefined;
+    const remixOfPostId =
+      body.remixOfPostId && mongooseRef.Types.ObjectId.isValid(body.remixOfPostId)
+        ? new mongooseRef.Types.ObjectId(body.remixOfPostId)
+        : undefined;
 
     const draftPost = await Post.create({
       authorId: dbUser._id,
@@ -290,9 +313,12 @@ mediaRouter.post(
       tags,
       ...(safeTaggedUserIds.length ? { taggedUserIds: safeTaggedUserIds } : {}),
       ...(safeProductIds.length ? { productIds: safeProductIds } : {}),
+      ...(originalAudioId ? { originalAudioId } : {}),
+      ...(remixOfPostId ? { remixOfPostId } : {}),
       ...(settings ? { settings } : {}),
       ...(typeof durationMs === "number" ? { durationMs } : {}),
       ...(clientEditMeta ? { clientEditMeta } : {}),
+      ...(postType === "story" && storyMeta ? { storyMeta } : {}),
       ...(isScheduled ? { scheduledFor } : {}),
       feedCategory,
       expiresAt: storyExpiresAt,

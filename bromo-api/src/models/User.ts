@@ -1,5 +1,8 @@
 import mongoose, { Schema, type Document } from "mongoose";
 
+export type VerificationStatus = "none" | "pending" | "verified" | "rejected";
+export type CreatorStatus = "none" | "pending" | "verified" | "rejected";
+
 export interface UserDoc extends Document {
   firebaseUid: string;
   email: string;
@@ -14,6 +17,38 @@ export interface UserDoc extends Document {
   isActive: boolean;
   onboardingComplete: boolean;
   isPrivate: boolean;
+  isVerified: boolean;
+  verificationStatus: VerificationStatus;
+  verifiedAt?: Date;
+  verificationReviewedBy?: mongoose.Types.ObjectId;
+  isCreator: boolean;
+  creatorStatus: CreatorStatus;
+  creatorBadge: boolean;
+  creatorForm?: {
+    fullName?: string;
+    category?: string;
+    bio?: string;
+    website?: string;
+    documents?: string[];
+    submittedAt?: Date;
+    reviewedAt?: Date;
+    rejectionReason?: string;
+  };
+  fcmTokens: string[];
+  blockedUserIds: mongoose.Types.ObjectId[];
+  mutedConversationIds: mongoose.Types.ObjectId[];
+  rewardPoints: number;
+  currentLocation?: {
+    type: "Point";
+    coordinates: [number, number];
+    updatedAt?: Date;
+  };
+  connectedStore?: {
+    enabled: boolean;
+    website: string;
+    planId: string;
+    purchasedAt?: Date;
+  };
   followersCount: number;
   followingCount: number;
   postsCount: number;
@@ -91,6 +126,67 @@ const userSchema = new Schema<UserDoc>(
       type: Boolean,
       default: false,
     },
+    isVerified: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    verificationStatus: {
+      type: String,
+      enum: ["none", "pending", "verified", "rejected"],
+      default: "none",
+      index: true,
+    },
+    verifiedAt: { type: Date },
+    verificationReviewedBy: { type: Schema.Types.ObjectId, ref: "Admin" },
+    isCreator: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    creatorStatus: {
+      type: String,
+      enum: ["none", "pending", "verified", "rejected"],
+      default: "none",
+      index: true,
+    },
+    creatorBadge: {
+      type: Boolean,
+      default: false,
+    },
+    creatorForm: {
+      fullName: { type: String, default: "" },
+      category: { type: String, default: "" },
+      bio: { type: String, default: "" },
+      website: { type: String, default: "" },
+      documents: [{ type: String }],
+      submittedAt: { type: Date },
+      reviewedAt: { type: Date },
+      rejectionReason: { type: String, default: "" },
+    },
+    fcmTokens: [{ type: String }],
+    blockedUserIds: [{ type: Schema.Types.ObjectId, ref: "User", index: true }],
+    mutedConversationIds: [{ type: Schema.Types.ObjectId, ref: "Conversation" }],
+    rewardPoints: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    currentLocation: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: { type: [Number], default: undefined },
+      updatedAt: { type: Date },
+    },
+    connectedStore: {
+      enabled: { type: Boolean, default: false },
+      website: { type: String, default: "" },
+      planId: { type: String, default: "" },
+      purchasedAt: { type: Date },
+    },
     followersCount: {
       type: Number,
       default: 0,
@@ -113,5 +209,6 @@ const userSchema = new Schema<UserDoc>(
 );
 
 userSchema.index({ followersCount: -1 });
+userSchema.index({ currentLocation: "2dsphere" }, { sparse: true });
 
 export const User = mongoose.model<UserDoc>("User", userSchema);

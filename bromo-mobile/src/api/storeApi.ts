@@ -68,6 +68,19 @@ export type Store = {
   bannerImage: string;
   category: StoreCategory;
   description: string;
+  storeType?: 'd2c' | 'b2b' | 'online';
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  requestPendingLabel?: string;
+  termsPdfUrl?: string;
+  kyc?: {
+    gstNumber?: string;
+    shopActLicense?: string;
+    panCardUrl?: string;
+    aadhaarCardUrl?: string;
+    storePhotoUrls?: string[];
+    addressProofUrl?: string;
+  };
+  coinDiscountRule?: {coinsRequired: number; discountPercent: number; minOrderInr: number; active: boolean};
   isActive: boolean;
   totalProducts: number;
   totalViews: number;
@@ -256,6 +269,17 @@ export type CreateStorePayload = {
   description?: string;
   profilePhotoUri?: string;
   bannerImageUri?: string;
+  storeType?: 'd2c' | 'b2b' | 'online';
+  gstNumber?: string;
+  shopActLicense?: string;
+  acceptedTerms?: boolean;
+  panCardUri?: string;
+  aadhaarCardUri?: string;
+  addressProofUri?: string;
+  storePhotoUris?: string[];
+  coinsRequired?: number;
+  discountPercent?: number;
+  minOrderInr?: number;
 };
 
 export async function createStore(payload: CreateStorePayload): Promise<Store> {
@@ -270,6 +294,13 @@ export async function createStore(payload: CreateStorePayload): Promise<Store> {
   form.append('hasDelivery', String(payload.hasDelivery));
   form.append('category', payload.category);
   if (payload.description) form.append('description', payload.description);
+  form.append('storeType', payload.storeType ?? 'd2c');
+  form.append('acceptedTerms', String(Boolean(payload.acceptedTerms)));
+  if (payload.gstNumber) form.append('gstNumber', payload.gstNumber);
+  if (payload.shopActLicense) form.append('shopActLicense', payload.shopActLicense);
+  if (payload.coinsRequired != null) form.append('coinsRequired', String(payload.coinsRequired));
+  if (payload.discountPercent != null) form.append('discountPercent', String(payload.discountPercent));
+  if (payload.minOrderInr != null) form.append('minOrderInr', String(payload.minOrderInr));
 
   if (payload.profilePhotoUri) {
     const ext = payload.profilePhotoUri.split('.').pop() ?? 'jpg';
@@ -287,6 +318,16 @@ export async function createStore(payload: CreateStorePayload): Promise<Store> {
       name: `banner.${ext}`,
     } as never);
   }
+  const appendDoc = (field: string, uri?: string, fallback = 'doc') => {
+    if (!uri) return;
+    const ext = uri.split('.').pop() ?? 'jpg';
+    const mime = ext.toLowerCase() === 'pdf' ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+    form.append(field, {uri, type: mime, name: `${fallback}.${ext}`} as never);
+  };
+  appendDoc('panCard', payload.panCardUri, 'pan');
+  appendDoc('aadhaarCard', payload.aadhaarCardUri, 'aadhaar');
+  appendDoc('addressProof', payload.addressProofUri, 'address');
+  (payload.storePhotoUris ?? []).forEach((uri, i) => appendDoc('storePhotos', uri, `store_${i}`));
 
   const res = await fetch(`${apiBase()}/stores`, {
     method: 'POST',
@@ -430,4 +471,44 @@ export async function favoriteStore(storeId: string): Promise<void> {
 
 export async function unfavoriteStore(storeId: string): Promise<void> {
   await authorizedFetch(`${apiBase()}/stores/${storeId}/favorite`, {method: 'DELETE'});
+}
+
+export async function createB2BLead(
+  storeId: string,
+  data: {contactName: string; contactPhone: string; quantity?: string; details?: string},
+): Promise<void> {
+  const res = await authorizedFetch(`${apiBase()}/stores/${storeId}/b2b-leads`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'Failed to send inquiry');
+}
+
+export async function calculateStoreRedemption(storeId: string, totalInr: number): Promise<{
+  eligible: boolean;
+  coinsRequired: number;
+  discountPercent: number;
+  discountInr: number;
+  payableInr: number;
+  message: string;
+}> {
+  const res = await authorizedFetch(`${apiBase()}/stores/${storeId}/redeem-calc`, {
+    method: 'POST',
+    body: JSON.stringify({totalInr}),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'Offer unavailable');
+  return res.json();
+}
+
+export async function redeemStoreOffer(storeId: string, totalInr: number): Promise<{
+  message: string;
+  ownerMessage: string;
+  balance: number;
+}> {
+  const res = await authorizedFetch(`${apiBase()}/stores/${storeId}/redeem`, {
+    method: 'POST',
+    body: JSON.stringify({totalInr}),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'Redemption failed');
+  return res.json();
 }

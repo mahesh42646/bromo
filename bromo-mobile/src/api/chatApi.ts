@@ -24,7 +24,7 @@ export type ApiMessage = {
   _id: string;
   conversationId: string;
   senderId: ConversationParticipant;
-  type: 'text' | 'image' | 'video' | 'audio' | 'gif' | 'sticker' | 'location';
+  type: 'text' | 'image' | 'video' | 'audio' | 'gif' | 'sticker' | 'location' | 'shared_post';
   text: string;
   mediaUrl: string;
   meta: Record<string, unknown>;
@@ -32,6 +32,7 @@ export type ApiMessage = {
   isUnsent: boolean;
   editedAt?: string;
   reactions: Array<{userId: string; emoji: string}>;
+  readBy?: Array<{userId: string; readAt: string}>;
   createdAt: string;
 };
 
@@ -131,6 +132,22 @@ export async function reactToMessage(messageId: string, emoji: string): Promise<
 
 export async function markConversationRead(conversationId: string): Promise<void> {
   await authedFetch(`/chat/conversations/${conversationId}/read`, {method: 'POST'}).catch(() => null);
+}
+
+export async function getSharedMedia(conversationId: string): Promise<{media: ApiMessage[]}> {
+  const res = await authedFetch(`/chat/conversations/${conversationId}/shared-media`);
+  if (!res.ok) throw new Error('Failed to fetch shared media');
+  return res.json() as Promise<{media: ApiMessage[]}>;
+}
+
+export async function muteConversation(conversationId: string): Promise<void> {
+  const res = await authedFetch(`/chat/conversations/${conversationId}/mute`, {method: 'POST'});
+  if (!res.ok) throw new Error('Failed to mute');
+}
+
+export async function unmuteConversation(conversationId: string): Promise<void> {
+  const res = await authedFetch(`/chat/conversations/${conversationId}/mute`, {method: 'DELETE'});
+  if (!res.ok) throw new Error('Failed to unmute');
 }
 
 export async function uploadChatMedia(

@@ -33,6 +33,7 @@ import {
   Play,
   Repeat,
   Share2,
+  ShoppingBag,
   Info,
   CheckCircle2,
   XCircle,
@@ -45,6 +46,7 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react-native';
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NavigationProp, RouteProp} from '@react-navigation/native';
@@ -53,9 +55,8 @@ import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {followUser, unfollowUser} from '../api/followApi';
+import {blockUser, followUser, unfollowUser} from '../api/followApi';
 import {
-  createStoryFromReel,
   getPost,
   getReels,
   getReelsInitial,
@@ -63,6 +64,7 @@ import {
   toggleLike,
   recordView,
   recordShare,
+  recordStoreClick,
   resolveVideoUrl,
   toggleSavePost,
   sendReelFeedback,
@@ -85,6 +87,7 @@ import {getAuthorMerge, rememberAuthor} from '../lib/authorSessionCache';
 import {perfFlags} from '../config/perfFlags';
 import type {ThemePalette} from '../config/platform-theme';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
+import {openExternalUrl} from '../lib/openExternalUrl';
 
 function enrichReelChunk(posts: Post[]): Post[] {
   const merged = mergePostsWithSessionCache(posts);
@@ -343,18 +346,12 @@ function ReelMoreSheet({
                 }}
                 onPress={() => {
                   if (!reel) return;
-                  createStoryFromReel(reel._id)
-                    .then(() => {
-                      DeviceEventEmitter.emit('bromo:storiesChanged');
-                      onClose();
-                      Alert.alert(
-                        'Added successfully to your story.',
-                        ' It may take a bit to process before it is visible to all your friends.',
-                      );
-                    })
-                    .catch(e =>
-                      Alert.alert('Could not add', e instanceof Error ? e.message : 'Try again.'),
-                    );
+                  onClose();
+                  parentNavigate(navigation, 'CreateFlow', {
+                    mode: 'story',
+                    bootstrapTs: Date.now(),
+                    remixSourcePostId: reel._id,
+                  });
                 }}>
                 <Sparkles size={20} color={palette.accent} />
                 <Text style={{color: palette.accent, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Add reel to your story</Text>
@@ -446,6 +443,26 @@ function ReelMoreSheet({
                           .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
                     },
                     {
+                      text: 'Copied/Stolen song',
+                      onPress: () =>
+                        reportPostStrict(reel._id, 'copied_stolen_song')
+                          .then(() => {
+                            onClose();
+                            Alert.alert('Reported', 'Thanks — our team will review it.');
+                          })
+                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
+                    },
+                    {
+                      text: 'Irrelevant/Spam content',
+                      onPress: () =>
+                        reportPostStrict(reel._id, 'irrelevant_spam_content')
+                          .then(() => {
+                            onClose();
+                            Alert.alert('Reported', 'Thanks — our team will review it.');
+                          })
+                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
+                    },
+                    {
                       text: 'Other',
                       onPress: () =>
                         reportPostStrict(reel._id, 'other')
@@ -460,6 +477,38 @@ function ReelMoreSheet({
                 <Flag size={20} color={palette.destructive} />
                 <Text style={{color: palette.destructive, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Report</Text>
               </Pressable>
+
+              {!isOwnReel ? (
+                <Pressable
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 14,
+                    paddingVertical: 12,
+                    paddingHorizontal: 18,
+                  }}
+                  onPress={() => {
+                    if (!reel) return;
+                    Alert.alert('Block account?', `Hide all reels from @${reel.author.username}?`, [
+                      {text: 'Cancel', style: 'cancel'},
+                      {
+                        text: 'Block',
+                        style: 'destructive',
+                        onPress: () => {
+                          blockUser(reel.author._id)
+                            .then(() => {
+                              onClose();
+                              onRemoveFromFeed(reel._id);
+                            })
+                            .catch(e => Alert.alert('Block failed', e instanceof Error ? e.message : 'Try again.'));
+                        },
+                      },
+                    ]);
+                  }}>
+                  <X size={20} color={palette.destructive} />
+                  <Text style={{color: palette.destructive, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Block account</Text>
+                </Pressable>
+              ) : null}
 
               <Pressable
                 style={{
@@ -582,6 +631,10 @@ const ReelItem = React.memo(function ReelItem({
   useEffect(() => {
     if (!isActive) setHoldPaused(false);
   }, [isActive]);
+
+  useEffect(() => {
+    setFollowing(item.isFollowing);
+  }, [item.isFollowing]);
 
   const paused = !isActive || holdPaused;
 
@@ -749,8 +802,8 @@ const ReelItem = React.memo(function ReelItem({
         </View>
       )}
 
-      <View
-        pointerEvents="none"
+      <Pressable
+        onPress={toggleReelsMuted}
         style={{
           position: 'absolute',
           top: 14,
@@ -764,26 +817,12 @@ const ReelItem = React.memo(function ReelItem({
           zIndex: 12,
         }}>
         {reelsMuted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
-      </View>
+      </Pressable>
 
-      {/* Single tap: mute all reels. Long press: pause; release: resume. */}
+      {/* Swipe owns the full-screen gesture; mute is handled by the top-right button. */}
       <Pressable
         style={{...StyleSheet.absoluteFillObject, zIndex: 1}}
-        delayLongPress={280}
-        onLongPress={() => {
-          suppressMuteTap.current = true;
-          setHoldPaused(true);
-        }}
-        onPressOut={() => {
-          setHoldPaused(false);
-        }}
-        onPress={() => {
-          if (suppressMuteTap.current) {
-            suppressMuteTap.current = false;
-            return;
-          }
-          toggleReelsMuted();
-        }}
+        pointerEvents="none"
       />
 
       {/* Right side actions */}
@@ -823,9 +862,29 @@ const ReelItem = React.memo(function ReelItem({
           <MoreHorizontal size={28} color="#fff" strokeWidth={2} />
         </Pressable>
 
+        {item.showStoreIcon ? (
+          <Pressable
+            onPress={() => {
+              void recordStoreClick(item._id);
+              const url = item.author.connectedStore?.website;
+              if (url) void openExternalUrl(url);
+            }}
+            style={{alignItems: 'center', gap: 4}}>
+            <ShoppingBag size={28} color="#fff" strokeWidth={2} />
+            <Text style={{color: '#fff', fontSize: 12, fontWeight: '700'}}>Store</Text>
+          </Pressable>
+        ) : null}
+
         {/* Audio tile — static cover (no spin) */}
 
-        <Pressable onPress={() => parentNavigate(navigation, 'ReuseAudio', {audioId: item._id})}>
+        <Pressable
+          onPress={() =>
+            parentNavigate(navigation, 'CreateFlow', {
+              mode: 'reel',
+              bootstrapTs: Date.now(),
+              remixSourcePostId: item._id,
+            })
+          }>
           <View
             style={{
               width: 40,
@@ -853,17 +912,19 @@ const ReelItem = React.memo(function ReelItem({
           {item.author.emailVerified ? (
             <BadgeCheck size={16} color={palette.accent} fill={palette.accent} strokeWidth={2} />
           ) : null}
-          <Pressable
-            onPress={handleFollowToggle}
-            style={{
-              borderWidth: 1,
-              borderColor: '#fff',
-              borderRadius: borderRadiusScale === 'bold' ? 8 : 5,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-            }}>
-            <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>{following ? 'Following' : 'Follow'}</Text>
-          </Pressable>
+          {!isOwnReel ? (
+            <Pressable
+              onPress={handleFollowToggle}
+              style={{
+                borderWidth: 1,
+                borderColor: '#fff',
+                borderRadius: borderRadiusScale === 'bold' ? 8 : 5,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+              }}>
+              <Text style={{color: '#fff', fontSize: 11, fontWeight: '800'}}>{following ? 'Following' : 'Follow'}</Text>
+            </Pressable>
+          ) : null}
         </View>
         {hashtagLine ? (
           <Text
@@ -949,6 +1010,11 @@ const ReelItem = React.memo(function ReelItem({
               {item.music}
             </Text>
           </View>
+        ) : null}
+        {item.remixCredit?.username ? (
+          <Text style={{color: 'rgba(255,255,255,0.82)', fontSize: 11, fontWeight: '700'}} numberOfLines={1}>
+            Remix with @{item.remixCredit.username}
+          </Text>
         ) : null}
       </View>
 
@@ -1214,13 +1280,40 @@ export function ReelsScreen() {
         prev.map(r => (r._id === postId ? {...r, commentsCount} : r)),
       );
     });
+    const unsubShare = socketService.on('post:share', ({postId, sharesCount}) => {
+      setReels(prev => prev.map(r => (r._id === postId ? {...r, sharesCount} : r)));
+    });
     return () => {
       unsubNew();
       unsubLike();
       unsubDelete();
       unsubComment();
+      unsubShare();
     };
   }, [dbUser?._id]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      'bromo:followChanged',
+      ({userId, following}: {userId: string; following: boolean}) => {
+        setReels(prev =>
+          prev.map(r =>
+            String(r.author._id) === String(userId) ? {...r, isFollowing: following} : r,
+          ),
+        );
+      },
+    );
+    const blockSub = DeviceEventEmitter.addListener(
+      'bromo:userBlocked',
+      ({userId}: {userId: string}) => {
+        setReels(prev => prev.filter(r => String(r.author._id) !== String(userId)));
+      },
+    );
+    return () => {
+      sub.remove();
+      blockSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener(
@@ -1368,6 +1461,11 @@ export function ReelsScreen() {
         data={displayReels}
         keyExtractor={item => item._id}
         pagingEnabled
+        snapToInterval={reelHeight > 0 ? reelHeight : undefined}
+        snapToAlignment="start"
+        disableIntervalMomentum
+        bounces={false}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         decelerationRate="fast"
         onLayout={e => {
