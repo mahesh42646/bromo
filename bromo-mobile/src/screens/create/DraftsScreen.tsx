@@ -152,6 +152,7 @@ export function DraftsScreen() {
         caption: rec.caption,
         hashtags: rec.tags?.filter(t => t.startsWith('#')) ?? [],
         tagged: [],
+        collaborators: [],
         location: rec.location
           ? {
               id: rec.locationMeta ? `${rec.locationMeta.lat}_${rec.locationMeta.lng}` : rec.location,

@@ -28,6 +28,10 @@ import {
   ChevronDown,
   Navigation,
   Check,
+  BadgePercent,
+  Building2,
+  FileText,
+  ShieldCheck,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {useAuth} from '../../context/AuthContext';
@@ -37,7 +41,15 @@ import type {AppStackParamList} from '../../navigation/appStackParamList';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 
-const STEPS = ['Basic Info', 'Location', 'Photos', 'Category'] as const;
+const STEPS = ['Basic Info', 'Location', 'Photos', 'Category', 'KYC'] as const;
+
+type StoreKind = 'd2c' | 'b2b' | 'online';
+
+const STORE_TYPES: {id: StoreKind; title: string; body: string}[] = [
+  {id: 'd2c', title: 'D2C Discount Store', body: 'Coin-based customer offers and QR redemption'},
+  {id: 'b2b', title: 'B2B Wholesale Store', body: 'Bulk inquiry leads with no coin discount system'},
+  {id: 'online', title: 'Online Selling Store', body: 'Product discovery with external checkout links'},
+];
 
 export function CreateStoreScreen() {
   const navigation = useNavigation<Nav>();
@@ -58,6 +70,17 @@ export function CreateStoreScreen() {
   const [hasDelivery, setHasDelivery] = useState(false);
   const [category, setCategory] = useState<StoreCategory | ''>('');
   const [description, setDescription] = useState('');
+  const [storeType, setStoreType] = useState<StoreKind>('d2c');
+  const [gstNumber, setGstNumber] = useState('');
+  const [shopActLicense, setShopActLicense] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [panCardUri, setPanCardUri] = useState<string | null>(null);
+  const [aadhaarCardUri, setAadhaarCardUri] = useState<string | null>(null);
+  const [addressProofUri, setAddressProofUri] = useState<string | null>(null);
+  const [storePhotoUris, setStorePhotoUris] = useState<string[]>([]);
+  const [coinsRequired, setCoinsRequired] = useState('1500');
+  const [discountPercent, setDiscountPercent] = useState('10');
+  const [minOrderInr, setMinOrderInr] = useState('0');
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [bannerImageUri, setBannerImageUri] = useState<string | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -78,12 +101,17 @@ export function CreateStoreScreen() {
     );
   }, []);
 
-  const pickImage = useCallback((type: 'profile' | 'banner') => {
-    launchImageLibrary({mediaType: 'photo', quality: 1, selectionLimit: 1}, res => {
-      const asset = res.assets?.[0];
+  const pickImage = useCallback((type: 'profile' | 'banner' | 'pan' | 'aadhaar' | 'address' | 'storePhotos') => {
+    launchImageLibrary({mediaType: 'photo', quality: 1, selectionLimit: type === 'storePhotos' ? 6 : 1}, res => {
+      const assets = res.assets?.filter(a => Boolean(a.uri)) ?? [];
+      const asset = assets[0];
       if (!asset?.uri) return;
       if (type === 'profile') setProfilePhotoUri(asset.uri);
-      else setBannerImageUri(asset.uri);
+      else if (type === 'banner') setBannerImageUri(asset.uri);
+      else if (type === 'pan') setPanCardUri(asset.uri);
+      else if (type === 'aadhaar') setAadhaarCardUri(asset.uri);
+      else if (type === 'address') setAddressProofUri(asset.uri);
+      else setStorePhotoUris(prev => [...prev, ...assets.map(a => a.uri!).slice(0, 6 - prev.length)]);
     });
   }, []);
 
@@ -100,8 +128,22 @@ export function CreateStoreScreen() {
     if (step === 3) {
       if (!category) {Alert.alert('Required', 'Please select a category'); return false;}
     }
+    if (step === 4) {
+      if (!gstNumber.trim() && !shopActLicense.trim()) {Alert.alert('Required', 'Enter GST number or Shop Act license'); return false;}
+      if (!panCardUri) {Alert.alert('Required', 'Upload PAN card'); return false;}
+      if (!aadhaarCardUri) {Alert.alert('Required', 'Upload Aadhaar card'); return false;}
+      if (!addressProofUri) {Alert.alert('Required', 'Upload address proof'); return false;}
+      if (storePhotoUris.length === 0) {Alert.alert('Required', 'Upload at least one store photo'); return false;}
+      if (!acceptedTerms) {Alert.alert('Required', 'Accept Terms & Conditions to continue'); return false;}
+      if (storeType === 'd2c') {
+        const coins = Number(coinsRequired);
+        const discount = Number(discountPercent);
+        if (!Number.isFinite(coins) || coins <= 0) {Alert.alert('Required', 'Enter valid coins required'); return false;}
+        if (!Number.isFinite(discount) || discount <= 0) {Alert.alert('Required', 'Enter valid discount percent'); return false;}
+      }
+    }
     return true;
-  }, [step, name, phone, city, address, lat, lng, category]);
+  }, [step, name, phone, city, address, lat, lng, category, gstNumber, shopActLicense, panCardUri, aadhaarCardUri, addressProofUri, storePhotoUris.length, acceptedTerms, storeType, coinsRequired, discountPercent]);
 
   const handleNext = useCallback(() => {
     if (!validateStep()) return;
@@ -125,9 +167,20 @@ export function CreateStoreScreen() {
         description: description.trim(),
         profilePhotoUri: profilePhotoUri ?? undefined,
         bannerImageUri: bannerImageUri ?? undefined,
+        storeType,
+        gstNumber: gstNumber.trim() || undefined,
+        shopActLicense: shopActLicense.trim() || undefined,
+        acceptedTerms,
+        panCardUri: panCardUri ?? undefined,
+        aadhaarCardUri: aadhaarCardUri ?? undefined,
+        addressProofUri: addressProofUri ?? undefined,
+        storePhotoUris,
+        coinsRequired: storeType === 'd2c' ? Number(coinsRequired) : undefined,
+        discountPercent: storeType === 'd2c' ? Number(discountPercent) : undefined,
+        minOrderInr: storeType === 'd2c' ? Number(minOrderInr || '0') : undefined,
       });
       await refreshDbUser();
-      Alert.alert('Store Created!', 'Your store is now live.', [
+      Alert.alert('Request Pending', 'Your store registration is submitted for admin approval.', [
         {text: 'Manage Store', onPress: () => navigation.replace('ManageStore')},
       ]);
     } catch (e) {
@@ -135,7 +188,7 @@ export function CreateStoreScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [validateStep, category, name, phone, city, address, lat, lng, hasDelivery, description, profilePhotoUri, bannerImageUri, refreshDbUser, navigation]);
+  }, [validateStep, category, name, phone, city, address, lat, lng, hasDelivery, description, profilePhotoUri, bannerImageUri, storeType, gstNumber, shopActLicense, acceptedTerms, panCardUri, aadhaarCardUri, addressProofUri, storePhotoUris, coinsRequired, discountPercent, minOrderInr, refreshDbUser, navigation]);
 
   const mapPreviewUrl =
     lat != null && lng != null
@@ -188,6 +241,39 @@ export function CreateStoreScreen() {
             <View style={s.stepContent}>
               <Text style={[s.stepHeading, {color: palette.foreground}]}>Store Details</Text>
               <Text style={[s.stepSub, {color: palette.foregroundSubtle}]}>Tell customers about your store</Text>
+
+              <Text style={[s.fieldLabel, {color: palette.foregroundSubtle}]}>Store Type *</Text>
+              <View style={s.typeGrid}>
+                {STORE_TYPES.map(type => {
+                  const selected = storeType === type.id;
+                  return (
+                    <Pressable
+                      key={type.id}
+                      onPress={() => setStoreType(type.id)}
+                      style={[
+                        s.typeCard,
+                        {
+                          borderColor: selected ? palette.primary : palette.border,
+                          backgroundColor: selected ? `${palette.primary}18` : palette.glassFaint,
+                        },
+                      ]}>
+                      <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                        {type.id === 'd2c' ? (
+                          <BadgePercent size={18} color={selected ? palette.primary : palette.foregroundSubtle} />
+                        ) : type.id === 'b2b' ? (
+                          <Building2 size={18} color={selected ? palette.primary : palette.foregroundSubtle} />
+                        ) : (
+                          <Store size={18} color={selected ? palette.primary : palette.foregroundSubtle} />
+                        )}
+                        <Text style={[s.typeTitle, {color: selected ? palette.primary : palette.foreground}]}>
+                          {type.title}
+                        </Text>
+                      </View>
+                      <Text style={[s.typeBody, {color: palette.foregroundSubtle}]}>{type.body}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
               <Field label="Store Name *" palette={palette}>
                 <TextInput
@@ -386,6 +472,127 @@ export function CreateStoreScreen() {
               </Field>
             </View>
           )}
+
+          {/* ── Step 4: KYC ── */}
+          {step === 4 && (
+            <View style={s.stepContent}>
+              <Text style={[s.stepHeading, {color: palette.foreground}]}>KYC & Terms</Text>
+              <Text style={[s.stepSub, {color: palette.foregroundSubtle}]}>
+                Required for admin approval before your store goes live
+              </Text>
+
+              <View style={[s.noticeCard, {backgroundColor: `${palette.warning}18`, borderColor: `${palette.warning}55`}]}>
+                <ShieldCheck size={18} color={palette.warning} />
+                <Text style={[s.noticeText, {color: palette.foreground}]}>
+                  Your profile will show Request Pending until admin approves these documents.
+                </Text>
+              </View>
+
+              <Field label="GST Number (or Shop Act below)" palette={palette}>
+                <TextInput
+                  value={gstNumber}
+                  onChangeText={setGstNumber}
+                  placeholder="GSTIN"
+                  autoCapitalize="characters"
+                  placeholderTextColor={palette.placeholder}
+                  style={[s.input, {color: palette.foreground, borderColor: palette.border, backgroundColor: palette.glassFaint}]}
+                />
+              </Field>
+
+              <Field label="Shop Act License (or GST above)" palette={palette}>
+                <TextInput
+                  value={shopActLicense}
+                  onChangeText={setShopActLicense}
+                  placeholder="License number"
+                  placeholderTextColor={palette.placeholder}
+                  style={[s.input, {color: palette.foreground, borderColor: palette.border, backgroundColor: palette.glassFaint}]}
+                />
+              </Field>
+
+              <DocButton label="PAN Card *" uri={panCardUri} palette={palette} onPress={() => pickImage('pan')} />
+              <DocButton label="Aadhaar Card *" uri={aadhaarCardUri} palette={palette} onPress={() => pickImage('aadhaar')} />
+              <DocButton label="Address Proof *" uri={addressProofUri} palette={palette} onPress={() => pickImage('address')} />
+
+              <Text style={[s.fieldLabel, {color: palette.foregroundSubtle, marginTop: 12}]}>Store Photos *</Text>
+              <Pressable
+                onPress={() => pickImage('storePhotos')}
+                style={[s.docButton, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+                <Camera size={18} color={palette.primary} />
+                <Text style={[s.docButtonText, {color: palette.foreground}]}>
+                  {storePhotoUris.length > 0 ? `${storePhotoUris.length} photo(s) selected` : 'Upload store photos'}
+                </Text>
+              </Pressable>
+              {storePhotoUris.length > 0 ? (
+                <View style={s.storePhotoRow}>
+                  {storePhotoUris.map((uri, i) => (
+                    <Image key={`${uri}-${i}`} source={{uri}} style={s.storePhotoThumb} />
+                  ))}
+                </View>
+              ) : null}
+
+              {storeType === 'd2c' ? (
+                <View style={[s.discountBox, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+                  <Text style={[s.discountTitle, {color: palette.foreground}]}>Coin discount rule</Text>
+                  <View style={s.discountRow}>
+                    <Field label="Coins *" palette={palette}>
+                      <TextInput
+                        value={coinsRequired}
+                        onChangeText={setCoinsRequired}
+                        keyboardType="number-pad"
+                        placeholder="1500"
+                        placeholderTextColor={palette.placeholder}
+                        style={[s.input, {color: palette.foreground, borderColor: palette.border, backgroundColor: palette.background}]}
+                      />
+                    </Field>
+                    <Field label="Discount % *" palette={palette}>
+                      <TextInput
+                        value={discountPercent}
+                        onChangeText={setDiscountPercent}
+                        keyboardType="number-pad"
+                        placeholder="10"
+                        placeholderTextColor={palette.placeholder}
+                        style={[s.input, {color: palette.foreground, borderColor: palette.border, backgroundColor: palette.background}]}
+                      />
+                    </Field>
+                  </View>
+                  <Field label="Minimum bill INR" palette={palette}>
+                    <TextInput
+                      value={minOrderInr}
+                      onChangeText={setMinOrderInr}
+                      keyboardType="number-pad"
+                      placeholder="0"
+                      placeholderTextColor={palette.placeholder}
+                      style={[s.input, {color: palette.foreground, borderColor: palette.border, backgroundColor: palette.background}]}
+                    />
+                  </Field>
+                </View>
+              ) : (
+                <View style={[s.noticeCard, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+                  <Building2 size={18} color={palette.primary} />
+                  <Text style={[s.noticeText, {color: palette.foreground}]}>
+                    {storeType === 'b2b'
+                      ? 'B2B stores receive bulk inquiry leads and do not use customer coins.'
+                      : 'Online stores can connect product links without QR coin redemption.'}
+                  </Text>
+                </View>
+              )}
+
+              <View style={[s.toggleRow, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+                <View style={{flex: 1, paddingRight: 12}}>
+                  <Text style={[s.toggleLabel, {color: palette.foreground}]}>Accept Terms & Conditions *</Text>
+                  <Text style={[s.toggleSub, {color: palette.foregroundSubtle}]}>
+                    A timestamped PDF acceptance will be generated for admin legal records.
+                  </Text>
+                </View>
+                <Switch
+                  value={acceptedTerms}
+                  onValueChange={setAcceptedTerms}
+                  trackColor={{false: palette.glassMid, true: `${palette.primary}80`}}
+                  thumbColor={acceptedTerms ? palette.primary : palette.foregroundSubtle}
+                />
+              </View>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -422,6 +629,32 @@ function Field({label, children, palette}: {label: string; children: React.React
     <View style={{marginBottom: 16}}>
       <Text style={[s.fieldLabel, {color: palette.foregroundSubtle}]}>{label}</Text>
       {children}
+    </View>
+  );
+}
+
+function DocButton({
+  label,
+  uri,
+  palette,
+  onPress,
+}: {
+  label: string;
+  uri: string | null;
+  palette: ReturnType<typeof useTheme>['palette'];
+  onPress: () => void;
+}) {
+  return (
+    <View style={{marginBottom: 12}}>
+      <Text style={[s.fieldLabel, {color: palette.foregroundSubtle}]}>{label}</Text>
+      <Pressable
+        onPress={onPress}
+        style={[s.docButton, {backgroundColor: palette.glassFaint, borderColor: uri ? palette.success : palette.border}]}>
+        <FileText size={18} color={uri ? palette.success : palette.primary} />
+        <Text style={[s.docButtonText, {color: palette.foreground}]}>
+          {uri ? 'Document selected' : 'Upload document photo'}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -477,6 +710,41 @@ const s = StyleSheet.create({
   },
   toggleLabel: {fontSize: 14, fontWeight: '700'},
   toggleSub: {fontSize: 12, marginTop: 1},
+  typeGrid: {gap: 10, marginBottom: 18},
+  typeCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    gap: 8,
+  },
+  typeTitle: {fontSize: 14, fontWeight: '900'},
+  typeBody: {fontSize: 12, lineHeight: 17},
+  noticeCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  noticeText: {flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '600'},
+  docButton: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+  },
+  docButtonText: {fontSize: 14, fontWeight: '800'},
+  storePhotoRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 16},
+  storePhotoThumb: {width: 62, height: 62, borderRadius: 10},
+  discountBox: {borderWidth: 1, borderRadius: 14, padding: 12, marginTop: 4, marginBottom: 16},
+  discountTitle: {fontSize: 15, fontWeight: '900', marginBottom: 10},
+  discountRow: {flexDirection: 'row', gap: 12},
   locateBtn: {
     flexDirection: 'row',
     alignItems: 'center',

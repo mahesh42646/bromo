@@ -35,6 +35,7 @@ function isMongoId(s: string): boolean {
 
 function apiMsgToLocal(m: ApiMessage, myDbUserId: string, peerId: string): ChatMessage {
   const isMine = m.senderId._id === myDbUserId || (m.senderId as unknown as string) === myDbUserId;
+  const meta = m.meta ?? {};
   const base = {
     id: m._id,
     peerId,
@@ -58,8 +59,19 @@ function apiMsgToLocal(m: ApiMessage, myDbUserId: string, peerId: string): ChatM
     case 'sticker':
       return {...base, kind: 'sticker' as const, uri: m.mediaUrl};
     case 'location': {
-      const meta = m.meta as {lat?: number; lng?: number; label?: string};
-      return {...base, kind: 'location' as const, lat: meta.lat ?? 0, lng: meta.lng ?? 0, label: meta.label ?? ''};
+      const locationMeta = meta as {lat?: number; lng?: number; label?: string};
+      return {...base, kind: 'location' as const, lat: locationMeta.lat ?? 0, lng: locationMeta.lng ?? 0, label: locationMeta.label ?? ''};
+    }
+    case 'shared_post': {
+      const sharedMeta = meta as {previewUri?: string; authorUsername?: string; authorAvatar?: string; postId?: string};
+      return {
+        ...base,
+        kind: 'shared_post' as const,
+        postId: sharedMeta.postId,
+        previewUri: sharedMeta.previewUri ?? m.mediaUrl,
+        authorUsername: sharedMeta.authorUsername ?? 'creator',
+        authorAvatar: sharedMeta.authorAvatar ?? '',
+      };
     }
     default:
       return {...base, kind: 'text' as const, text: m.text};
@@ -80,6 +92,7 @@ function apiConvToPeer(conv: ApiConversation, myDbUserId: string): ChatPeer {
   const other = conv.otherParticipants.find(p => p._id !== myDbUserId) ?? conv.otherParticipants[0];
   return {
     id: conv._id,
+    userId: other?._id,
     displayName: other?.displayName ?? 'User',
     username: other?.username ?? '',
     avatar: other?.profilePicture ?? '',
@@ -210,6 +223,7 @@ export function MessagingProvider({children, myDbUserId}: Props) {
 
       const peer: ChatPeer = {
         id: convId,
+        userId,
         displayName: userDisplayName,
         username: userUsername,
         avatar: userAvatar,
@@ -261,6 +275,15 @@ export function MessagingProvider({children, myDbUserId}: Props) {
         if (msg.kind === 'audio' && msg.uri) apiData.mediaUrl = msg.uri;
         if (msg.kind === 'location') {
           apiData.meta = {lat: msg.lat, lng: msg.lng, label: msg.label};
+        }
+        if (msg.kind === 'shared_post') {
+          apiData.mediaUrl = msg.previewUri;
+          apiData.meta = {
+            previewUri: msg.previewUri,
+            postId: msg.postId,
+            authorUsername: msg.authorUsername,
+            authorAvatar: msg.authorAvatar,
+          };
         }
         if (msg.replyToId) apiData.meta = {...(apiData.meta ?? {}), replyToId: msg.replyToId};
 

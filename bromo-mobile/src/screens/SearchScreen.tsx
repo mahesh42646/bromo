@@ -12,6 +12,7 @@ import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
 import {useNavigation} from '@react-navigation/native';
 import type {NavigationProp} from '@react-navigation/native';
 import {BadgeCheck, Play, TrendingUp, Hash, MapPin, ShoppingBag, Users} from 'lucide-react-native';
+import Geolocation from '@react-native-community/geolocation';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {ThemedText} from '../components/ui/ThemedText';
@@ -20,7 +21,7 @@ import {Card} from '../components/ui/Card';
 import {Badge} from '../components/ui/Badge';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {searchUsers, getUserSuggestions, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
+import {searchUsers, getUserSuggestions, getNearbyUsers, updateMyLocation, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getExplore, type Post} from '../api/postsApi';
 import {authedFetch} from '../api/authApi';
 import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
@@ -149,11 +150,13 @@ export function SearchScreen() {
   const chipRadius = borderRadiusScale === 'bold' ? 999 : 10;
 
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+  const [nearbyUsers, setNearbyUsers] = useState<Array<SuggestedUser & {distanceMeters?: number}>>([]);
   const [searchResults, setSearchResults] = useState<(SuggestedUser & {followStatus?: string})[]>([]);
   const [explorePosts, setExplorePosts] = useState<Post[]>([]);
   const [exploreAds, setExploreAds] = useState<Ad[]>([]);
   const [trendingTopics, setTrendingTopics] = useState<TrendingTopic[]>(TRENDING_FALLBACK);
   const [loadingPeople, setLoadingPeople] = useState(false);
+  const [loadingNearby, setLoadingNearby] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [loadingExplore, setLoadingExplore] = useState(false);
 
@@ -192,6 +195,20 @@ export function SearchScreen() {
         .then(res => setSuggestions(res.users))
         .catch(() => {})
         .finally(() => setLoadingPeople(false));
+      setLoadingNearby(true);
+      Geolocation.getCurrentPosition(
+        pos => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          updateMyLocation(lat, lng).catch(() => null);
+          getNearbyUsers(lat, lng)
+            .then(res => setNearbyUsers(res.users))
+            .catch(() => setNearbyUsers([]))
+            .finally(() => setLoadingNearby(false));
+        },
+        () => setLoadingNearby(false),
+        {enableHighAccuracy: true, timeout: 12000, maximumAge: 60000},
+      );
     }
     if (activeTab === 'explore' && explorePosts.length === 0) {
       setLoadingExplore(true);
@@ -217,6 +234,10 @@ export function SearchScreen() {
       setSearchResults([]);
       return;
     }
+    if (q.trim().startsWith('#')) {
+      setSearchResults([]);
+      return;
+    }
     setLoadingSearch(true);
     try {
       const res = await searchUsers(q.trim());
@@ -234,6 +255,10 @@ export function SearchScreen() {
   }, [query, handleSearch]);
 
   const showSearchResults = query.trim().length > 0;
+  const hashtagQuery = query.trim().startsWith('#');
+  const hashtagMatches = trendingTopics.filter(topic =>
+    topic.tag.toLowerCase().includes(query.trim().toLowerCase().replace(/^#/, '')),
+  );
 
   return (
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
@@ -258,7 +283,11 @@ export function SearchScreen() {
           placeholder="Search people, tags, places..."
           onSubmitEditing={() => {
             if (query.trim()) {
-              parentNavigate(navigation, 'SearchResults', {query: query.trim()});
+              if (query.trim().startsWith('#')) {
+                parentNavigate(navigation, 'HashtagDetail', {tag: query.trim().replace(/^#/, '')});
+              } else {
+                parentNavigate(navigation, 'SearchResults', {query: query.trim()});
+              }
             }
           }}
         />
@@ -300,9 +329,21 @@ export function SearchScreen() {
         {showSearchResults && (
           <View style={{paddingHorizontal: 14, paddingTop: 12}}>
             <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 10}}>
-              {loadingSearch ? 'Searching...' : `Results for "${query}"`}
+              {hashtagQuery ? 'Top trending hashtags' : loadingSearch ? 'Searching...' : `Results for "${query}"`}
             </ThemedText>
-            {loadingSearch ? (
+            {hashtagQuery ? (
+              <View>
+                {(hashtagMatches.length ? hashtagMatches : trendingTopics).map((topic, index) => (
+                  <Pressable
+                    key={topic.id}
+                    onPress={() => parentNavigate(navigation, 'HashtagDetail', {tag: topic.tag.replace(/^#/, '')})}
+                    style={{paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: palette.border}}>
+                    <Text style={{color: palette.foreground, fontWeight: '900'}}>{index + 1}. {topic.tag}</Text>
+                    <Text style={{color: palette.foregroundMuted, marginTop: 2, fontSize: 12}}>{topic.posts}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : loadingSearch ? (
               <ActivityIndicator color={palette.primary} />
             ) : searchResults.length === 0 ? (
               <ThemedText variant="muted" style={{textAlign: 'center', paddingVertical: 20}}>
@@ -373,7 +414,13 @@ export function SearchScreen() {
                             {chunk.filter((_, i) => i % 3 === col).map((post, i) => (
                               <Pressable
                                 key={post._id}
-                                onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
+                                onPress={() => {
+                                  if (post.type === 'reel' || post.mediaType === 'video') {
+                                    parentNavigate(navigation, 'Main', {screen: 'Reels', params: {initialPostId: post._id}});
+                                  } else {
+                                    parentNavigate(navigation, 'PostDetail', {postId: post._id});
+                                  }
+                                }}
                                 style={{position: 'relative'}}>
                                 <Image
                                   source={{uri: post.mediaType === 'video' ? (post.thumbnailUrl ?? post.mediaUrl) : post.mediaUrl}}
@@ -408,6 +455,23 @@ export function SearchScreen() {
         {/* People tab */}
         {!showSearchResults && activeTab === 'people' && (
           <View style={{padding: 14, gap: 12}}>
+            <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 4}}>Nearby People</ThemedText>
+            {loadingNearby ? (
+              <ActivityIndicator color={palette.primary} />
+            ) : nearbyUsers.length > 0 ? (
+              nearbyUsers.slice(0, 6).map(user => (
+                <PersonRow
+                  key={`nearby-${user._id}`}
+                  user={user}
+                  navigation={navigation}
+                  palette={palette}
+                  borderRadiusScale={borderRadiusScale}
+                  currentUserId={dbUser?._id}
+                />
+              ))
+            ) : (
+              <ThemedText variant="muted">No nearby users found yet.</ThemedText>
+            )}
             <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 4}}>Suggested People</ThemedText>
             {loadingPeople ? (
               <ActivityIndicator color={palette.primary} />
@@ -429,11 +493,24 @@ export function SearchScreen() {
           </View>
         )}
 
-        {!showSearchResults && (activeTab === 'tags' || activeTab === 'places' || activeTab === 'shops') && (
+        {!showSearchResults && activeTab === 'tags' && (
+          <View style={{padding: 14}}>
+            <ThemedText variant="heading" style={{fontSize: 14, marginBottom: 12}}>Trending Hashtags</ThemedText>
+            {trendingTopics.map((topic, index) => (
+              <Pressable
+                key={topic.id}
+                onPress={() => parentNavigate(navigation, 'HashtagDetail', {tag: topic.tag.replace(/^#/, '')})}
+                style={{paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: palette.border}}>
+                <Text style={{color: palette.foreground, fontWeight: '900'}}>{index + 1}. {topic.tag}</Text>
+                <Text style={{color: palette.foregroundMuted, marginTop: 2, fontSize: 12}}>{topic.posts}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {!showSearchResults && (activeTab === 'places' || activeTab === 'shops') && (
           <View style={{padding: 40, alignItems: 'center', gap: 16}}>
-            {activeTab === 'tags' ? (
-              <Hash size={40} color={palette.mutedForeground} strokeWidth={1.5} />
-            ) : activeTab === 'places' ? (
+            {activeTab === 'places' ? (
               <MapPin size={40} color={palette.mutedForeground} strokeWidth={1.5} />
             ) : (
               <ShoppingBag size={40} color={palette.mutedForeground} strokeWidth={1.5} />

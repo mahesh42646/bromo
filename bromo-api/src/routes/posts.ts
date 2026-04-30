@@ -1477,6 +1477,56 @@ postsRouter.get(
 
 // ── GET /posts/explore ──────────────────────────────────────────────
 postsRouter.get(
+  "/hashtag/:tag",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const dbUser = req.dbUser;
+      const tag = String(req.params.tag ?? "").replace(/^#/, "").trim().toLowerCase();
+      if (!tag) return res.status(400).json({message: "tag required"});
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const skip = (page - 1) * PAGE_SIZE;
+      const follows = dbUser
+        ? await Follow.find({followerId: dbUser._id, status: "accepted"}).select("followingId").lean()
+        : [];
+      const followingIds = follows.map((f) => f.followingId);
+      const followingSet = new Set(followingIds.map(String));
+      const blockedIds = blockedIdsForUser(dbUser);
+      const tags = [tag, `#${tag}`];
+      const posts = await Post.find({
+        type: {$in: ["post", "reel"]},
+        ...VISIBLE_POST,
+        ...DISCOVER_PUBLIC_POST,
+        ...authorClause(undefined, blockedIds),
+        tags: {$in: tags},
+      })
+        .sort({trendingScore: -1, viewsCount: -1, createdAt: -1})
+        .skip(skip)
+        .limit(PAGE_SIZE)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean();
+
+      const likes = dbUser
+        ? await Like.find({
+            userId: dbUser._id,
+            targetType: "post",
+            targetId: {$in: posts.map((p) => p._id)},
+          }).select("targetId").lean()
+        : [];
+      const likedSet = new Set(likes.map((l) => String(l.targetId)));
+      const result = posts.map((p) =>
+        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.json({posts: result, page, hasMore: posts.length === PAGE_SIZE});
+    } catch (err) {
+      console.error("[posts] hashtag error:", err);
+      return res.status(500).json({message: "Failed to fetch hashtag posts"});
+    }
+  },
+);
+
+postsRouter.get(
   "/explore",
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {

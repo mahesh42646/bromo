@@ -40,6 +40,7 @@ export type CreateDraftState = {
   caption: string;
   hashtags: string[];
   tagged: TaggedUser[];
+  collaborators: TaggedUser[];
   location: LocationTag | null;
   products: ProductAttachment[];
   stickers: StickerPlacement[];
@@ -80,6 +81,7 @@ const initialDraft: Draft = {
   caption: '',
   hashtags: [],
   tagged: [],
+  collaborators: [],
   location: null,
   products: [],
   stickers: [],
@@ -113,6 +115,7 @@ type Ctx = {
   setCaption: (s: string) => void;
   setHashtags: (h: string[]) => void;
   setTagged: (t: TaggedUser[]) => void;
+  setCollaborators: (t: TaggedUser[]) => void;
   setLocation: (l: LocationTag | null) => void;
   setProducts: (p: ProductAttachment[]) => void;
   addSticker: (s: Omit<StickerPlacement, 'id'>) => void;
@@ -283,6 +286,10 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
     setDraft(d => ({...d, tagged}));
   }, []);
 
+  const setCollaborators = useCallback((collaborators: TaggedUser[]) => {
+    setDraft(d => ({...d, collaborators}));
+  }, []);
+
   const setLocation = useCallback((location: LocationTag | null) => {
     setDraft(d => ({...d, location}));
   }, []);
@@ -397,6 +404,7 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
       setCaption,
       setHashtags,
       setTagged,
+      setCollaborators,
       setLocation,
       setProducts,
       addSticker,

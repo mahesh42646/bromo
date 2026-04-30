@@ -143,6 +143,27 @@ export type DbUser = {
   followingCount: number;
   postsCount: number;
   storeId?: string | null;
+  isVerified?: boolean;
+  verificationStatus?: 'none' | 'pending' | 'verified' | 'rejected';
+  isCreator?: boolean;
+  creatorStatus?: 'none' | 'pending' | 'verified' | 'rejected';
+  creatorBadge?: boolean;
+  creatorForm?: {
+    fullName?: string;
+    category?: string;
+    bio?: string;
+    website?: string;
+    documents?: string[];
+    submittedAt?: string;
+    reviewedAt?: string;
+    rejectionReason?: string;
+  };
+  connectedStore?: {
+    enabled?: boolean;
+    website?: string;
+    planId?: string;
+    purchasedAt?: string;
+  };
 };
 
 export async function getEmailByUsername(username: string): Promise<{email: string}> {
@@ -251,6 +272,56 @@ export async function checkUsername(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function submitCreatorForm(data: {
+  fullName: string;
+  category: string;
+  bio: string;
+  website?: string;
+  documents?: string[];
+}): Promise<{user: DbUser}> {
+  const res = await authedFetch('/user-auth/creator-form', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Failed to submit creator form');
+  }
+  const out = await res.json() as {user: DbUser};
+  primeMeSession({user: out.user});
+  return out;
+}
+
+export async function connectMyStore(data: {website: string; planId?: string}): Promise<{user: DbUser}> {
+  const res = await authedFetch('/user-auth/connected-store', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Failed to connect store');
+  }
+  const out = await res.json() as {user: DbUser};
+  primeMeSession({user: out.user});
+  return out;
+}
+
+export async function registerDeviceToken(token: string): Promise<void> {
+  const res = await authedFetch('/user-auth/device-token', {
+    method: 'POST',
+    body: JSON.stringify({token}),
+  });
+  if (!res.ok) throw new Error('Failed to register device token');
+}
+
+export async function removeDeviceToken(token: string): Promise<void> {
+  const res = await authedFetch('/user-auth/device-token', {
+    method: 'DELETE',
+    body: JSON.stringify({token}),
+  });
+  if (!res.ok) throw new Error('Failed to remove device token');
 }
 
 export async function setUsername(

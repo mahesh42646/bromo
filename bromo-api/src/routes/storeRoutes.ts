@@ -391,6 +391,7 @@ storeRouter.get("/", async (req: FirebaseAuthedRequest, res: Response) => {
       sortBy,
       minRating,
       plan,
+      storeType,
     } = req.query as Record<string, string>;
 
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
@@ -401,6 +402,7 @@ storeRouter.get("/", async (req: FirebaseAuthedRequest, res: Response) => {
     if (city) filter.city = { $regex: new RegExp(escapeRegExp(city), "i") };
     if (delivery === "true") filter.hasDelivery = true;
     if (category) filter.category = category;
+    if (storeType === "d2c" || storeType === "b2b" || storeType === "online") filter.storeType = storeType;
     if (plan && isPaidPlanId(plan)) {
       filter["subscription.planId"] = plan;
       filter["subscription.status"] = "active";

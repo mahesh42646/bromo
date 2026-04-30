@@ -1,9 +1,11 @@
 import React, {useCallback, useMemo, useState} from 'react';
 import {
+  Alert,
   ActivityIndicator,
   FlatList,
   Image,
   Pressable,
+  Share,
   StatusBar,
   Text,
   View,
@@ -18,7 +20,8 @@ import type {ChatListFilter} from '../../messaging/messageTypes';
 import {useMessaging} from '../../messaging/MessagingContext';
 import {formatThreadRowTime} from '../../messaging/formatTime';
 import type {MessagesStackParamList} from '../../navigation/MessagesStackNavigator';
-import {searchUsers} from '../../api/followApi';
+import {blockUser, searchUsers} from '../../api/followApi';
+import {muteConversation, unmuteConversation} from '../../api/chatApi';
 
 type Nav = NativeStackNavigationProp<MessagesStackParamList, 'ChatList'>;
 
@@ -36,6 +39,7 @@ export function ChatListScreen() {
   const [filter, setFilter] = useState<ChatListFilter>('all');
   const [userSearchResults, setUserSearchResults] = useState<{_id: string; displayName: string; username: string; profilePicture: string}[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
+  const [mutedThreads, setMutedThreads] = useState<Set<string>>(() => new Set());
   const {borderRadiusScale} = contract.brandGuidelines;
   const chipR = borderRadiusScale === 'bold' ? 999 : 12;
 
@@ -58,6 +62,53 @@ export function ChatListScreen() {
       navigation.navigate('ChatThread', {peerId: convId});
     } catch {}
   }, [openThreadForUser, navigation]);
+
+  const openThreadActions = useCallback((peer: {id: string; userId?: string; displayName: string; username: string}) => {
+    const muted = mutedThreads.has(peer.id);
+    Alert.alert(peer.displayName, `@${peer.username}`, [
+      {
+        text: 'Share',
+        onPress: () => {
+          const url = `https://bromo.app/u/${peer.username}`;
+          Share.share({message: `${peer.displayName} on BROMO\n${url}`, url}).catch(() => null);
+        },
+      },
+      {
+        text: muted ? 'Unmute' : 'Mute',
+        onPress: async () => {
+          setMutedThreads(prev => {
+            const next = new Set(prev);
+            if (muted) next.delete(peer.id);
+            else next.add(peer.id);
+            return next;
+          });
+          try {
+            if (muted) await unmuteConversation(peer.id);
+            else await muteConversation(peer.id);
+          } catch (err) {
+            Alert.alert('Mute failed', err instanceof Error ? err.message : 'Could not update mute status');
+          }
+        },
+      },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: async () => {
+          if (!peer.userId) {
+            Alert.alert('Block unavailable', 'Open this chat first so the user profile can be resolved.');
+            return;
+          }
+          try {
+            await blockUser(peer.userId);
+            Alert.alert('Blocked', `${peer.displayName} is blocked.`);
+          } catch (err) {
+            Alert.alert('Block failed', err instanceof Error ? err.message : 'Could not block this user');
+          }
+        },
+      },
+      {text: 'Cancel', style: 'cancel'},
+    ]);
+  }, [mutedThreads]);
 
   // Search real users when query changes
   React.useEffect(() => {
@@ -204,6 +255,7 @@ export function ChatListScreen() {
         renderItem={({item}) => (
           <Pressable
             onPress={() => openThread(item.peer.id)}
+            onLongPress={() => openThreadActions(item.peer)}
             style={{
               flexDirection: 'row',
               alignItems: 'center',

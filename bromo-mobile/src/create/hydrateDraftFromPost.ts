@@ -115,6 +115,7 @@ export function hydrateDraftFromPost(post: Post): CreateDraftState {
     caption,
     hashtags,
     tagged,
+    collaborators: [],
     location,
     products,
     stickers: [],

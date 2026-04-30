@@ -1503,7 +1503,7 @@ function makeStyles(p: ThemePalette) {
       borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: p.surfaceElevated,
+      backgroundColor: p.surfaceHigh,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: p.borderHeavy,
     },

@@ -100,6 +100,7 @@ const FEED_CATEGORY_CHIPS: Array<{
 type SheetKey =
   | 'location'
   | 'people'
+  | 'collab'
   | 'products'
   | 'music'
   | 'poll'
@@ -677,6 +678,7 @@ export function ShareScreen() {
     setCaption,
     setHashtags,
     setTagged,
+    setCollaborators,
     setLocation,
     setProducts,
     setPoll,
@@ -719,6 +721,8 @@ export function ShareScreen() {
   const [locationHits, setLocationHits] = useState<PlaceItem[]>([]);
   const [peopleQuery, setPeopleQuery] = useState('');
   const [peopleHits, setPeopleHits] = useState<SuggestedUser[]>([]);
+  const [collabQuery, setCollabQuery] = useState('');
+  const [collabHits, setCollabHits] = useState<SuggestedUser[]>([]);
   const [productQuery, setProductQuery] = useState('');
   const [productHits, setProductHits] = useState<AffiliateProduct[]>([]);
   const [busy, setBusy] = useState<'draft' | 'publish' | 'schedule' | null>(null);
@@ -822,6 +826,27 @@ export function ShareScreen() {
       if (timers.people) clearTimeout(timers.people);
     };
   }, [peopleQuery]);
+
+  useEffect(() => {
+    const timers = debounceRefs.current;
+    if (timers.collab) clearTimeout(timers.collab);
+    timers.collab = setTimeout(async () => {
+      const query = collabQuery.trim();
+      if (!query) {
+        setCollabHits([]);
+        return;
+      }
+      try {
+        const {users} = await searchUsers(query);
+        setCollabHits(users.slice(0, 12));
+      } catch {
+        setCollabHits([]);
+      }
+    }, 260);
+    return () => {
+      if (timers.collab) clearTimeout(timers.collab);
+    };
+  }, [collabQuery]);
 
   useEffect(() => {
     const timers = debounceRefs.current;
@@ -1140,6 +1165,7 @@ export function ShareScreen() {
             : undefined;
 
         const taggedUserIds = draft.tagged.map(t => t.id).filter(Boolean);
+        const collaboratorIds = draft.collaborators.map(t => t.id).filter(Boolean);
         const productIds = draft.products.map(p => p.id).filter(Boolean);
         const pollPayload =
           draft.poll.enabled && draft.poll.options.filter(Boolean).length >= 2
@@ -1203,6 +1229,7 @@ export function ShareScreen() {
             music: draft.selectedAudio?.title,
             tags: draft.tagged.map(t => t.username),
             taggedUserIds,
+            collaboratorIds,
             productIds,
             settings,
             clientEditMeta,
@@ -1223,6 +1250,7 @@ export function ShareScreen() {
               tags: draft.tagged.map(t => t.username),
               feedCategory,
               taggedUserIds,
+              collaboratorIds,
               productIds,
               originalAudioId,
               remixOfPostId,
@@ -1264,6 +1292,7 @@ export function ShareScreen() {
             music: draft.selectedAudio?.title,
             tags: draft.tagged.map(t => t.username),
             taggedUserIds,
+            collaboratorIds,
             productIds,
             originalAudioId,
             remixOfPostId,
@@ -1339,6 +1368,14 @@ export function ShareScreen() {
       ? `${first} +${draft.tagged.length - 1}`
       : first;
   }, [draft.tagged]);
+
+  const collaboratorSummary = useMemo(() => {
+    if (!draft.collaborators.length) return undefined;
+    const first = draft.collaborators[0].username;
+    return draft.collaborators.length > 1
+      ? `${first} +${draft.collaborators.length - 1}`
+      : first;
+  }, [draft.collaborators]);
 
   const productSummary = useMemo(() => {
     if (!draft.products.length) return undefined;
@@ -1520,6 +1557,16 @@ export function ShareScreen() {
           styles={styles}
           palette={palette}
         />
+        {draft.mode === 'reel' ? (
+          <ActionListRow
+            icon={<Users size={18} color={palette.foreground} />}
+            label="Invite Collaborator"
+            value={collaboratorSummary}
+            onPress={() => openSheet('collab')}
+            styles={styles}
+            palette={palette}
+          />
+        ) : null}
         <ActionListRow
           icon={<MapPin size={18} color={palette.foreground} />}
           label="Add location"
@@ -1857,6 +1904,86 @@ export function ShareScreen() {
               {peopleQuery
                 ? 'No people match that search'
                 : 'Search to find people you know'}
+            </Text>
+          )}
+        </ScrollView>
+      </ActionSheet>
+
+      {/* Collaborators */}
+      <ActionSheet
+        visible={activeSheet === 'collab'}
+        onClose={closeSheet}
+        title="Invite Collaborator"
+        subtitle="Reel appears on both profiles after posting"
+        palette={palette}>
+        <View style={styles.searchBox}>
+          <Search size={16} color={palette.foregroundMuted} />
+          <TextInput
+            value={collabQuery}
+            onChangeText={setCollabQuery}
+            placeholder="Search collaborator"
+            placeholderTextColor={palette.placeholder}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+        {draft.collaborators.length ? (
+          <View style={[styles.chipRow, {marginBottom: 10}]}>
+            {draft.collaborators.map(person => (
+              <Pressable
+                key={person.id}
+                onPress={() =>
+                  setCollaborators(draft.collaborators.filter(item => item.id !== person.id))
+                }
+                style={styles.chipSelected}>
+                <Users size={12} color={palette.accent} />
+                <Text style={styles.chipSelectedText}>@{person.username}</Text>
+                <X size={12} color={palette.accent} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        <ScrollView keyboardShouldPersistTaps="handled">
+          {collabHits.length ? (
+            collabHits.map(person => {
+              const active = draft.collaborators.some(item => item.id === person._id);
+              return (
+                <Pressable
+                  key={person._id}
+                  onPress={() => {
+                    if (active) {
+                      setCollaborators(
+                        draft.collaborators.filter(item => item.id !== person._id),
+                      );
+                    } else {
+                      setCollaborators([
+                        ...draft.collaborators,
+                        {
+                          id: person._id,
+                          username: person.username,
+                          avatar: person.profilePicture || undefined,
+                        },
+                      ]);
+                    }
+                  }}
+                  style={styles.sheetItem}>
+                  <View style={styles.actionRowIcon}>
+                    <Users size={18} color={palette.foregroundMuted} />
+                  </View>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.sheetItemTitle}>@{person.username}</Text>
+                    {person.displayName ? (
+                      <Text style={styles.sheetItemMeta}>{person.displayName}</Text>
+                    ) : null}
+                  </View>
+                  {active ? <Check size={18} color={palette.accent} /> : null}
+                </Pressable>
+              );
+            })
+          ) : (
+            <Text style={styles.sheetEmpty}>
+              {collabQuery ? 'No collaborators match that search' : 'Search users to invite as collaborators'}
             </Text>
           )}
         </ScrollView>

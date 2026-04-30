@@ -4,6 +4,7 @@ export type MessageDelivery = 'sending' | 'sent' | 'delivered' | 'read';
 
 export type ChatPeer = {
   id: string;
+  userId?: string;
   displayName: string;
   username: string;
   avatar: string;
@@ -53,6 +54,7 @@ export type LocationMessage = MessageBase & {
 
 export type SharedPostMessage = MessageBase & {
   kind: 'shared_post';
+  postId?: string;
   previewUri: string;
   authorUsername: string;
   authorAvatar: string;

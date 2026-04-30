@@ -3,6 +3,7 @@ import type { ComponentType } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   AppState,
   DeviceEventEmitter,
   FlatList,
@@ -1634,10 +1635,23 @@ export function HomeScreen() {
     if (storyAds.length > 0) prefetchAdMedia(storyAds);
   }, [storyAds]);
 
+  const feedChromeScrollY = useRef(new Animated.Value(0)).current;
+  const feedChromeHeight = feedChromeScrollY.interpolate({
+    inputRange: [0, 110],
+    outputRange: [110, 0],
+    extrapolate: 'clamp',
+  });
+  const feedChromeOpacity = feedChromeScrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
   return (
     <ThemedSafeScreen edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
+      <Animated.View style={{height: feedChromeHeight, opacity: feedChromeOpacity, overflow: 'hidden'}}>
       {/* Header: brand icon + title (left), flexible gap, actions (right, spaced) */}
       <View
         style={{
@@ -1808,6 +1822,7 @@ export function HomeScreen() {
           );
         })}
       </ScrollView>
+      </Animated.View>
 
       <View style={{ flex: 1 }}>
         <FlatList
@@ -1825,6 +1840,8 @@ export function HomeScreen() {
           }
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.2}
+          onScroll={event => feedChromeScrollY.setValue(event.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={16}
           initialNumToRender={2}
           maxToRenderPerBatch={2}
           windowSize={3}

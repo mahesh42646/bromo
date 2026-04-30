@@ -10,6 +10,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
@@ -26,11 +27,24 @@ import {
   Star,
   Eye,
   BadgeCheck,
+  BadgePercent,
+  Calculator,
   Crown,
+  Send,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
-import {getStore, listProducts, favoriteStore, unfavoriteStore, type Store, type StoreProduct} from '../../api/storeApi';
+import {
+  calculateStoreRedemption,
+  createB2BLead,
+  getStore,
+  listProducts,
+  redeemStoreOffer,
+  favoriteStore,
+  unfavoriteStore,
+  type Store,
+  type StoreProduct,
+} from '../../api/storeApi';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
@@ -48,6 +62,18 @@ export function StorePublicProfileScreen() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [favorited, setFavorited] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
+  const [leadPhone, setLeadPhone] = useState('');
+  const [leadDetails, setLeadDetails] = useState('');
+  const [billAmount, setBillAmount] = useState('');
+  const [redeemPreview, setRedeemPreview] = useState<{
+    payableInr: number;
+    discountInr: number;
+    coinsRequired: number;
+    discountPercent: number;
+    eligible: boolean;
+    message: string;
+  } | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -96,6 +122,62 @@ export function StorePublicProfileScreen() {
       }
     });
   }, [store]);
+
+  const submitB2BLead = useCallback(async () => {
+    if (!store) return;
+    if (!leadPhone.trim() || !leadDetails.trim()) {
+      Alert.alert('Required', 'Enter contact number and inquiry details.');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await createB2BLead(store._id, {
+        contactName: 'BROMO buyer',
+        contactPhone: leadPhone.trim(),
+        details: leadDetails.trim(),
+      });
+      setLeadPhone('');
+      setLeadDetails('');
+      Alert.alert('Inquiry sent', 'The store owner received your bulk inquiry lead.');
+    } catch (err) {
+      Alert.alert('Inquiry failed', err instanceof Error ? err.message : 'Could not submit inquiry');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [store, leadPhone, leadDetails]);
+
+  const calculateRedemption = useCallback(async () => {
+    if (!store) return;
+    const total = Number(billAmount);
+    if (!Number.isFinite(total) || total <= 0) {
+      Alert.alert('Required', 'Enter valid bill amount.');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const preview = await calculateStoreRedemption(store._id, total);
+      setRedeemPreview(preview);
+    } catch (err) {
+      Alert.alert('Calculator', err instanceof Error ? err.message : 'Could not calculate discount');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [store, billAmount]);
+
+  const redeemOffer = useCallback(async () => {
+    if (!store) return;
+    const total = Number(billAmount);
+    if (!Number.isFinite(total) || total <= 0) return;
+    setActionLoading(true);
+    try {
+      const result = await redeemStoreOffer(store._id, total);
+      Alert.alert('Offer redeemed', `${result.message}. Store owner has been notified.`);
+    } catch (err) {
+      Alert.alert('Redeem failed', err instanceof Error ? err.message : 'Could not redeem offer');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [store, billAmount]);
 
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = activeCategory === 'All' ? products : products.filter(p => p.category === activeCategory);
@@ -216,6 +298,25 @@ export function StorePublicProfileScreen() {
             <Text style={[s.descText, {color: palette.foreground}]}>{store.description}</Text>
           ) : null}
 
+          <View style={[s.storeTypeCard, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+            {store.storeType === 'b2b' ? (
+              <>
+                <Send size={16} color={palette.primary} />
+                <Text style={[s.storeTypeText, {color: palette.foreground}]}>B2B wholesale store · send a bulk inquiry lead</Text>
+              </>
+            ) : store.storeType === 'online' ? (
+              <>
+                <Package size={16} color={palette.primary} />
+                <Text style={[s.storeTypeText, {color: palette.foreground}]}>Online selling store · buy from product links</Text>
+              </>
+            ) : (
+              <>
+                <BadgePercent size={16} color={palette.primary} />
+                <Text style={[s.storeTypeText, {color: palette.foreground}]}>D2C discount store · redeem offers with earned coins</Text>
+              </>
+            )}
+          </View>
+
           {/* CTA buttons */}
           <View style={s.ctaRow}>
             <Pressable
@@ -244,6 +345,64 @@ export function StorePublicProfileScreen() {
             </Pressable>
           </View>
         </View>
+
+        {store.storeType === 'b2b' ? (
+          <View style={[s.actionPanel, {borderColor: palette.border, backgroundColor: palette.card}]}>
+            <Text style={[s.actionTitle, {color: palette.foreground}]}>Bulk Inquiry</Text>
+            <TextInput
+              value={leadPhone}
+              onChangeText={setLeadPhone}
+              placeholder="Contact number"
+              keyboardType="phone-pad"
+              placeholderTextColor={palette.placeholder}
+              style={[s.actionInput, {borderColor: palette.border, backgroundColor: palette.input, color: palette.foreground}]}
+            />
+            <TextInput
+              value={leadDetails}
+              onChangeText={setLeadDetails}
+              placeholder="Quantity, product, delivery city, business details"
+              multiline
+              placeholderTextColor={palette.placeholder}
+              style={[s.actionInput, s.actionTextarea, {borderColor: palette.border, backgroundColor: palette.input, color: palette.foreground}]}
+            />
+            <Pressable disabled={actionLoading} onPress={submitB2BLead} style={[s.actionButton, {backgroundColor: palette.primary}]}>
+              <Text style={{color: palette.primaryForeground, fontWeight: '900'}}>{actionLoading ? 'Sending…' : 'Send Inquiry'}</Text>
+            </Pressable>
+          </View>
+        ) : store.storeType === 'd2c' && store.coinDiscountRule?.active ? (
+          <View style={[s.actionPanel, {borderColor: palette.border, backgroundColor: palette.card}]}>
+            <Text style={[s.actionTitle, {color: palette.foreground}]}>Coin Discount Calculator</Text>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 12, marginBottom: 10}}>
+              Rule: {store.coinDiscountRule.coinsRequired} coins = {store.coinDiscountRule.discountPercent}% discount
+            </Text>
+            <TextInput
+              value={billAmount}
+              onChangeText={setBillAmount}
+              placeholder="Bill total in ₹"
+              keyboardType="number-pad"
+              placeholderTextColor={palette.placeholder}
+              style={[s.actionInput, {borderColor: palette.border, backgroundColor: palette.input, color: palette.foreground}]}
+            />
+            {redeemPreview ? (
+              <View style={[s.redeemResult, {borderColor: redeemPreview.eligible ? palette.success : palette.warning}]}>
+                <Calculator size={16} color={redeemPreview.eligible ? palette.success : palette.warning} />
+                <Text style={{color: palette.foreground, flex: 1, fontWeight: '800'}}>
+                  {redeemPreview.eligible
+                    ? `Deduct ${redeemPreview.coinsRequired} coins. Pay ₹${redeemPreview.payableInr} to Store.`
+                    : redeemPreview.message || 'Not eligible'}
+                </Text>
+              </View>
+            ) : null}
+            <View style={{flexDirection: 'row', gap: 10}}>
+              <Pressable disabled={actionLoading} onPress={calculateRedemption} style={[s.actionButton, {backgroundColor: palette.glassFaint, borderWidth: 1, borderColor: palette.border, flex: 1}]}>
+                <Text style={{color: palette.foreground, fontWeight: '900'}}>Calculate</Text>
+              </Pressable>
+              <Pressable disabled={actionLoading || !redeemPreview?.eligible} onPress={redeemOffer} style={[s.actionButton, {backgroundColor: redeemPreview?.eligible ? palette.primary : palette.glassMid, flex: 1}]}>
+                <Text style={{color: palette.primaryForeground, fontWeight: '900'}}>Redeem</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         {/* Category filter */}
         {categories.length > 1 && (
@@ -408,6 +567,16 @@ const s = StyleSheet.create({
   statText: {fontSize: 12},
   addressText: {fontSize: 13, flex: 1},
   descText: {fontSize: 13, lineHeight: 19, marginTop: 8},
+  storeTypeCard: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  storeTypeText: {fontSize: 12, fontWeight: '800', flex: 1},
   ctaRow: {flexDirection: 'row', gap: 10, marginTop: 16},
   ctaBtn: {
     flex: 1,
@@ -421,6 +590,12 @@ const s = StyleSheet.create({
   ctaBtnText: {fontSize: 13, fontWeight: '700'},
   catScrollContent: {paddingHorizontal: 16, paddingVertical: 12, gap: 8},
   catPill: {paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1},
+  actionPanel: {marginHorizontal: 16, marginTop: 14, padding: 14, borderRadius: 16, borderWidth: 1, gap: 10},
+  actionTitle: {fontSize: 16, fontWeight: '900'},
+  actionInput: {borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14},
+  actionTextarea: {minHeight: 82, textAlignVertical: 'top'},
+  actionButton: {height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center'},
+  redeemResult: {borderWidth: 1, borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8},
   productsSection: {paddingHorizontal: 16, paddingTop: 4},
   emptyProducts: {
     alignItems: 'center',

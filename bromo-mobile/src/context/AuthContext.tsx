@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import auth, {type FirebaseAuthTypes} from '@react-native-firebase/auth';
 import {socketService} from '../services/socketService';
+import {registerPushDevice, unregisterPushDevice} from '../services/pushRegistration';
 import {GoogleSignin} from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -104,12 +105,14 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
             AsyncStorage.setItem(K_DB_USER, JSON.stringify(result.user));
             // Connect socket after successful auth
             socketService.connect().catch(() => null);
+            registerPushDevice().catch(() => null);
           }
         } catch {
           // keep cached value if network fails
           socketService.connect().catch(() => null);
         }
       } else {
+        unregisterPushDevice().catch(() => null);
         setDbUser(null);
         AsyncStorage.removeItem(K_DB_USER);
         socketService.disconnect();
@@ -267,6 +270,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     await resetViewQueueForLogout();
     await clearStoriesFeedCache();
     await clearStoryVideoCache();
+    await unregisterPushDevice();
     await auth().signOut();
     setDbUser(null);
     AsyncStorage.removeItem(K_DB_USER);

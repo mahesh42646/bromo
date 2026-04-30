@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {ActivityIndicator, Alert, FlatList, Image, Pressable, Share, Text, TextInput, TouchableOpacity, View} from 'react-native';
+import Geolocation from '@react-native-community/geolocation';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
@@ -10,9 +11,10 @@ import {useMessaging} from '../../../messaging/MessagingContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
-import {getFollowing, type SuggestedUser} from '../../../api/followApi';
-import {searchOriginalAudios, useOriginalAudio, type OriginalAudio} from '../../../api/postsApi';
+import {followUser, getFollowing, getNearbyUsers, updateMyLocation, type SuggestedUser} from '../../../api/followApi';
+import {getHashtagPosts, searchOriginalAudios, useOriginalAudio, type OriginalAudio, type Post} from '../../../api/postsApi';
 import {parentNavigate} from '../../../navigation/parentNavigate';
+import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 
@@ -198,11 +200,53 @@ export function SearchResultsScreen() {
 
 export function HashtagDetailScreen() {
   const route = useRoute<RouteProp<AppStackParamList, 'HashtagDetail'>>();
+  const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    getHashtagPosts(route.params.tag, 1)
+      .then(res => {
+        if (alive) setPosts(res.posts);
+      })
+      .catch(() => {
+        if (alive) setPosts([]);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [route.params.tag]);
+
   return (
     <SopChrome title={`#${route.params.tag}`}>
-      <SopMeta label="Hashtag / category landing — grid of posts (mock)." />
-      <Image source={{uri: MOCK_POST.image}} style={{width: '100%', height: 200, borderRadius: 12}} />
+      <SopMeta label={`${posts.length} posts and videos under this hashtag.`} />
+      {loading ? (
+        <ActivityIndicator color={palette.primary} />
+      ) : posts.length === 0 ? (
+        <Text style={{color: palette.mutedForeground}}>No posts found for this hashtag.</Text>
+      ) : (
+        <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 3}}>
+          {posts.map(post => (
+            <Pressable
+              key={post._id}
+              onPress={() => {
+                if (post.type === 'reel' || post.mediaType === 'video') {
+                  parentNavigate(navigation, 'Reels', {initialPostId: post._id});
+                } else {
+                  navigation.navigate('PostDetail', {postId: post._id});
+                }
+              }}
+              style={{width: '32.8%', aspectRatio: 1, borderRadius: 6, overflow: 'hidden', backgroundColor: palette.input}}>
+              <ProfileGridMedia post={post} style={{width: '100%', height: '100%'}} />
+            </Pressable>
+          ))}
+        </View>
+      )}
     </SopChrome>
   );
 }
@@ -210,23 +254,42 @@ export function HashtagDetailScreen() {
 export function NearbyPeopleScreen() {
   const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
-  const rows = [
-    {id: 'u1', name: 'Neha', mutual: '4 mutual'},
-    {id: 'u2', name: 'Vikram', mutual: 'GPS 0.4km'},
-  ];
+  const [rows, setRows] = useState<Array<SuggestedUser & {distanceMeters?: number}>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Geolocation.getCurrentPosition(
+      pos => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        updateMyLocation(lat, lng).catch(() => null);
+        getNearbyUsers(lat, lng)
+          .then(res => setRows(res.users))
+          .catch(() => setRows([]))
+          .finally(() => setLoading(false));
+      },
+      () => setLoading(false),
+      {enableHighAccuracy: true, timeout: 12000, maximumAge: 60000},
+    );
+  }, []);
+
   return (
     <SopChrome title="Nearby people">
-      <SopMeta label="GPS-based discovery & friend suggestions; follow in one tap." />
+      <SopMeta label="GPS-based discovery using your current high-accuracy location." />
+      {loading ? <ActivityIndicator color={palette.primary} /> : null}
+      {!loading && rows.length === 0 ? <Text style={{color: palette.mutedForeground}}>No nearby users found.</Text> : null}
       {rows.map(r => (
-        <View key={r.id} style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12}}>
+        <View key={r._id} style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12}}>
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
-            <Users size={20} color={palette.primary} />
+            <Image source={{uri: r.profilePicture || `https://ui-avatars.com/api/?name=${r.displayName}`}} style={{width: 42, height: 42, borderRadius: 21}} />
             <View>
-              <Text style={{color: palette.foreground, fontWeight: '800'}}>{r.name}</Text>
-              <Text style={{color: palette.mutedForeground, fontSize: 12}}>{r.mutual}</Text>
+              <Text style={{color: palette.foreground, fontWeight: '800'}}>{r.displayName}</Text>
+              <Text style={{color: palette.mutedForeground, fontSize: 12}}>
+                @{r.username} {r.distanceMeters ? `· ${(r.distanceMeters / 1000).toFixed(1)}km` : ''}
+              </Text>
             </View>
           </View>
-          <PrimaryButton label="Follow" onPress={() => Alert.alert('Follow', `Following ${r.name}`)} />
+          <PrimaryButton label="Follow" onPress={() => followUser(r._id).catch(() => null)} />
         </View>
       ))}
     </SopChrome>

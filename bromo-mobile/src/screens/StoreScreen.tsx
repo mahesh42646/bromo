@@ -155,6 +155,7 @@ export function StoreScreen() {
   const [sortBy, setSortBy] = useState<'nearest' | 'popular' | 'rating' | 'newest'>('nearest');
   const [minRating, setMinRating] = useState(0);
   const [planFilter, setPlanFilter] = useState<'all' | StorePlanId>('all');
+  const [storeTypeFilter, setStoreTypeFilter] = useState<'all' | 'd2c' | 'b2b' | 'online'>('all');
 
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
@@ -245,6 +246,7 @@ export function StoreScreen() {
         minRating: minRating > 0 ? minRating : undefined,
         sortBy,
         plan: planFilter === 'all' ? undefined : planFilter,
+        storeType: storeTypeFilter,
       });
       setStores(result);
     } catch {
@@ -262,6 +264,7 @@ export function StoreScreen() {
     minRating,
     sortBy,
     planFilter,
+    storeTypeFilter,
   ]);
 
   useEffect(() => {
@@ -417,6 +420,7 @@ export function StoreScreen() {
     distanceFilter !== '5km' ||
     minRating > 0 ||
     planFilter !== 'all' ||
+    storeTypeFilter !== 'all' ||
     sortBy !== 'nearest';
 
   const planHeaderSubtitle = myStore?.subscription?.status === 'active' && myStore.activePlan
@@ -661,6 +665,26 @@ export function StoreScreen() {
                 <Pressable
                   key={id}
                   onPress={() => setPlanFilter(id)}
+                  style={[s.pill, { backgroundColor: active ? palette.primary : palette.input, borderColor: active ? palette.primary : palette.border }]}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? palette.primaryForeground : palette.foreground }}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <Text style={[s.filterLabel, { color: palette.foregroundSubtle }]}>Store Type</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillRow}>
+            {([
+              ['all', 'All Stores'],
+              ['d2c', 'D2C Discounts'],
+              ['b2b', 'B2B Bulk'],
+              ['online', 'Online Selling'],
+            ] as const).map(([id, label]) => {
+              const active = storeTypeFilter === id;
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => setStoreTypeFilter(id)}
                   style={[s.pill, { backgroundColor: active ? palette.primary : palette.input, borderColor: active ? palette.primary : palette.border }]}>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: active ? palette.primaryForeground : palette.foreground }}>{label}</Text>
                 </Pressable>

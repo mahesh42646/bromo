@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Switch, Text, View} from 'react-native';
+import {ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Switch, Text, TextInput, View} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
@@ -13,6 +13,7 @@ import {getNotifications, markAllRead, markRead, type AppNotification} from '../
 import {getPost, getPostAnalytics, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
 import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
 import {useAuth} from '../../../context/AuthContext';
+import {connectMyStore, submitCreatorForm} from '../../../api/authApi';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
 export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
@@ -254,10 +255,264 @@ export function ContentInsightsScreen() {
 }
 
 export function CreatorDashboardScreen() {
+  const {palette} = useTheme();
+  const {dbUser, refreshDbUser} = useAuth();
+  const navigation = useNavigation<Nav>();
+  const [reels, setReels] = useState<Post[]>([]);
+  const [analytics, setAnalytics] = useState<Record<string, PostAnalytics>>({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [fullName, setFullName] = useState(dbUser?.displayName ?? '');
+  const [category, setCategory] = useState('');
+  const [bio, setBio] = useState(dbUser?.bio ?? '');
+  const [website, setWebsite] = useState(dbUser?.website ?? '');
+  const [documents, setDocuments] = useState('');
+  const [storeWebsite, setStoreWebsite] = useState(dbUser?.connectedStore?.website ?? dbUser?.website ?? '');
+
+  useEffect(() => {
+    if (!dbUser?._id) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await getUserPosts(dbUser._id, 'reel', 1);
+        if (cancelled) return;
+        setReels(res.posts);
+        const top = res.posts.slice(0, 8);
+        const pairs = await Promise.all(
+          top.map(async post => {
+            try {
+              const data = await getPostAnalytics(post._id);
+              return [post._id, data] as const;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        if (cancelled) return;
+        const next: Record<string, PostAnalytics> = {};
+        for (const pair of pairs) {
+          if (pair) next[pair[0]] = pair[1];
+        }
+        setAnalytics(next);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dbUser?._id]);
+
+  const totals = reels.reduce(
+    (acc, reel) => {
+      const a = analytics[reel._id];
+      acc.views += a?.viewsCount ?? reel.viewsCount ?? 0;
+      acc.clicks += a?.totalClicks ?? 0;
+      acc.engagement += (a?.likesCount ?? reel.likesCount ?? 0) + (a?.commentsCount ?? reel.commentsCount ?? 0);
+      acc.storeClicks += a?.storeIconClicks ?? reel.storeIconClicksCount ?? 0;
+      acc.earnings += a?.estimatedEarnings ?? reel.rewardPointsAccrued ?? 0;
+      return acc;
+    },
+    {views: 0, clicks: 0, engagement: 0, storeClicks: 0, earnings: 0},
+  );
+
+  const submitCreator = useCallback(async () => {
+    if (!fullName.trim() || !category.trim() || !bio.trim()) {
+      Alert.alert('Required', 'Full name, category, and bio are required.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await submitCreatorForm({
+        fullName: fullName.trim(),
+        category: category.trim(),
+        bio: bio.trim(),
+        website: website.trim(),
+        documents: documents.split(',').map(v => v.trim()).filter(Boolean),
+      });
+      await refreshDbUser();
+      Alert.alert('Submitted', 'Creator Form submitted. Creator badge appears after admin approval.');
+    } catch (err) {
+      Alert.alert('Creator Form', err instanceof Error ? err.message : 'Failed to submit form');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [fullName, category, bio, website, documents, refreshDbUser]);
+
+  const connectStore = useCallback(async () => {
+    if (!storeWebsite.trim()) {
+      Alert.alert('Required', 'Enter your Shopify or store website.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await connectMyStore({website: storeWebsite.trim(), planId: 'connect_store'});
+      await refreshDbUser();
+      Alert.alert('Connected', 'Store icon will appear on your feed posts and reels.');
+    } catch (err) {
+      Alert.alert('Connect Store', err instanceof Error ? err.message : 'Failed to connect store');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [storeWebsite, refreshDbUser]);
+
+  const status = dbUser?.creatorStatus ?? 'none';
+  const verifiedCreator = Boolean(dbUser?.isCreator && status === 'verified');
+
   return (
-    <SopChrome title="Creator dashboard">
-      <SopMeta label="Growth, top reels, affiliate products performance." />
-    </SopChrome>
+    <ThemedSafeScreen>
+      <ScrollView contentContainerStyle={{padding: 16, paddingBottom: 42}}>
+        <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 16}}>
+          <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{marginRight: 12}}>
+            <Text style={{color: palette.primary, fontSize: 18}}>‹</Text>
+          </Pressable>
+          <View style={{flex: 1}}>
+            <Text style={{color: palette.foreground, fontSize: 24, fontWeight: '900'}}>Creator Dashboard</Text>
+            <Text style={{color: palette.foregroundMuted, marginTop: 2}}>
+              {verifiedCreator ? 'Creator badge active' : status === 'pending' ? 'Creator Form pending admin approval' : 'Submit Creator Form to unlock creator tools'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{borderWidth: 1, borderColor: palette.border, backgroundColor: palette.input, borderRadius: 18, padding: 14, marginBottom: 16}}>
+          <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '900'}}>Account status</Text>
+          <Text style={{color: verifiedCreator ? palette.success : palette.warning, marginTop: 6, fontWeight: '800'}}>
+            {verifiedCreator ? 'Creator verified' : status === 'pending' ? 'Request pending' : status === 'rejected' ? 'Creator request rejected' : 'Standard user'}
+          </Text>
+          <Text style={{color: palette.foregroundMuted, marginTop: 6, lineHeight: 18}}>
+            Regular users cannot tag products. Product tagging, store icon analytics, estimated earnings, and collaborations unlock only after admin verifies your Creator Form.
+          </Text>
+        </View>
+
+        {!verifiedCreator ? (
+          <View style={{borderWidth: 1, borderColor: palette.border, borderRadius: 18, padding: 14, marginBottom: 16}}>
+            <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '900', marginBottom: 12}}>Creator Form</Text>
+            <CreatorInput label="Full name" value={fullName} onChangeText={setFullName} palette={palette} />
+            <CreatorInput label="Creator category" value={category} onChangeText={setCategory} palette={palette} placeholder="Fashion, tech, food, fitness..." />
+            <CreatorInput label="Bio" value={bio} onChangeText={setBio} palette={palette} multiline />
+            <CreatorInput label="Website" value={website} onChangeText={setWebsite} palette={palette} placeholder="https://..." />
+            <CreatorInput label="Document links" value={documents} onChangeText={setDocuments} palette={palette} placeholder="Comma-separated KYC or portfolio URLs" />
+            <Pressable disabled={submitting} onPress={submitCreator} style={{backgroundColor: palette.primary, borderRadius: 14, padding: 13, alignItems: 'center'}}>
+              <Text style={{color: palette.primaryForeground, fontWeight: '900'}}>{submitting ? 'Submitting…' : 'Submit Creator Form'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={{flexDirection: 'row', gap: 10, marginBottom: 16}}>
+          <StatCard icon={<Eye size={18} color={palette.primary} />} label="Views" value={fmtCount(totals.views)} palette={palette} />
+          <StatCard icon={<TrendingUp size={18} color={palette.primary} />} label="Clicks" value={fmtCount(totals.clicks)} palette={palette} />
+        </View>
+        <View style={{flexDirection: 'row', gap: 10, marginBottom: 16}}>
+          <StatCard icon={<Heart size={18} color={palette.primary} />} label="Engagement" value={fmtCount(totals.engagement)} palette={palette} />
+          <StatCard icon={<BarChart2 size={18} color={palette.primary} />} label="Est. points" value={fmtCount(totals.earnings)} palette={palette} />
+        </View>
+
+        <View style={{borderWidth: 1, borderColor: palette.border, borderRadius: 18, padding: 14, marginBottom: 16}}>
+          <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '900'}}>Connect My Store</Text>
+          <Text style={{color: palette.foregroundMuted, marginTop: 4, lineHeight: 18}}>
+            Purchase this plan to show a store icon on every feed post and reel. Product taps redirect to your own website.
+          </Text>
+          <CreatorInput label="Store website" value={storeWebsite} onChangeText={setStoreWebsite} palette={palette} placeholder="https://yourstore.com" />
+          <Pressable disabled={submitting} onPress={connectStore} style={{backgroundColor: palette.foreground, borderRadius: 14, padding: 13, alignItems: 'center'}}>
+            <Text style={{color: palette.background, fontWeight: '900'}}>
+              {dbUser?.connectedStore?.enabled ? 'Update Connected Store' : 'Connect My Store'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={{borderWidth: 1, borderColor: palette.border, borderRadius: 18, padding: 14, marginBottom: 16}}>
+          <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '900'}}>Collaboration deals</Text>
+          <Text style={{color: palette.foregroundMuted, marginTop: 4}}>
+            Paid and unpaid brand deals suggested by BROMO appear here with accept or decline actions.
+          </Text>
+          <View style={{marginTop: 12, gap: 10}}>
+            <DealRow title="Suggested brand deal" body="No active suggestions yet" paid={false} palette={palette} />
+            <DealRow title="Deal history" body="Accepted, declined, paid, and unpaid collaborations will be listed here with total income." paid palette={palette} />
+          </View>
+        </View>
+
+        <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '900', marginBottom: 10}}>Reel analytics</Text>
+        {loading ? (
+          <ActivityIndicator color={palette.primary} />
+        ) : reels.length === 0 ? (
+          <Text style={{color: palette.foregroundMuted}}>No reels yet.</Text>
+        ) : (
+          reels.slice(0, 10).map(reel => {
+            const a = analytics[reel._id];
+            return (
+              <Pressable
+                key={reel._id}
+                onPress={() => navigation.navigate('ContentInsights', {focusPostId: reel._id})}
+                style={{flexDirection: 'row', gap: 12, borderWidth: 1, borderColor: palette.border, borderRadius: 16, padding: 10, marginBottom: 10}}>
+                <ProfileGridMedia post={reel} style={{width: 72, height: 96, borderRadius: 12}} />
+                <View style={{flex: 1}}>
+                  <Text numberOfLines={2} style={{color: palette.foreground, fontWeight: '800'}}>{reel.caption || 'Untitled reel'}</Text>
+                  <Text style={{color: palette.foregroundMuted, marginTop: 6, fontSize: 12}}>
+                    Views {fmtCount(a?.viewsCount ?? reel.viewsCount)} · Engagement {fmtCount((a?.likesCount ?? reel.likesCount) + (a?.commentsCount ?? reel.commentsCount))}
+                  </Text>
+                  <Text style={{color: palette.foregroundMuted, marginTop: 2, fontSize: 12}}>
+                    Store clicks {fmtCount(a?.storeIconClicks ?? reel.storeIconClicksCount ?? 0)} · Est. points {fmtCount(a?.estimatedEarnings ?? reel.rewardPointsAccrued ?? 0)}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })
+        )}
+      </ScrollView>
+    </ThemedSafeScreen>
+  );
+}
+
+function CreatorInput({
+  label,
+  value,
+  onChangeText,
+  palette,
+  placeholder,
+  multiline,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  palette: ReturnType<typeof useTheme>['palette'];
+  placeholder?: string;
+  multiline?: boolean;
+}) {
+  return (
+    <View style={{marginBottom: 12}}>
+      <Text style={{color: palette.foregroundMuted, fontSize: 12, fontWeight: '800', marginBottom: 6}}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={palette.placeholder}
+        multiline={multiline}
+        style={{
+          minHeight: multiline ? 84 : 46,
+          borderWidth: 1,
+          borderColor: palette.border,
+          borderRadius: 13,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          color: palette.foreground,
+          backgroundColor: palette.input,
+          textAlignVertical: multiline ? 'top' : 'center',
+        }}
+      />
+    </View>
+  );
+}
+
+function DealRow({title, body, paid, palette}: {title: string; body: string; paid: boolean; palette: ReturnType<typeof useTheme>['palette']}) {
+  return (
+    <View style={{borderWidth: 1, borderColor: palette.border, borderRadius: 14, padding: 12, backgroundColor: palette.input}}>
+      <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10}}>
+        <Text style={{color: palette.foreground, fontWeight: '900'}}>{title}</Text>
+        <Text style={{color: paid ? palette.success : palette.warning, fontSize: 12, fontWeight: '900'}}>{paid ? 'Paid' : 'Unpaid'}</Text>
+      </View>
+      <Text style={{color: palette.foregroundMuted, marginTop: 4, fontSize: 12, lineHeight: 17}}>{body}</Text>
+    </View>
   );
 }
 

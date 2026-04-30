@@ -35,6 +35,7 @@ import {
   X,
 } from 'lucide-react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
+import Geolocation from '@react-native-community/geolocation';
 import {NetworkVideo} from '../../components/media/NetworkVideo';
 import {resolveMediaUrl} from '../../lib/resolveMediaUrl';
 import {useTheme} from '../../context/ThemeContext';
@@ -46,6 +47,7 @@ import {newMsgId, useMessaging} from '../../messaging/MessagingContext';
 import {formatBubbleTime, daySeparatorLabel} from '../../messaging/formatTime';
 import type {MessagesStackParamList} from '../../navigation/MessagesStackNavigator';
 import {parentNavigate} from '../../navigation/parentNavigate';
+import {getPost} from '../../api/postsApi';
 
 type Nav = NativeStackNavigationProp<MessagesStackParamList, 'ChatThread'>;
 type R = RouteProp<MessagesStackParamList, 'ChatThread'>;
@@ -87,21 +89,54 @@ export function ChatThreadScreen() {
     ensureThread(peerId);
   }, [ensureThread, peerId]);
 
-  // Auto-send shared post link on mount
+  // Auto-send shared post preview on mount
   useEffect(() => {
     if (!sharePostId) return;
+    let cancelled = false;
     const id = newMsgId();
-    const msg: TextMessage = {
-      kind: 'text',
-      id,
-      peerId,
-      senderId: 'me',
-      createdAt: Date.now(),
-      delivery: 'sending',
-      reactions: [],
-      text: `https://bromo.app/p/${sharePostId}`,
+    getPost(sharePostId)
+      .then(({post}) => {
+        if (cancelled) return;
+        const preview =
+          post.thumbnailUrl ||
+          post.carouselItems?.[0]?.thumbnailUrl ||
+          post.carouselItems?.[0]?.mediaUrl ||
+          post.mediaUrl;
+        const msg: ChatMessage = {
+          kind: 'shared_post',
+          id,
+          peerId,
+          senderId: 'me',
+          createdAt: Date.now(),
+          delivery: 'sending',
+          reactions: [],
+          postId: sharePostId,
+          previewUri: resolveMediaUrl(preview),
+          authorUsername: post.author.username,
+          authorAvatar: resolveMediaUrl(post.author.profilePicture),
+        };
+        sendMessage(peerId, msg);
+        setTimeout(() => setDelivery(peerId, id, 'sent'), 280);
+        setTimeout(() => setDelivery(peerId, id, 'delivered'), 720);
+        setTimeout(() => setDelivery(peerId, id, 'read'), 1400);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const msg: TextMessage = {
+          kind: 'text',
+          id,
+          peerId,
+          senderId: 'me',
+          createdAt: Date.now(),
+          delivery: 'sending',
+          reactions: [],
+          text: `https://bromo.app/p/${sharePostId}`,
+        };
+        sendMessage(peerId, msg);
+      });
+    return () => {
+      cancelled = true;
     };
-    sendMessage(peerId, msg);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -248,19 +283,27 @@ export function ChatThreadScreen() {
   };
 
   const sendLocation = () => {
-    const id = newMsgId();
-    scheduleMedia({
-      kind: 'location',
-      id,
-      peerId,
-      senderId: 'me',
-      createdAt: Date.now(),
-      delivery: 'sending',
-      reactions: [],
-      lat: 18.5204,
-      lng: 73.8567,
-      label: 'Pune, Maharashtra · shared',
-    });
+    Geolocation.getCurrentPosition(
+      pos => {
+        const id = newMsgId();
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        scheduleMedia({
+          kind: 'location',
+          id,
+          peerId,
+          senderId: 'me',
+          createdAt: Date.now(),
+          delivery: 'sending',
+          reactions: [],
+          lat,
+          lng,
+          label: `${lat.toFixed(6)}, ${lng.toFixed(6)} · precise location`,
+        });
+      },
+      err => Alert.alert('Location Error', err.message || 'Could not get current location'),
+      {enableHighAccuracy: true, timeout: 15000, maximumAge: 0},
+    );
   };
 
   const sendAudio = () => {
@@ -576,7 +619,7 @@ export function ChatThreadScreen() {
           <ChevronLeft size={26} color={palette.foreground} />
         </Pressable>
         <Pressable
-          onPress={() => Alert.alert(peer.displayName, `@${peer.username}`)}
+          onPress={() => navigation.navigate('ChatDetail', {peerId})}
           style={{flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1}}>
           <Image source={{uri: peer.avatar}} style={{width: 40, height: 40, borderRadius: 20}} />
           <View style={{flex: 1, minWidth: 0}}>
@@ -587,7 +630,7 @@ export function ChatThreadScreen() {
               {peer.verified ? <BadgeCheck size={16} color={palette.primary} /> : null}
             </View>
             <Text numberOfLines={1} style={{color: palette.mutedForeground, fontSize: 13}}>
-              @{peer.username}
+              Active Now · @{peer.username}
               {peer.label ? ` · ${peer.label}` : ''}
             </Text>
           </View>

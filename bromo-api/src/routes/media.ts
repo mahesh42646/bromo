@@ -201,6 +201,7 @@ mediaRouter.post(
 
     const taggedUserIdStrs = parseIds(body.taggedUserIds);
     const productIdStrs = parseIds(body.productIds).slice(0, 6);
+    const collaboratorIdStrs = parseIds(body.collaboratorIds).slice(0, 5);
 
     let locationMeta: { name: string; lat?: number; lng?: number; address?: string; placeId?: string } | undefined;
     if (body.locationMeta) {
@@ -288,6 +289,9 @@ mediaRouter.post(
       .slice(0, 20)
       .map((x) => new mongooseRef.Types.ObjectId(x));
     const safeProductIds = productIdStrs.map((x) => new mongooseRef.Types.ObjectId(x));
+    const safeCollaboratorIds = collaboratorIdStrs
+      .filter((x) => String(x) !== String(dbUser._id))
+      .map((x) => new mongooseRef.Types.ObjectId(x));
     if (safeProductIds.length && !(dbUser.isCreator && dbUser.creatorStatus === "verified")) {
       return res.status(403).json({ message: "Only verified creators can tag products" });
     }
@@ -313,6 +317,7 @@ mediaRouter.post(
       tags,
       ...(safeTaggedUserIds.length ? { taggedUserIds: safeTaggedUserIds } : {}),
       ...(safeProductIds.length ? { productIds: safeProductIds } : {}),
+      ...(safeCollaboratorIds.length ? { collaboratorIds: safeCollaboratorIds } : {}),
       ...(originalAudioId ? { originalAudioId } : {}),
       ...(remixOfPostId ? { remixOfPostId } : {}),
       ...(settings ? { settings } : {}),

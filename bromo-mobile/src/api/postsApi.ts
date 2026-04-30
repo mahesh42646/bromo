@@ -333,6 +333,13 @@ export async function getExplore(page = 1): Promise<FeedResponse> {
   return res.json() as Promise<FeedResponse>;
 }
 
+export async function getHashtagPosts(tag: string, page = 1): Promise<FeedResponse> {
+  const clean = tag.replace(/^#/, '').trim();
+  const res = await authedFetch(`/posts/hashtag/${encodeURIComponent(clean)}?page=${page}`);
+  if (!res.ok) throw new Error('Failed to fetch hashtag posts');
+  return res.json() as Promise<FeedResponse>;
+}
+
 export type StoryGroup = {
   author: PostAuthor;
   stories: Post[];
@@ -752,6 +759,7 @@ export type UploadMediaAsyncMeta = {
   feedCategory?: string;
   taggedUserIds?: string[];
   productIds?: string[];
+  collaboratorIds?: string[];
   originalAudioId?: string;
   remixOfPostId?: string;
   locationMeta?: PostLocationMeta | null;
@@ -777,6 +785,7 @@ function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
   if (meta.feedCategory && meta.feedCategory !== 'general') form.append('feedCategory', meta.feedCategory);
   if (meta.taggedUserIds?.length) form.append('taggedUserIds', meta.taggedUserIds.join(','));
   if (meta.productIds?.length) form.append('productIds', meta.productIds.join(','));
+  if (meta.collaboratorIds?.length) form.append('collaboratorIds', meta.collaboratorIds.join(','));
   if (meta.originalAudioId) form.append('originalAudioId', meta.originalAudioId);
   if (meta.remixOfPostId) form.append('remixOfPostId', meta.remixOfPostId);
   if (meta.locationMeta?.name) {

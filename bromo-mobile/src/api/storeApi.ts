@@ -169,6 +169,7 @@ export type StoresFilter = {
   category?: string;
   minRating?: number;
   plan?: StorePlanId;
+  storeType?: 'all' | 'd2c' | 'b2b' | 'online';
   sortBy?: 'nearest' | 'popular' | 'rating' | 'newest';
   page?: number;
   limit?: number;
@@ -185,6 +186,7 @@ export async function listStores(filter: StoresFilter = {}): Promise<{stores: St
   if (filter.category) params.set('category', filter.category);
   if (filter.minRating != null) params.set('minRating', String(filter.minRating));
   if (filter.plan) params.set('plan', filter.plan);
+  if (filter.storeType && filter.storeType !== 'all') params.set('storeType', filter.storeType);
   if (filter.sortBy) params.set('sortBy', filter.sortBy);
   if (filter.page) params.set('page', String(filter.page));
   if (filter.limit != null) params.set('limit', String(filter.limit));
