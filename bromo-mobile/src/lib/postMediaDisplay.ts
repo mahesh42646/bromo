@@ -2,7 +2,7 @@ import type {Post} from '../api/postsApi';
 import {resolveVideoUrl} from '../api/postsApi';
 import {resolveMediaUrl} from './resolveMediaUrl';
 
-type ThumbPost = Pick<Post, 'mediaUrl' | 'thumbnailUrl' | 'mediaType' | 'hlsMasterUrl'>;
+type ThumbPost = Pick<Post, 'mediaUrl' | 'thumbnailUrl' | 'mediaType' | 'hlsMasterUrl' | 'carouselItems'>;
 
 function uploadsUserCategory(url: string): { uid: string; cat: string } | null {
   let pathname = url.trim();
@@ -35,19 +35,21 @@ function shouldIgnoreVideoThumbnail(
  * for HLS-only posts returns '' so callers use `<Video>` for first frame.
  */
 export function postThumbnailUri(post: ThumbPost): string {
-  const thumbRaw = post.thumbnailUrl?.trim();
+  const firstCarousel = post.carouselItems?.slice().sort((a, b) => a.order - b.order)[0];
+  const thumbRaw = (firstCarousel?.thumbnailUrl || post.thumbnailUrl)?.trim();
   const thumbResolved = thumbRaw ? resolveMediaUrl(thumbRaw) : '';
-  const mediaResolved = resolveMediaUrl(post.mediaUrl);
+  const mediaResolved = resolveMediaUrl(firstCarousel?.mediaUrl || post.mediaUrl);
+  const mediaType = firstCarousel?.mediaType || post.mediaType;
 
   if (
     thumbResolved &&
-    !shouldIgnoreVideoThumbnail(post.mediaType, thumbResolved, mediaResolved)
+    !shouldIgnoreVideoThumbnail(mediaType, thumbResolved, mediaResolved)
   ) {
     return thumbResolved;
   }
 
   const media = mediaResolved;
-  if (post.mediaType === 'video' && media.includes('.m3u8')) {
+  if (mediaType === 'video' && media.includes('.m3u8')) {
     return '';
   }
   return media;

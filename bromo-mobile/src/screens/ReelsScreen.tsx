@@ -909,7 +909,7 @@ const ReelItem = React.memo(function ReelItem({
           <Pressable onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: item.author._id})}>
             <Text style={{color: '#fff', fontSize: 14, fontWeight: '800'}}>@{item.author.username}</Text>
           </Pressable>
-          {item.author.emailVerified ? (
+          {item.author.isVerified || item.author.verificationStatus === 'verified' ? (
             <BadgeCheck size={16} color={palette.accent} fill={palette.accent} strokeWidth={2} />
           ) : null}
           {!isOwnReel ? (

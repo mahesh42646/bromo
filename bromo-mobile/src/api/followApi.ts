@@ -14,6 +14,7 @@ export type UserProfile = {
   isPrivate: boolean;
   emailVerified: boolean;
   isVerified?: boolean;
+  verificationStatus?: 'none' | 'pending' | 'verified' | 'rejected';
   isCreator?: boolean;
   creatorStatus?: 'none' | 'pending' | 'verified' | 'rejected';
   creatorBadge?: boolean;

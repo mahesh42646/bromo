@@ -35,6 +35,7 @@ import {
   ExternalLink,
   Save,
   X,
+  ShieldCheck,
 } from 'lucide-react-native';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {useTheme} from '../../context/ThemeContext';
@@ -147,8 +148,12 @@ export function MyStoreDashboardScreen() {
     try {
       const s = await getMyStore();
       setStore(s);
-      const p = await listProducts(s._id);
-      setProducts(p);
+      if (s.approvalStatus === 'approved' && s.isActive) {
+        const p = await listProducts(s._id);
+        setProducts(p);
+      } else {
+        setProducts([]);
+      }
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to load store');
     } finally {
@@ -353,6 +358,15 @@ export function MyStoreDashboardScreen() {
     );
   }
 
+  const storeLocked = store.approvalStatus !== 'approved' || !store.isActive;
+  const openProductCreate = () => {
+    if (storeLocked) {
+      navigation.navigate('CreateStore');
+      return;
+    }
+    navigation.navigate('AddProduct', {storeId: store._id});
+  };
+
   return (
     <ThemedSafeScreen>
       <StatusBar barStyle="light-content" />
@@ -364,8 +378,8 @@ export function MyStoreDashboardScreen() {
         </Pressable>
         <Text style={[s.headerTitle, {color: palette.foreground}]} numberOfLines={1}>My Store</Text>
         <Pressable
-          onPress={() => navigation.navigate('AddProduct', {storeId: store._id})}
-          style={[s.addBtn, {backgroundColor: palette.primary}]}>
+          onPress={openProductCreate}
+          style={[s.addBtn, {backgroundColor: storeLocked ? palette.warning : palette.primary}]}>
           <Plus size={16} color={palette.primaryForeground} />
         </Pressable>
       </View>
@@ -419,6 +433,25 @@ export function MyStoreDashboardScreen() {
           </View>
         </View>
 
+        {storeLocked ? (
+          <View style={[s.pendingCard, {backgroundColor: `${palette.warning}18`, borderColor: `${palette.warning}55`}]}>
+            <View style={[s.pendingIcon, {backgroundColor: `${palette.warning}22`}]}>
+              <ShieldCheck size={20} color={palette.warning} />
+            </View>
+            <View style={{flex: 1}}>
+              <Text style={[s.pendingTitle, {color: palette.foreground}]}>
+                {store.approvalStatus === 'rejected' ? 'Approval Required' : store.requestPendingLabel || 'Request Pending'}
+              </Text>
+              <Text style={[s.pendingBody, {color: palette.foregroundSubtle}]}>
+                Legacy and new stores stay offline until KYC, terms, and admin approval are complete.
+              </Text>
+              <Pressable onPress={() => navigation.navigate('CreateStore')} style={[s.pendingBtn, {backgroundColor: palette.primary}]}>
+                <Text style={{color: palette.primaryForeground, fontSize: 12, fontWeight: '900'}}>Complete / Resubmit KYC</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
         <View style={s.quickActions}>
           <QuickAction
             icon={Edit3}
@@ -436,10 +469,10 @@ export function MyStoreDashboardScreen() {
           />
           <QuickAction
             icon={Plus}
-            label="Add Product"
-            sublabel="Create new listing"
+            label={storeLocked ? 'KYC Required' : 'Add Product'}
+            sublabel={storeLocked ? 'Approval needed before listings' : 'Create new listing'}
             palette={palette}
-            onPress={() => navigation.navigate('AddProduct', {storeId: store._id})}
+            onPress={openProductCreate}
           />
           <QuickAction
             icon={ExternalLink}
@@ -466,71 +499,83 @@ export function MyStoreDashboardScreen() {
           ))}
         </View>
 
-        {/* Category filter */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.catScrollContent}>
-          {categories.map(cat => {
-            const active = activeCategory === cat;
-            return (
-              <Pressable
-                key={cat}
-                onPress={() => setActiveCategory(cat)}
-                style={[
-                  s.catPill,
-                  {
-                    backgroundColor: active ? palette.primary : palette.glassFaint,
-                    borderColor: active ? palette.primary : palette.border,
-                  },
-                ]}>
-                <Text style={{color: active ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
-                  {cat}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {/* Products grid */}
-        <View style={s.productsSection}>
-          <View style={s.productsSectionHeader}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-              <Grid3X3 size={16} color={palette.foreground} />
-              <Text style={[s.sectionTitle, {color: palette.foreground}]}>
-                {filtered.length} {activeCategory === 'All' ? 'Products' : activeCategory}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => navigation.navigate('AddProduct', {storeId: store._id})}
-              style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
-              <Plus size={14} color={palette.primary} />
-              <Text style={{color: palette.primary, fontSize: 13, fontWeight: '700'}}>Add</Text>
-            </Pressable>
+        {storeLocked ? (
+          <View style={[s.lockedProducts, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+            <Package size={36} color={palette.foregroundSubtle} />
+            <Text style={[s.emptyTitle, {color: palette.foreground}]}>Products locked until approval</Text>
+            <Text style={[s.emptySub, {color: palette.foregroundSubtle, textAlign: 'center'}]}>
+              Your store and listings will not appear publicly until admin approves KYC and plan details.
+            </Text>
           </View>
+        ) : (
+          <>
+            {/* Category filter */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.catScrollContent}>
+              {categories.map(cat => {
+                const active = activeCategory === cat;
+                return (
+                  <Pressable
+                    key={cat}
+                    onPress={() => setActiveCategory(cat)}
+                    style={[
+                      s.catPill,
+                      {
+                        backgroundColor: active ? palette.primary : palette.glassFaint,
+                        borderColor: active ? palette.primary : palette.border,
+                      },
+                    ]}>
+                    <Text style={{color: active ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
+                      {cat}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
-          {filtered.length === 0 ? (
-            <Pressable
-              onPress={() => navigation.navigate('AddProduct', {storeId: store._id})}
-              style={[s.emptyProducts, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
-              <Package size={40} color={palette.foregroundSubtle} />
-              <Text style={[s.emptyTitle, {color: palette.foreground}]}>No products yet</Text>
-              <Text style={[s.emptySub, {color: palette.foregroundSubtle}]}>Tap to add your first product</Text>
-            </Pressable>
-          ) : (
-            <View style={s.productGrid}>
-              {filtered.map(product => (
-                <ProductCard
-                  key={product._id}
-                  product={product}
-                  palette={palette}
-                  onEdit={() => openProductEditor(product)}
-                  onDelete={() => handleDeleteProduct(product)}
-                />
-              ))}
+            {/* Products grid */}
+            <View style={s.productsSection}>
+              <View style={s.productsSectionHeader}>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                  <Grid3X3 size={16} color={palette.foreground} />
+                  <Text style={[s.sectionTitle, {color: palette.foreground}]}>
+                    {filtered.length} {activeCategory === 'All' ? 'Products' : activeCategory}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={openProductCreate}
+                  style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+                  <Plus size={14} color={palette.primary} />
+                  <Text style={{color: palette.primary, fontSize: 13, fontWeight: '700'}}>Add</Text>
+                </Pressable>
+              </View>
+
+              {filtered.length === 0 ? (
+                <Pressable
+                  onPress={openProductCreate}
+                  style={[s.emptyProducts, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
+                  <Package size={40} color={palette.foregroundSubtle} />
+                  <Text style={[s.emptyTitle, {color: palette.foreground}]}>No products yet</Text>
+                  <Text style={[s.emptySub, {color: palette.foregroundSubtle}]}>Tap to add your first product</Text>
+                </Pressable>
+              ) : (
+                <View style={s.productGrid}>
+                  {filtered.map(product => (
+                    <ProductCard
+                      key={product._id}
+                      product={product}
+                      palette={palette}
+                      onEdit={() => openProductEditor(product)}
+                      onDelete={() => handleDeleteProduct(product)}
+                    />
+                  ))}
+                </View>
+              )}
             </View>
-          )}
-        </View>
+          </>
+        )}
 
         <View style={{height: 32}} />
       </ScrollView>
@@ -1047,6 +1092,31 @@ const s = StyleSheet.create({
   quickCopy: {flex: 1, minWidth: 0},
   quickLabel: {fontSize: 13, fontWeight: '800'},
   quickSub: {fontSize: 11, marginTop: 2},
+  pendingCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  pendingIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingTitle: {fontSize: 15, fontWeight: '900'},
+  pendingBody: {fontSize: 12, lineHeight: 17, marginTop: 3},
+  pendingBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
   analyticsRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1081,6 +1151,16 @@ const s = StyleSheet.create({
   },
   emptyTitle: {fontSize: 16, fontWeight: '700'},
   emptySub: {fontSize: 13},
+  lockedProducts: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    padding: 28,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   productGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 10},
   productCard: {
     width: '47%',

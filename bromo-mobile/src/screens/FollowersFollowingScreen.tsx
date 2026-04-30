@@ -132,7 +132,7 @@ export function FollowersFollowingScreen() {
                     <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 14}}>
                       {item.displayName}
                     </Text>
-                    {item.emailVerified && (
+                    {(item.isVerified || item.verificationStatus === 'verified') && (
                       <BadgeCheck size={13} color={palette.primary} fill={palette.primary} strokeWidth={2} />
                     )}
                   </View>

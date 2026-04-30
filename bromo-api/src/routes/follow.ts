@@ -12,7 +12,8 @@ import { emitNotification } from "../services/socketService.js";
 
 export const followRouter = Router();
 
-const USER_SELECT = "username displayName profilePicture followersCount followingCount postsCount isPrivate emailVerified";
+const USER_SELECT =
+  "username displayName profilePicture followersCount followingCount postsCount isPrivate emailVerified isVerified verificationStatus creatorBadge creatorStatus";
 
 function toObjectIds(values: unknown[]): mongoose.Types.ObjectId[] {
   return values

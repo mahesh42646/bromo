@@ -272,7 +272,7 @@ export function ProfileScreen() {
   const email = dbUser?.email || '';
   const avatar = dbUser?.profilePicture || null;
   const bio = dbUser?.bio || '';
-  const isVerified = dbUser?.emailVerified && dbUser?.provider === 'google';
+  const isVerified = Boolean(dbUser?.isVerified || dbUser?.verificationStatus === 'verified');
 
   const loadPosts = useCallback(async (tab: string) => {
     if (!dbUser?._id) return;

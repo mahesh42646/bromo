@@ -262,14 +262,21 @@ router.get("/stores/pending", requireAdminToken, async (req: AuthedRequest, res)
   try {
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10)));
+    const pendingFilter = {
+      $or: [
+        {approvalStatus: "pending"},
+        {approvalStatus: {$exists: false}},
+        {approvalStatus: null},
+      ],
+    };
     const [stores, total] = await Promise.all([
-      Store.find({approvalStatus: "pending"})
+      Store.find(pendingFilter)
         .sort({createdAt: -1})
         .skip((page - 1) * limit)
         .limit(limit)
         .populate("owner", "username displayName email phone profilePicture")
         .lean(),
-      Store.countDocuments({approvalStatus: "pending"}),
+      Store.countDocuments(pendingFilter),
     ]);
     return res.json({stores, total, page, limit, pages: Math.ceil(total / limit)});
   } catch (err) {

@@ -106,7 +106,7 @@ function PersonRow({
           <View style={{flex: 1}}>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
               <ThemedText variant="label">{user.displayName}</ThemedText>
-              {user.emailVerified && (
+              {(user.isVerified || user.verificationStatus === 'verified') && (
                 <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
               )}
             </View>

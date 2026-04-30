@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Switch, Text, TextInput, View} from 'react-native';
-import {useNavigation, useRoute} from '@react-navigation/native';
+import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {BarChart2, Eye, Heart, MessageCircle, Phone, Send, TrendingUp, Video as VideoIcon} from 'lucide-react-native';
@@ -10,10 +10,11 @@ import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {getNotifications, markAllRead, markRead, type AppNotification} from '../../../api/notificationsApi';
-import {getPost, getPostAnalytics, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
+import {getPost, getPostAnalytics, getSavedPosts, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
 import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
 import {useAuth} from '../../../context/AuthContext';
 import {connectMyStore, submitCreatorForm} from '../../../api/authApi';
+import {parentNavigate} from '../../../navigation/parentNavigate';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
 export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
@@ -39,9 +40,56 @@ export function TransactionHistoryScreen() {
 }
 
 export function SavedPostsScreen() {
+  const navigation = useNavigation<Nav>();
+  const {palette} = useTheme();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      setLoading(true);
+      getSavedPosts(1)
+        .then(res => {
+          if (alive) setPosts(res.posts ?? []);
+        })
+        .catch(() => {
+          if (alive) setPosts([]);
+        })
+        .finally(() => {
+          if (alive) setLoading(false);
+        });
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
   return (
     <SopChrome title="Saved posts">
       <SopMeta label="Bookmarked feed & reels." />
+      {loading ? (
+        <ActivityIndicator color={palette.primary} />
+      ) : posts.length === 0 ? (
+        <Text style={{color: palette.mutedForeground}}>No saved posts yet.</Text>
+      ) : (
+        <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 3}}>
+          {posts.map(post => (
+            <Pressable
+              key={post._id}
+              onPress={() => {
+                if (post.type === 'reel' || post.mediaType === 'video') {
+                  parentNavigate(navigation, 'Reels', {initialPostId: post._id});
+                } else {
+                  navigation.navigate('PostDetail', {postId: post._id});
+                }
+              }}
+              style={{width: '32.8%', aspectRatio: 1, borderRadius: 6, overflow: 'hidden', backgroundColor: palette.input}}>
+              <ProfileGridMedia post={post} style={{width: '100%', height: '100%'}} />
+            </Pressable>
+          ))}
+        </View>
+      )}
     </SopChrome>
   );
 }

@@ -150,6 +150,7 @@ export type Post = {
   avgWatchTimeMs: number;
   trendingScore: number;
   isLiked: boolean;
+  isSaved?: boolean;
   isFollowing: boolean;
   createdAt: string;
   isDeleted?: boolean;
@@ -669,6 +670,12 @@ export async function toggleSavePost(postId: string): Promise<{saved: boolean}> 
     throw new Error((body as {message?: string}).message ?? 'Could not update saved');
   }
   return res.json() as Promise<{saved: boolean}>;
+}
+
+export async function getSavedPosts(page = 1): Promise<FeedResponse> {
+  const res = await authedFetch(`/posts/saved?page=${page}`);
+  if (!res.ok) throw new Error('Failed to fetch saved posts');
+  return res.json() as Promise<FeedResponse>;
 }
 
 export async function sendReelFeedback(postId: string, signal: 'interested' | 'not_interested'): Promise<void> {

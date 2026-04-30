@@ -530,7 +530,7 @@ const PostCard = React.memo(function PostCard({
           <View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
               <ThemedText variant="label" style={{ fontSize: 13 }}>{post.author.displayName}</ThemedText>
-              {post.author.emailVerified && (
+              {(post.author.isVerified || post.author.verificationStatus === 'verified') && (
                 <BadgeCheck size={15} color={palette.accent} fill={palette.accent} strokeWidth={2} />
               )}
               {post.isPromoted ? (

@@ -71,6 +71,7 @@ export type Store = {
   storeType?: 'd2c' | 'b2b' | 'online';
   approvalStatus?: 'pending' | 'approved' | 'rejected';
   requestPendingLabel?: string;
+  termsAcceptedAt?: string;
   termsPdfUrl?: string;
   kyc?: {
     gstNumber?: string;
@@ -142,7 +143,32 @@ function normalizeStore(store: Store): Store {
     ...store,
     profilePhoto: forceApiMediaUrl(store.profilePhoto),
     bannerImage: forceApiMediaUrl(store.bannerImage),
+    kyc: store.kyc
+      ? {
+          ...store.kyc,
+          panCardUrl: forceApiMediaUrl(store.kyc.panCardUrl),
+          aadhaarCardUrl: forceApiMediaUrl(store.kyc.aadhaarCardUrl),
+          addressProofUrl: forceApiMediaUrl(store.kyc.addressProofUrl),
+          storePhotoUrls: Array.isArray(store.kyc.storePhotoUrls)
+            ? store.kyc.storePhotoUrls.map(forceApiMediaUrl).filter(Boolean)
+            : [],
+        }
+      : store.kyc,
   };
+}
+
+function isUploadUri(uri: string | undefined | null): uri is string {
+  if (!uri?.trim()) return false;
+  const value = uri.trim();
+  return !/^https?:\/\//i.test(value) && !value.startsWith('/uploads/');
+}
+
+function appendUpload(form: FormData, field: string, uri: string | undefined | null, fallback: string): void {
+  if (!isUploadUri(uri)) return;
+  const extRaw = uri.split('?')[0].split('.').pop() ?? 'jpg';
+  const ext = extRaw.toLowerCase();
+  const type = ext === 'pdf' ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  form.append(field, {uri, type, name: `${fallback}.${ext}`} as never);
 }
 
 // ─── Store CRUD ──────────────────────────────────────────────────
@@ -304,32 +330,12 @@ export async function createStore(payload: CreateStorePayload): Promise<Store> {
   if (payload.discountPercent != null) form.append('discountPercent', String(payload.discountPercent));
   if (payload.minOrderInr != null) form.append('minOrderInr', String(payload.minOrderInr));
 
-  if (payload.profilePhotoUri) {
-    const ext = payload.profilePhotoUri.split('.').pop() ?? 'jpg';
-    form.append('profilePhoto', {
-      uri: payload.profilePhotoUri,
-      type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
-      name: `profile.${ext}`,
-    } as never);
-  }
-  if (payload.bannerImageUri) {
-    const ext = payload.bannerImageUri.split('.').pop() ?? 'jpg';
-    form.append('bannerImage', {
-      uri: payload.bannerImageUri,
-      type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
-      name: `banner.${ext}`,
-    } as never);
-  }
-  const appendDoc = (field: string, uri?: string, fallback = 'doc') => {
-    if (!uri) return;
-    const ext = uri.split('.').pop() ?? 'jpg';
-    const mime = ext.toLowerCase() === 'pdf' ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-    form.append(field, {uri, type: mime, name: `${fallback}.${ext}`} as never);
-  };
-  appendDoc('panCard', payload.panCardUri, 'pan');
-  appendDoc('aadhaarCard', payload.aadhaarCardUri, 'aadhaar');
-  appendDoc('addressProof', payload.addressProofUri, 'address');
-  (payload.storePhotoUris ?? []).forEach((uri, i) => appendDoc('storePhotos', uri, `store_${i}`));
+  appendUpload(form, 'profilePhoto', payload.profilePhotoUri, 'profile');
+  appendUpload(form, 'bannerImage', payload.bannerImageUri, 'banner');
+  appendUpload(form, 'panCard', payload.panCardUri, 'pan');
+  appendUpload(form, 'aadhaarCard', payload.aadhaarCardUri, 'aadhaar');
+  appendUpload(form, 'addressProof', payload.addressProofUri, 'address');
+  (payload.storePhotoUris ?? []).forEach((uri, i) => appendUpload(form, 'storePhotos', uri, `store_${i}`));
 
   const res = await fetch(`${apiBase()}/stores`, {
     method: 'POST',
@@ -351,23 +357,35 @@ export type UpdateStorePayload = Partial<Omit<CreateStorePayload, 'lat' | 'lng'>
 export async function updateStore(storeId: string, payload: UpdateStorePayload): Promise<Store> {
   const token = await getIdToken();
   const form = new FormData();
-  const fields: Array<keyof typeof payload> = ['name', 'phone', 'city', 'address', 'category', 'description'];
+  const fields: Array<keyof typeof payload> = [
+    'name',
+    'phone',
+    'city',
+    'address',
+    'category',
+    'description',
+    'storeType',
+    'gstNumber',
+    'shopActLicense',
+  ];
   for (const k of fields) {
     if (payload[k] != null) form.append(k, String(payload[k]));
   }
   if (payload.lat != null) form.append('lat', String(payload.lat));
   if (payload.lng != null) form.append('lng', String(payload.lng));
   if (payload.hasDelivery != null) form.append('hasDelivery', String(payload.hasDelivery));
+  if (payload.acceptedTerms != null) form.append('acceptedTerms', String(payload.acceptedTerms));
+  if (payload.coinsRequired != null) form.append('coinsRequired', String(payload.coinsRequired));
+  if (payload.discountPercent != null) form.append('discountPercent', String(payload.discountPercent));
+  if (payload.minOrderInr != null) form.append('minOrderInr', String(payload.minOrderInr));
   if (payload.removeProfilePhoto != null) form.append('removeProfilePhoto', String(payload.removeProfilePhoto));
   if (payload.removeBannerImage != null) form.append('removeBannerImage', String(payload.removeBannerImage));
-  if (payload.profilePhotoUri) {
-    const ext = payload.profilePhotoUri.split('.').pop() ?? 'jpg';
-    form.append('profilePhoto', {uri: payload.profilePhotoUri, type: `image/${ext}`, name: `profile.${ext}`} as never);
-  }
-  if (payload.bannerImageUri) {
-    const ext = payload.bannerImageUri.split('.').pop() ?? 'jpg';
-    form.append('bannerImage', {uri: payload.bannerImageUri, type: `image/${ext}`, name: `banner.${ext}`} as never);
-  }
+  appendUpload(form, 'profilePhoto', payload.profilePhotoUri, 'profile');
+  appendUpload(form, 'bannerImage', payload.bannerImageUri, 'banner');
+  appendUpload(form, 'panCard', payload.panCardUri, 'pan');
+  appendUpload(form, 'aadhaarCard', payload.aadhaarCardUri, 'aadhaar');
+  appendUpload(form, 'addressProof', payload.addressProofUri, 'address');
+  (payload.storePhotoUris ?? []).forEach((uri, i) => appendUpload(form, 'storePhotos', uri, `store_${i}`));
 
   const res = await fetch(`${apiBase()}/stores/${storeId}`, {
     method: 'PUT',

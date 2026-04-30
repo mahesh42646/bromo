@@ -102,6 +102,34 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const PUBLIC_STORE_FILTER = { isActive: true, approvalStatus: "approved" } as const;
+
+function normalizeApprovalStatus(value: unknown): "pending" | "approved" | "rejected" {
+  return value === "approved" || value === "rejected" || value === "pending" ? value : "pending";
+}
+
+function parseStoreType(value: unknown): "d2c" | "b2b" | "online" {
+  return value === "b2b" || value === "online" ? value : "d2c";
+}
+
+function parseExternalLinks(raw: string | undefined): Array<{label: string; url: string}> {
+  if (!raw) return [];
+  try {
+    const rows = JSON.parse(raw) as Array<{label?: unknown; url?: unknown}>;
+    return Array.isArray(rows)
+      ? rows
+          .map((row) => ({
+            label: String(row.label ?? "").trim().slice(0, 80),
+            url: String(row.url ?? "").trim().slice(0, 500),
+          }))
+          .filter((row) => row.url)
+          .slice(0, 10)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 // ─── Multer for store images ──────────────────────────────────────
 
 function makeStoreStorage(subDir: string) {
@@ -206,12 +234,17 @@ function toStoreView(store: ReturnType<typeof Store.prototype.toObject>, myId?: 
   if (obj.subscription?.status === "active" && obj.subscription?.endsAt && new Date(obj.subscription.endsAt).getTime() <= Date.now()) {
     obj.subscription.status = "expired";
   }
+  const approvalStatus = normalizeApprovalStatus(obj.approvalStatus);
+  const isLive = obj.isActive === true && approvalStatus === "approved";
   const activePlan =
     obj.subscription?.status === "active" && obj.subscription?.planId && obj.subscription.planId !== "none"
       ? STORE_PLAN_CATALOG[obj.subscription.planId as StorePaidPlanId]
       : null;
   return {
     ...obj,
+    approvalStatus,
+    isActive: isLive,
+    requestPendingLabel: obj.requestPendingLabel || "Request Pending",
     activePlan,
     isFavorited: myId ? (obj.favoritedBy ?? []).some((id: unknown) => String(id) === myId) : false,
     favoritedBy: undefined,
@@ -224,7 +257,7 @@ function toStoreView(store: ReturnType<typeof Store.prototype.toObject>, myId?: 
 storeRouter.get("/featured", async (req: FirebaseAuthedRequest, res: Response) => {
   try {
     const sampled = await Store.aggregate([
-      { $match: { isActive: true } },
+      { $match: PUBLIC_STORE_FILTER },
       { $sample: { size: 6 } },
     ]);
     const myId = req.dbUser?._id ? String(req.dbUser._id) : undefined;
@@ -398,7 +431,7 @@ storeRouter.get("/", async (req: FirebaseAuthedRequest, res: Response) => {
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const skip = (parsedPage - 1) * parsedLimit;
 
-    const filter: Record<string, unknown> = { isActive: true };
+    const filter: Record<string, unknown> = { ...PUBLIC_STORE_FILTER };
     if (city) filter.city = { $regex: new RegExp(escapeRegExp(city), "i") };
     if (delivery === "true") filter.hasDelivery = true;
     if (category) filter.category = category;
@@ -505,7 +538,7 @@ storeRouter.get("/", async (req: FirebaseAuthedRequest, res: Response) => {
 /** GET /stores/:id */
 storeRouter.get("/:id", async (req: FirebaseAuthedRequest, res: Response) => {
   try {
-    const store = await Store.findById(req.params.id);
+    const store = await Store.findOne({_id: req.params.id, ...PUBLIC_STORE_FILTER});
     if (!store) return res.status(404).json({ message: "Store not found" });
     await Store.findByIdAndUpdate(req.params.id, { $inc: { totalViews: 1 } });
     syncSubscriptionStatus(store);
@@ -580,23 +613,7 @@ storeRouter.post(
         acceptedAt,
         ip: req.ip ?? "",
       });
-      let parsedLinks: Array<{label: string; url: string}> = [];
-      if (externalLinks) {
-        try {
-          const raw = JSON.parse(externalLinks) as Array<{label?: unknown; url?: unknown}>;
-          parsedLinks = Array.isArray(raw)
-            ? raw
-                .map((row) => ({
-                  label: String(row.label ?? "").trim().slice(0, 80),
-                  url: String(row.url ?? "").trim().slice(0, 500),
-                }))
-                .filter((row) => row.url)
-                .slice(0, 10)
-            : [];
-        } catch {
-          parsedLinks = [];
-        }
-      }
+      const parsedLinks = parseExternalLinks(externalLinks);
 
       const store = await Store.create({
         owner: req.dbUser!._id,
@@ -613,7 +630,7 @@ storeRouter.post(
         bannerImage,
         category,
         description: (description ?? "").trim(),
-        storeType: storeType === "b2b" || storeType === "online" ? storeType : "d2c",
+        storeType: parseStoreType(storeType),
         approvalStatus: "pending",
         isActive: false,
         requestPendingLabel: "Request Pending",
@@ -633,7 +650,7 @@ storeRouter.post(
           coinsRequired: Math.max(0, Number(coinsRequired) || 0),
           discountPercent: Math.min(90, Math.max(0, Number(discountPercent) || 0)),
           minOrderInr: Math.max(0, Number(minOrderInr) || 0),
-          active: storeType !== "b2b" && Number(coinsRequired) > 0 && Number(discountPercent) > 0,
+          active: parseStoreType(storeType) !== "b2b" && Number(coinsRequired) > 0 && Number(discountPercent) > 0,
         },
       });
 
@@ -675,10 +692,46 @@ storeRouter.put(
         hasDelivery,
         category,
         description,
+        storeType,
+        gstNumber,
+        shopActLicense,
+        acceptedTerms,
+        externalLinks,
+        coinsRequired,
+        discountPercent,
+        minOrderInr,
         removeProfilePhoto,
         removeBannerImage,
       } = req.body as Record<string, string>;
       const files = req.files as Record<string, Express.Multer.File[]>;
+      const panCardUrl = files?.panCard?.[0] ? fileToUrl(files.panCard[0]) : "";
+      const aadhaarCardUrl = files?.aadhaarCard?.[0] ? fileToUrl(files.aadhaarCard[0]) : "";
+      const addressProofUrl = files?.addressProof?.[0] ? fileToUrl(files.addressProof[0]) : "";
+      const storePhotoUrls = (files?.storePhotos ?? []).map(fileToUrl);
+      const hasKycOrPlanSubmission = Boolean(
+        storeType !== undefined ||
+          gstNumber !== undefined ||
+          shopActLicense !== undefined ||
+          acceptedTerms !== undefined ||
+          externalLinks !== undefined ||
+          coinsRequired !== undefined ||
+          discountPercent !== undefined ||
+          minOrderInr !== undefined ||
+          panCardUrl ||
+          aadhaarCardUrl ||
+          addressProofUrl ||
+          storePhotoUrls.length > 0,
+      );
+      if (!store.kyc) {
+        store.set("kyc", {
+          gstNumber: "",
+          shopActLicense: "",
+          panCardUrl: "",
+          aadhaarCardUrl: "",
+          storePhotoUrls: [],
+          addressProofUrl: "",
+        });
+      }
 
       if (name) store.name = name.trim();
       if (phone) store.phone = phone.trim();
@@ -694,9 +747,60 @@ storeRouter.put(
       if (removeBannerImage === "true") store.bannerImage = "";
       if (files?.profilePhoto?.[0]) store.profilePhoto = fileToUrl(files.profilePhoto[0]);
       if (files?.bannerImage?.[0]) store.bannerImage = fileToUrl(files.bannerImage[0]);
+      if (storeType !== undefined) store.storeType = parseStoreType(storeType);
+      if (externalLinks !== undefined) store.externalLinks = parseExternalLinks(externalLinks);
+
+      if (gstNumber !== undefined) store.kyc.gstNumber = gstNumber.trim();
+      if (shopActLicense !== undefined) store.kyc.shopActLicense = shopActLicense.trim();
+      if (panCardUrl) store.kyc.panCardUrl = panCardUrl;
+      if (aadhaarCardUrl) store.kyc.aadhaarCardUrl = aadhaarCardUrl;
+      if (addressProofUrl) store.kyc.addressProofUrl = addressProofUrl;
+      if (storePhotoUrls.length > 0) store.kyc.storePhotoUrls = storePhotoUrls;
+
+      if (coinsRequired !== undefined || discountPercent !== undefined || minOrderInr !== undefined || storeType !== undefined) {
+        const nextCoins = coinsRequired !== undefined ? Number(coinsRequired) : Number(store.coinDiscountRule?.coinsRequired ?? 0);
+        const nextDiscount = discountPercent !== undefined ? Number(discountPercent) : Number(store.coinDiscountRule?.discountPercent ?? 0);
+        const nextMinOrder = minOrderInr !== undefined ? Number(minOrderInr) : Number(store.coinDiscountRule?.minOrderInr ?? 0);
+        store.coinDiscountRule = {
+          coinsRequired: Math.max(0, nextCoins || 0),
+          discountPercent: Math.min(90, Math.max(0, nextDiscount || 0)),
+          minOrderInr: Math.max(0, nextMinOrder || 0),
+          active: store.storeType !== "b2b" && nextCoins > 0 && nextDiscount > 0,
+        };
+      }
+
+      if (acceptedTerms === "true") {
+        const acceptedAt = new Date();
+        store.termsAcceptedAt = acceptedAt;
+        store.termsAcceptedIp = req.ip ?? "";
+        store.termsPdfUrl = writeTermsAcceptancePdf({
+          userId: String(req.dbUser!._id),
+          userName: req.dbUser!.displayName,
+          acceptedAt,
+          ip: req.ip ?? "",
+        });
+      }
+
+      if (hasKycOrPlanSubmission) {
+        if (!store.kyc.gstNumber?.trim() && !store.kyc.shopActLicense?.trim()) {
+          return res.status(400).json({message: "GST Number or Shop Act License is required"});
+        }
+        if (!store.kyc.panCardUrl || !store.kyc.aadhaarCardUrl || !store.kyc.addressProofUrl || !store.kyc.storePhotoUrls?.length) {
+          return res.status(400).json({message: "PAN Card, Aadhaar Card, store photos and address proof are required"});
+        }
+        if (!store.termsPdfUrl) {
+          return res.status(400).json({message: "Accept Terms & Conditions is required"});
+        }
+        store.approvalStatus = "pending";
+        store.isActive = false;
+        store.requestPendingLabel = "Request Pending";
+        store.rejectionReason = "";
+        store.set("approvedAt", undefined);
+        store.set("approvedBy", undefined);
+      }
 
       await store.save();
-      res.json({ store });
+      res.json({ store: toStoreView(store, String(req.dbUser!._id)) });
     } catch {
       res.status(500).json({ message: "Server error" });
     }
@@ -897,6 +1001,8 @@ storeRouter.post("/:id/push", requireVerifiedUser, async (req: FirebaseAuthedReq
 storeRouter.get("/:id/products", async (req: FirebaseAuthedRequest, res: Response) => {
   try {
     const { category } = req.query as { category?: string };
+    const store = await Store.findOne({_id: req.params.id, ...PUBLIC_STORE_FILTER}).select("_id").lean();
+    if (!store) return res.status(404).json({ message: "Store not found" });
     const filter: Record<string, unknown> = { store: req.params.id, isActive: true };
     if (category) filter.category = category;
 
@@ -921,6 +1027,9 @@ storeRouter.post(
       if (!store) return res.status(404).json({ message: "Store not found" });
       if (String(store.owner) !== String(req.dbUser!._id)) {
         return res.status(403).json({ message: "Forbidden" });
+      }
+      if (store.approvalStatus !== "approved" || !store.isActive) {
+        return res.status(403).json({ message: "Store must be admin approved before adding products" });
       }
 
       const { name, description, price, originalPrice, category, inStock, tags, videoUrl } = req.body as Record<string, string>;
@@ -968,6 +1077,10 @@ storeRouter.put(
       if (String(product.owner) !== String(req.dbUser!._id)) {
         return res.status(403).json({ message: "Forbidden" });
       }
+      const store = await Store.findOne({_id: req.params.id, owner: req.dbUser!._id});
+      if (!store || store.approvalStatus !== "approved" || !store.isActive) {
+        return res.status(403).json({ message: "Store must be admin approved before editing products" });
+      }
 
       const { name, description, price, originalPrice, category, inStock, tags, videoUrl, replacePhotos } = req.body as Record<string, string>;
       if (name) product.name = name.trim();
@@ -999,6 +1112,10 @@ storeRouter.delete("/:id/products/:pid", requireVerifiedUser, async (req: Fireba
     if (String(product.owner) !== String(req.dbUser!._id)) {
       return res.status(403).json({ message: "Forbidden" });
     }
+    const store = await Store.findOne({_id: req.params.id, owner: req.dbUser!._id});
+    if (!store || store.approvalStatus !== "approved" || !store.isActive) {
+      return res.status(403).json({ message: "Store must be admin approved before deleting products" });
+    }
     await product.deleteOne();
     await Store.findByIdAndUpdate(req.params.id, { $inc: { totalProducts: -1 } });
     res.json({ ok: true });
@@ -1012,9 +1129,10 @@ storeRouter.delete("/:id/products/:pid", requireVerifiedUser, async (req: Fireba
 /** POST /stores/:id/favorite */
 storeRouter.post("/:id/favorite", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
   try {
-    await Store.findByIdAndUpdate(req.params.id, {
+    const store = await Store.findOneAndUpdate({_id: req.params.id, ...PUBLIC_STORE_FILTER}, {
       $addToSet: { favoritedBy: req.dbUser!._id },
     });
+    if (!store) return res.status(404).json({ message: "Store not found" });
     res.json({ ok: true });
   } catch {
     res.status(500).json({ message: "Server error" });
@@ -1024,9 +1142,10 @@ storeRouter.post("/:id/favorite", requireVerifiedUser, async (req: FirebaseAuthe
 /** DELETE /stores/:id/favorite */
 storeRouter.delete("/:id/favorite", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
   try {
-    await Store.findByIdAndUpdate(req.params.id, {
+    const store = await Store.findOneAndUpdate({_id: req.params.id, ...PUBLIC_STORE_FILTER}, {
       $pull: { favoritedBy: req.dbUser!._id },
     });
+    if (!store) return res.status(404).json({ message: "Store not found" });
     res.json({ ok: true });
   } catch {
     res.status(500).json({ message: "Server error" });

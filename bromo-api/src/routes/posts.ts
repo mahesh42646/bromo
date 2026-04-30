@@ -2416,9 +2416,17 @@ postsRouter.get(
       if (!post || !post.isActive || post.isDeleted) return res.status(404).json({ message: "Post not found" });
 
       let isLiked = false;
+      let isSaved = false;
       if (dbUser) {
-        const like = await Like.findOne({ targetId: post._id, userId: dbUser._id, targetType: "post" });
+        const [like, saved] = await Promise.all([
+          Like.findOne({ targetId: post._id, userId: dbUser._id, targetType: "post" }),
+          mongoose.connection.collection("saved_posts").findOne({
+            postId: post._id,
+            $or: [{userId: dbUser._id}, {userId: String(dbUser._id)}],
+          }),
+        ]);
         isLiked = !!like;
+        isSaved = !!saved;
       }
 
       const taggedIds = (post as { taggedUserIds?: mongoose.Types.ObjectId[] }).taggedUserIds ?? [];
@@ -2470,6 +2478,7 @@ postsRouter.get(
           commentsCount: Number(post.commentsCount) || 0,
           viewsCount: Number(post.viewsCount) || 0,
           isLiked,
+          isSaved,
           author: post.authorId,
           authorId: undefined,
           taggedPreview,

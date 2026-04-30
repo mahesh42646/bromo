@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -36,7 +36,7 @@ import {
 import {useTheme} from '../../context/ThemeContext';
 import {useAuth} from '../../context/AuthContext';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
-import {STORE_CATEGORIES, createStore, type StoreCategory} from '../../api/storeApi';
+import {STORE_CATEGORIES, createStore, getMyStore, updateStore, type Store as StoreRecord, type StoreCategory} from '../../api/storeApi';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
@@ -59,6 +59,7 @@ export function CreateStoreScreen() {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [existingStore, setExistingStore] = useState<StoreRecord | null>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -84,6 +85,41 @@ export function CreateStoreScreen() {
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [bannerImageUri, setBannerImageUri] = useState<string | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getMyStore()
+      .then(store => {
+        if (!alive) return;
+        setExistingStore(store);
+        setName(store.name ?? '');
+        setPhone(store.phone ?? '');
+        setCity(store.city ?? '');
+        setAddress(store.address ?? '');
+        setLng(store.location?.coordinates?.[0] ?? null);
+        setLat(store.location?.coordinates?.[1] ?? null);
+        setHasDelivery(Boolean(store.hasDelivery));
+        setCategory(store.category ?? '');
+        setDescription(store.description ?? '');
+        setStoreType(store.storeType ?? 'd2c');
+        setGstNumber(store.kyc?.gstNumber ?? '');
+        setShopActLicense(store.kyc?.shopActLicense ?? '');
+        setAcceptedTerms(Boolean(store.termsPdfUrl || store.termsAcceptedAt));
+        setPanCardUri(store.kyc?.panCardUrl || null);
+        setAadhaarCardUri(store.kyc?.aadhaarCardUrl || null);
+        setAddressProofUri(store.kyc?.addressProofUrl || null);
+        setStorePhotoUris(store.kyc?.storePhotoUrls ?? []);
+        setCoinsRequired(String(store.coinDiscountRule?.coinsRequired || 1500));
+        setDiscountPercent(String(store.coinDiscountRule?.discountPercent || 10));
+        setMinOrderInr(String(store.coinDiscountRule?.minOrderInr || 0));
+        setProfilePhotoUri(store.profilePhoto || null);
+        setBannerImageUri(store.bannerImage || null);
+      })
+      .catch(() => null);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const detectLocation = useCallback(() => {
     setLocating(true);
@@ -155,7 +191,7 @@ export function CreateStoreScreen() {
     if (!category) return;
     setSubmitting(true);
     try {
-      await createStore({
+      const payload = {
         name: name.trim(),
         phone: phone.trim(),
         city: city.trim(),
@@ -178,7 +214,12 @@ export function CreateStoreScreen() {
         coinsRequired: storeType === 'd2c' ? Number(coinsRequired) : undefined,
         discountPercent: storeType === 'd2c' ? Number(discountPercent) : undefined,
         minOrderInr: storeType === 'd2c' ? Number(minOrderInr || '0') : undefined,
-      });
+      };
+      if (existingStore) {
+        await updateStore(existingStore._id, payload);
+      } else {
+        await createStore(payload);
+      }
       await refreshDbUser();
       Alert.alert('Request Pending', 'Your store registration is submitted for admin approval.', [
         {text: 'Manage Store', onPress: () => navigation.replace('ManageStore')},
@@ -188,7 +229,7 @@ export function CreateStoreScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [validateStep, category, name, phone, city, address, lat, lng, hasDelivery, description, profilePhotoUri, bannerImageUri, storeType, gstNumber, shopActLicense, acceptedTerms, panCardUri, aadhaarCardUri, addressProofUri, storePhotoUris, coinsRequired, discountPercent, minOrderInr, refreshDbUser, navigation]);
+  }, [validateStep, category, name, phone, city, address, lat, lng, hasDelivery, description, profilePhotoUri, bannerImageUri, storeType, gstNumber, shopActLicense, acceptedTerms, panCardUri, aadhaarCardUri, addressProofUri, storePhotoUris, coinsRequired, discountPercent, minOrderInr, existingStore, refreshDbUser, navigation]);
 
   const mapPreviewUrl =
     lat != null && lng != null
@@ -204,7 +245,9 @@ export function CreateStoreScreen() {
         <Pressable onPress={() => (step > 0 ? setStep(s => s - 1) : navigation.goBack())} hitSlop={12}>
           <ChevronLeft size={22} color={palette.foreground} />
         </Pressable>
-        <Text style={[s.headerTitle, {color: palette.foreground}]}>Create Store</Text>
+        <Text style={[s.headerTitle, {color: palette.foreground}]}>
+          {existingStore ? 'Store KYC' : 'Create Store'}
+        </Text>
         <View style={{width: 22}} />
       </View>
 
@@ -614,7 +657,9 @@ export function CreateStoreScreen() {
             ) : (
               <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
                 <Store size={16} color={palette.primaryForeground} />
-                <Text style={[s.primaryBtnText, {color: palette.primaryForeground}]}>Create Store</Text>
+                <Text style={[s.primaryBtnText, {color: palette.primaryForeground}]}>
+                  {existingStore ? 'Submit For Approval' : 'Create Store'}
+                </Text>
               </View>
             )}
           </Pressable>

@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   Image,
   Pressable,
   RefreshControl,
@@ -76,6 +77,18 @@ export function OtherUserProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [followStatus, setFollowStatus] = useState<'none' | 'following' | 'requested'>('none');
   const [gridStats, setGridStats] = useState<UserGridStats | null>(null);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      'bromo:followChanged',
+      ({userId: changedUserId, following, requested}: {userId: string; following: boolean; requested?: boolean}) => {
+        if (String(changedUserId) !== String(userId)) return;
+        const next: 'none' | 'following' | 'requested' = requested ? 'requested' : following ? 'following' : 'none';
+        setFollowStatus(next);
+      },
+    );
+    return () => sub.remove();
+  }, [userId]);
 
   const openChat = useCallback(async () => {
     if (!profile) return;
@@ -289,7 +302,9 @@ export function OtherUserProfileScreen() {
           {/* Name + bio */}
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4}}>
             <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>{profile.displayName}</Text>
-            {profile.emailVerified && <BadgeCheck size={15} color={palette.primary} fill={palette.primary} strokeWidth={2} />}
+            {(profile.isVerified || profile.verificationStatus === 'verified') && (
+              <BadgeCheck size={15} color={palette.primary} fill={palette.primary} strokeWidth={2} />
+            )}
           </View>
           {profile.bio ? (
             <Text style={{color: palette.foreground, fontSize: 13, lineHeight: 18, marginBottom: 4}}>{profile.bio}</Text>

@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Modal,
   Pressable,
@@ -9,6 +10,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
@@ -20,7 +22,7 @@ import {useAuth} from '../context/AuthContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {deletePost, getPost, resolveVideoUrl, toggleLike, type Post, votePostPoll} from '../api/postsApi';
+import {deletePost, getPost, resolveVideoUrl, toggleLike, toggleSavePost, type CarouselItem, type Post, votePostPoll} from '../api/postsApi';
 import {EditMetaLayers} from '../components/media/EditMetaLayers';
 import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
@@ -43,10 +45,17 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+function clampAspectRatio(value: unknown, fallback = 1): number {
+  const n = Number(value || fallback);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(0.42, Math.min(2.2, n));
+}
+
 export function PostDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const {postId} = route.params;
+  const {width: windowWidth} = useWindowDimensions();
   const {palette, contract} = useTheme();
   const {dbUser} = useAuth();
   const {borderRadiusScale} = contract.brandGuidelines;
@@ -57,10 +66,14 @@ export function PostDetailScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [videoMuted, setVideoMuted] = useState(true);
   const [pollBusy, setPollBusy] = useState(false);
+  const [carouselIndex, setCarouselIndex] = useState(0);
 
   useEffect(() => {
     getPost(postId)
-      .then(res => setPost(res.post))
+      .then(res => {
+        setPost(res.post);
+        setBookmarked(Boolean(res.post.isSaved));
+      })
       .catch(err => {
         console.error('[PostDetail] getPost failed', postId, err);
       })
@@ -78,6 +91,19 @@ export function PostDetailScreen() {
   const handleShare = useCallback(() => {
     navigation.navigate('ShareSend', {postId});
   }, [navigation, postId]);
+
+  const handleSave = useCallback(async () => {
+    if (!post) return;
+    const previous = bookmarked;
+    setBookmarked(!previous);
+    try {
+      const out = await toggleSavePost(post._id);
+      setBookmarked(out.saved);
+    } catch {
+      setBookmarked(previous);
+      Alert.alert('Save failed', 'Could not update saved posts.');
+    }
+  }, [bookmarked, post]);
 
   const isOwnPost = Boolean(post && dbUser?._id && String(post.author._id) === String(dbUser._id));
 
@@ -156,6 +182,10 @@ export function PostDetailScreen() {
   const rawVideo = resolveVideoUrl(post, false);
   const playUriDetail = resolveMediaUrl(rawVideo) ?? '';
   const isHlsDetail = rawVideo.endsWith('.m3u8');
+  const carouselItems = (post.carouselItems ?? []).slice().sort((a, b) => a.order - b.order);
+  const activeCarouselItem = carouselItems[Math.min(carouselIndex, Math.max(0, carouselItems.length - 1))];
+  const mediaAspect = clampAspectRatio(activeCarouselItem?.aspectRatio, post.type === 'reel' ? 9 / 16 : 1);
+  const mediaWidth = Math.max(1, windowWidth);
 
   return (
     <ThemedSafeScreen>
@@ -239,7 +269,7 @@ export function PostDetailScreen() {
           <View style={{flex: 1}}>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
               <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 14}}>{post.author.displayName}</Text>
-              {post.author.emailVerified && (
+              {(post.author.isVerified || post.author.verificationStatus === 'verified') && (
                 <BadgeCheck size={13} color={palette.primary} fill={palette.primary} strokeWidth={2} />
               )}
             </View>
@@ -251,15 +281,45 @@ export function PostDetailScreen() {
         </Pressable>
 
         {/* Media */}
-        {post.mediaType === 'video' ? (
-          <View style={{width: '100%', aspectRatio: 1, position: 'relative'}}>
+        {carouselItems.length > 0 ? (
+          <View style={{width: '100%', aspectRatio: mediaAspect, position: 'relative', backgroundColor: '#000'}}>
+            <FlatList<CarouselItem>
+              data={carouselItems}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item, idx) => `${item.mediaUrl}_${idx}`}
+              onMomentumScrollEnd={e => {
+                setCarouselIndex(Math.round(e.nativeEvent.contentOffset.x / mediaWidth));
+              }}
+              renderItem={({item}) => (
+                <View style={{width: mediaWidth, aspectRatio: mediaAspect, alignItems: 'center', justifyContent: 'center'}}>
+                  <Image
+                    source={{uri: resolveMediaUrl(item.thumbnailUrl || item.mediaUrl)}}
+                    style={{width: '100%', height: '100%'}}
+                    resizeMode="contain"
+                  />
+                </View>
+              )}
+            />
+            {carouselItems.length > 1 ? (
+              <View style={{position: 'absolute', top: 10, right: 10, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.55)'}}>
+                <Text style={{color: '#fff', fontSize: 11, fontWeight: '900'}}>
+                  {Math.min(carouselIndex + 1, carouselItems.length)}/{carouselItems.length}
+                </Text>
+              </View>
+            ) : null}
+            <EditMetaLayers clientEditMeta={post.clientEditMeta} />
+          </View>
+        ) : post.mediaType === 'video' ? (
+          <View style={{width: '100%', aspectRatio: mediaAspect, position: 'relative', backgroundColor: '#000'}}>
             <PostVideoWithClientMeta
               post={post}
               context={isHlsDetail ? 'feed-hls' : 'feed'}
               uri={playUriDetail}
               fallbackUri={isHlsDetail ? resolveMediaUrl(post.mediaUrl) ?? undefined : undefined}
               posterUri={postThumbnailUri(post) || undefined}
-              style={{width: '100%', aspectRatio: 1}}
+              style={{width: '100%', aspectRatio: mediaAspect}}
               repeat
               muted={videoMuted}
               paused={false}
@@ -282,11 +342,11 @@ export function PostDetailScreen() {
             </Pressable>
           </View>
         ) : (
-          <View style={{width: '100%', aspectRatio: 1, position: 'relative'}}>
+          <View style={{width: '100%', aspectRatio: mediaAspect, position: 'relative', backgroundColor: '#000'}}>
             <Image
               source={{uri: resolveMediaUrl(post.mediaUrl)}}
               style={{width: '100%', height: '100%'}}
-              resizeMode="cover"
+              resizeMode="contain"
             />
             <EditMetaLayers clientEditMeta={post.clientEditMeta} />
           </View>
@@ -346,7 +406,7 @@ export function PostDetailScreen() {
 
           <View style={{flex: 1}} />
 
-          <Pressable onPress={() => setBookmarked(b => !b)}>
+          <Pressable onPress={handleSave}>
             <Bookmark
               size={26}
               color={bookmarked ? palette.primary : palette.foreground}
