@@ -1,0 +1,5 @@
+packages:
+  - "bromo-mobile"
+  - "bromo-web"
+  - "bromo-api"
+  - "bromo-portal"

@@ -1,0 +1,10 @@
+{
+  "name": "bromo-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "install:all": "pnpm install -r",
+    "lint": "pnpm -r lint",
+    "build": "pnpm -r build"
+  }
+}

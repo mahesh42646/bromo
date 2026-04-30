@@ -6,10 +6,10 @@
     "android": "react-native run-android",
     "android:apk": "cd android && JAVA_TOOL_OPTIONS='--enable-native-access=ALL-UNNAMED' ./gradlew assembleRelease",
     "ios": "react-native run-ios --simulator \"iPhone 17\"",
-    "ios:device": "npm run metro:sync-ip && react-native run-ios --device \"Mahesh’s iPhone\"",
+    "ios:device": "pnpm run metro:sync-ip && react-native run-ios --device \"Mahesh’s iPhone\"",
     "lint": "eslint .",
     "metro:sync-ip": "node scripts/sync-metro-host.cjs",
-    "ios:device:sync": "npm run ios:device",
+    "ios:device:sync": "pnpm run ios:device",
     "start": "node scripts/start-metro.cjs",
     "test": "jest",
     "postinstall": "patch-package"
