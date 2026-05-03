@@ -139,7 +139,7 @@ function buildMapRegion(markers: StoreMarker[], userLat?: number | null, userLng
 
 export function StoreScreen() {
   const navigation = useNavigation();
-  const { palette, isDark, contract } = useTheme();
+  const { palette, isDark, branding } = useTheme();
   const tabBarHeight = useBottomTabBarHeight();
 
   const [stores, setStores] = useState<BromoStore[]>([]);
@@ -180,7 +180,7 @@ export function StoreScreen() {
   const miniMapLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullMapLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const appTitle = contract.branding.appTitle || 'BROMO';
+  const appTitle = branding.appTitle || 'BROMO';
 
   const refreshLocation = useCallback(() => {
     Geolocation.getCurrentPosition(

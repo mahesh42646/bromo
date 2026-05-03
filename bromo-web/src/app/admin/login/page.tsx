@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/admin/login-form";
+import { siteConfig } from "@/config/site";
 import { readAdminSession } from "@/lib/auth/session";
-import { fetchPublicPlatformSettings } from "@/lib/platform-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,6 @@ export default async function AdminLoginPage() {
   if (session) {
     redirect("/admin/dashboard");
   }
-  const settings = await fetchPublicPlatformSettings();
 
   return (
     <div className="from-background via-muted/30 to-background relative min-h-screen overflow-hidden bg-gradient-to-br">
@@ -39,14 +38,9 @@ export default async function AdminLoginPage() {
         }}
       />
       <div className="relative flex min-h-screen flex-col items-center justify-center p-6">
-        {settings.maintenance.admin.enabled ? (
-          <p className="text-muted-foreground mb-4 rounded-lg border border-border bg-muted/60 px-4 py-2 text-xs">
-            {settings.maintenance.admin.message}
-          </p>
-        ) : null}
         <LoginForm
-          platformName={settings.branding.platformName}
-          adminTitle={settings.branding.adminTitle}
+          platformName={siteConfig.platformName}
+          adminTitle={siteConfig.adminTitle}
         />
       </div>
     </div>

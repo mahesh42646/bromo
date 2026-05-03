@@ -30,7 +30,7 @@ const INTEGRATIONS: Integration[] = [
   {
     id: "mongodb",
     name: "MongoDB Atlas",
-    description: "Primary database for user profiles, content metadata, and platform settings.",
+    description: "Primary database for user profiles, content metadata, stores, and promotions.",
     status: "connected",
     category: "storage",
     lastSync: "Just now",

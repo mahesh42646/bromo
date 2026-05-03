@@ -142,7 +142,7 @@ export function SplashScreen() {
   const navigation = useNavigation<BootNav>();
   const {ready, firebaseUser, dbUser, needsEmailVerification, needsUsername} =
     useAuth();
-  const {contract, palette, isDark} = useTheme();
+  const {branding, palette, isDark} = useTheme();
 
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.82)).current;
@@ -195,7 +195,7 @@ export function SplashScreen() {
             letterSpacing: -2.8,
             lineHeight: 54,
           }}>
-          {contract.branding.appTitle?.toLowerCase() || 'bromo'}
+          {branding.appTitle?.toLowerCase() || 'bromo'}
           <Text style={{color: palette.accent, fontSize: 30, fontStyle: 'normal', letterSpacing: 0}}>
             °
           </Text>
@@ -230,7 +230,7 @@ export function SplashScreen() {
 export function OnboardingScreen() {
   const navigation = useNavigation<BootNav>();
   const {completeOnboarding} = useAuth();
-  const {palette, contract, isDark} = useTheme();
+  const {palette, guidelines, isDark} = useTheme();
   const SLIDES = makeSlides(palette);
   const insets = useSafeAreaInsets();
   const {height: windowH} = useWindowDimensions();
@@ -249,7 +249,7 @@ export function OnboardingScreen() {
   const heroFg = palette.foreground;
   const heroBody = palette.foregroundMuted;
 
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const outlineBtnRadius = borderRadiusScale === 'bold' ? 999 : borderRadiusScale === 'soft' ? 20 : 28;
 
   const transition = (cb: () => void) => {

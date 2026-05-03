@@ -36,7 +36,6 @@ import morgan from "morgan";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import { authRouter } from "./routes/auth.js";
-import { settingsRouter } from "./routes/settings.js";
 import { userAuthRouter } from "./routes/userAuth.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { postsRouter } from "./routes/posts.js";
@@ -146,7 +145,6 @@ export function createApp() {
   });
 
   app.use("/auth", authRouter);
-  app.use("/settings", settingsRouter);
   app.use("/user-auth", userAuthRouter);
   app.use("/admin", adminUsersRouter);
   app.use("/posts", postsRouter);

@@ -1,6 +1,5 @@
 /**
  * BROMO Mobile App
- * Theme driven by /admin/system/settings via RuntimeThemeContract
  */
 import './global.css';
 import React from 'react';

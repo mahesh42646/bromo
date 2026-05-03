@@ -40,9 +40,9 @@ interface Props {
 
 export function AdStoryViewer({ad, visible, onClose}: Props) {
   const insets = useSafeAreaInsets();
-  const {palette, contract} = useTheme();
+  const {palette, guidelines} = useTheme();
   const navigation = useNavigation() as Nav;
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const radius = borderRadiusScale === 'bold' ? 14 : 10;
 
   const [progress, setProgress] = useState(0);
@@ -102,7 +102,7 @@ export function AdStoryViewer({ad, visible, onClose}: Props) {
     }, TICK_MS);
 
     return clearTimers;
-  }, [visible, ad._id, close, ctaOpacity]);
+  }, [visible, ad._id, ad.adType, close, ctaOpacity]);
 
   const handleCta = useCallback(async () => {
     trackAdEvent(ad._id, 'click', {placement: 'stories'});

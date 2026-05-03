@@ -307,7 +307,7 @@ export function LandingPage() {
               </li>
               <li className="flex gap-3">
                 <Globe2 className="mt-0.5 size-4 shrink-0 text-[var(--accent)]" />
-                Built for global audiences with localization and performance as first-class concerns.
+                Built for reliable creator workflows with performance and trust as first-class concerns.
               </li>
             </ul>
           </motion.div>
@@ -392,7 +392,7 @@ export function LandingPage() {
               <h2 className="mt-3 text-3xl font-semibold tracking-tight">E-commerce, stores & products</h2>
               <p className="mt-4 text-[var(--foreground-muted)]">
                 We&apos;re bringing a comprehensive shopping layer to this same site: richer product pages, inventory
-                insights, and storefront branding tools that go beyond what fits on a phone screen — without splitting
+                insights, and storefront management tools that go beyond what fits on a phone screen — without splitting
                 your stack.
               </p>
               <ul className="mt-6 space-y-3 text-sm text-[var(--foreground-muted)]">

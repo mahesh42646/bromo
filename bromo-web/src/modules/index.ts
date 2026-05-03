@@ -3,7 +3,6 @@ export * as Admin from "./admin";
 export * as App from "./app";
 export * as Auth from "./auth";
 export * as Commerce from "./commerce";
-export * as Content from "./content";
 export * as Core from "./core";
 export * as Dashboard from "./dashboard";
 export * as Engagement from "./engagement";

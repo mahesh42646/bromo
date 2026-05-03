@@ -1,8 +1,0 @@
-import type { Metadata } from "next";
-import { AdminFeatureFlags } from "@/components/admin/admin-feature-flags";
-
-export const metadata: Metadata = { title: "AdminFeatureFlags" };
-
-export default function Page() {
-  return <AdminFeatureFlags />;
-}

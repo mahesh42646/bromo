@@ -31,8 +31,8 @@ export function FollowersFollowingScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const {userId, tab} = route.params;
-  const {palette, contract} = useTheme();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {palette, guidelines} = useTheme();
+  const {borderRadiusScale} = guidelines;
   const btnR = borderRadiusScale === 'bold' ? 999 : 8;
 
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -41,34 +41,33 @@ export function FollowersFollowingScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const load = useCallback(async (reset = false) => {
-    const p = reset ? 1 : page;
+  const load = useCallback(async (targetPage: number, reset = false) => {
     try {
       const res = tab === 'followers'
-        ? await getFollowers(userId, p)
-        : await getFollowing(userId, p);
+        ? await getFollowers(userId, targetPage)
+        : await getFollowing(userId, targetPage);
       if (reset) {
         setUsers(res.users);
         setPage(2);
       } else {
         setUsers(prev => [...prev, ...res.users]);
-        setPage(p + 1);
+        setPage(targetPage + 1);
       }
       setHasMore(res.hasMore);
     } catch {}
-  }, [userId, tab, page]);
+  }, [userId, tab]);
 
   useEffect(() => {
     setLoading(true);
-    load(true).finally(() => setLoading(false));
-  }, []);
+    load(1, true).finally(() => setLoading(false));
+  }, [load]);
 
   const onLoadMore = useCallback(async () => {
     if (!hasMore || loadingMore) return;
     setLoadingMore(true);
-    await load(false);
+    await load(page, false);
     setLoadingMore(false);
-  }, [hasMore, loadingMore, load]);
+  }, [hasMore, loadingMore, load, page]);
 
   const handleFollow = async (user: UserRow, idx: number) => {
     const current = user.followStatus ?? 'none';

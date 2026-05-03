@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Filter, Shield, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
-type EventType = "login" | "user_edit" | "user_delete" | "settings_change" | "role_change" | "system";
+type EventType = "login" | "user_edit" | "user_delete" | "security_change" | "role_change" | "system";
 
 interface AuditEvent {
   id: string;
@@ -20,7 +20,7 @@ interface AuditEvent {
 
 const EVENTS: AuditEvent[] = [
   { id: "1", type: "login", admin: "Super Admin", adminEmail: "admin@gmail.com", action: "Admin login", target: "auth", ip: "192.168.1.1", ts: new Date(Date.now() - 300000).toISOString(), severity: "info" },
-  { id: "2", type: "settings_change", admin: "Super Admin", adminEmail: "admin@gmail.com", action: "Updated platform settings", target: "settings.branding", ip: "192.168.1.1", ts: new Date(Date.now() - 600000).toISOString(), severity: "warn" },
+  { id: "2", type: "security_change", admin: "Super Admin", adminEmail: "admin@gmail.com", action: "Updated session policy", target: "system.security", ip: "192.168.1.1", ts: new Date(Date.now() - 600000).toISOString(), severity: "warn" },
   { id: "3", type: "user_edit", admin: "Super Admin", adminEmail: "admin@gmail.com", action: "Deactivated user account", target: "user@example.com", ip: "192.168.1.1", ts: new Date(Date.now() - 3600000).toISOString(), severity: "warn" },
   { id: "4", type: "role_change", admin: "Super Admin", adminEmail: "admin@gmail.com", action: "Changed admin role", target: "content@bromo.app → super_admin", ip: "192.168.1.1", ts: new Date(Date.now() - 7200000).toISOString(), severity: "critical" },
   { id: "5", type: "user_delete", admin: "Super Admin", adminEmail: "admin@gmail.com", action: "Deleted user account", target: "spam@user.com", ip: "192.168.1.1", ts: new Date(Date.now() - 86400000).toISOString(), severity: "critical" },
@@ -38,7 +38,7 @@ const TYPE_LABEL: Record<EventType, string> = {
   login: "Login",
   user_edit: "User edit",
   user_delete: "User delete",
-  settings_change: "Settings",
+  security_change: "Security",
   role_change: "Role change",
   system: "System",
 };

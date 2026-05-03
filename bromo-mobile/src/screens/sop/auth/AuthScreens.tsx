@@ -25,7 +25,7 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
-import {ChevronLeft, CheckCircle2, Eye, EyeOff, Mail, XCircle, AlignCenter} from 'lucide-react-native';
+import {ChevronLeft, CheckCircle2, Eye, EyeOff, Mail, XCircle} from 'lucide-react-native';
 import {useAuth} from '../../../context/AuthContext';
 import {useTheme} from '../../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
@@ -500,7 +500,7 @@ function usePostAuthNav(email?: string, pendingUsername?: string) {
 export function LoginScreen() {
   const navigation = useNavigation<Nav<'Login'>>();
   const {loginWithEmail, loginWithGoogle} = useAuth();
-  const {palette, contract} = useTheme();
+  const {palette, branding} = useTheme();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -551,9 +551,9 @@ export function LoginScreen() {
     <Chrome>
       {/* Logo */}
       <View style={{alignItems: 'center', paddingTop: 64, paddingBottom: 40}}>
-        {contract.branding.logoUrl ? (
+        {branding.logoUrl ? (
           <Image
-            source={{uri: contract.branding.logoUrl}}
+            source={{uri: branding.logoUrl}}
             style={{width: 72, height: 72, borderRadius: 20, marginBottom: 16}}
             resizeMode="contain"
           />
@@ -567,7 +567,7 @@ export function LoginScreen() {
               letterSpacing: -2,
               lineHeight: 48,
             }}>
-              {contract.branding.appTitle?.toLowerCase() || 'bromo'}
+              {branding.appTitle?.toLowerCase() || 'bromo'}
               <Text style={{color: palette.primary, fontSize: 24, fontStyle: 'normal'}}>°</Text>
             </Text>
             <Text style={{

@@ -11,8 +11,8 @@ type Props = {
 };
 
 export function Badge({label, variant = 'primary', style}: Props) {
-  const {palette, contract} = useTheme();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {palette, guidelines} = useTheme();
+  const {borderRadiusScale} = guidelines;
   const radius = borderRadiusScale === 'bold' ? 10 : borderRadiusScale === 'balanced' ? 6 : 4;
 
   const variantColors: Record<Variant, {bg: string; text: string}> = {

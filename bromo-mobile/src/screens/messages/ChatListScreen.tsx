@@ -16,7 +16,6 @@ import {BadgeCheck, ChevronLeft, MessageSquarePlus, Search} from 'lucide-react-n
 import {useTheme} from '../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {SearchBar} from '../../components/ui/SearchBar';
-import type {ChatListFilter} from '../../messaging/messageTypes';
 import {useMessaging} from '../../messaging/MessagingContext';
 import {formatThreadRowTime} from '../../messaging/formatTime';
 import type {MessagesStackParamList} from '../../navigation/MessagesStackNavigator';
@@ -25,23 +24,14 @@ import {muteConversation, unmuteConversation} from '../../api/chatApi';
 
 type Nav = NativeStackNavigationProp<MessagesStackParamList, 'ChatList'>;
 
-const FILTERS: {id: ChatListFilter; label: string}[] = [
-  {id: 'all', label: 'All'},
-  {id: 'unread', label: 'Unread'},
-  {id: 'close', label: 'Close friends'},
-];
-
 export function ChatListScreen() {
   const navigation = useNavigation<Nav>();
-  const {palette, contract, isDark} = useTheme();
+  const {palette, isDark} = useTheme();
   const {filterThreads, searchDirectory, ensureThread, openThreadForUser, loadingConversations} = useMessaging();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<ChatListFilter>('all');
   const [userSearchResults, setUserSearchResults] = useState<{_id: string; displayName: string; username: string; profilePicture: string}[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [mutedThreads, setMutedThreads] = useState<Set<string>>(() => new Set());
-  const {borderRadiusScale} = contract.brandGuidelines;
-  const chipR = borderRadiusScale === 'bold' ? 999 : 12;
 
   const directoryHits = useMemo(() => {
     const q = search.trim();
@@ -49,7 +39,7 @@ export function ChatListScreen() {
     return searchDirectory(q);
   }, [search, searchDirectory]);
 
-  const rows = useMemo(() => filterThreads(filter, search), [filterThreads, filter, search]);
+  const rows = useMemo(() => filterThreads('all', search), [filterThreads, search]);
 
   const openThread = (peerId: string) => {
     ensureThread(peerId);

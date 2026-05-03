@@ -62,10 +62,10 @@ export function OtherUserProfileScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const {userId} = route.params;
-  const {palette, contract} = useTheme();
+  const {palette, guidelines} = useTheme();
   const {dbUser} = useAuth();
   const {openThreadForUser} = useMessaging();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const btnR = borderRadiusScale === 'bold' ? 999 : 8;
   const isSelf = dbUser?._id === userId;
   const [startingChat, setStartingChat] = useState(false);
@@ -171,7 +171,7 @@ export function OtherUserProfileScreen() {
         setLoading(false);
         setLoadingPosts(false);
       });
-  }, [fetchProfilePage]);
+  }, [fetchProfilePage, userId]);
 
   const onRefresh = useCallback(async () => {
     invalidateOtherUserProfile(userId);

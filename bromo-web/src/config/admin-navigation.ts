@@ -2,23 +2,20 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   Bell,
-  BookOpen,
   CreditCard,
   FileKey2,
   FileText,
   Flag,
-  Image as ImageIcon,
   KeyRound,
   LayoutDashboard,
   LifeBuoy,
   Link2,
   Megaphone,
-  Palette,
   Plug,
-  Settings,
   Shield,
   ShoppingCart,
   SlidersHorizontal,
+  Store,
   UserCog,
   UserSearch,
   Users,
@@ -86,34 +83,15 @@ export const ADMIN_NAVIGATION: AdminNavGroup[] = [
     ],
   },
   {
-    label: "Content",
-    items: [
-      {
-        title: "CMS pages",
-        href: "/admin/content/pages",
-        description:
-          "Structured content blocks, publication workflow, and preview for marketing surfaces.",
-        icon: FileText,
-      },
-      {
-        title: "Media library",
-        href: "/admin/content/media",
-        description:
-          "Centralized assets, transformations, CDN metadata, and usage tracking.",
-        icon: ImageIcon,
-      },
-      {
-        title: "Localization",
-        href: "/admin/content/i18n",
-        description:
-          "Locale packs, translation status, and fallbacks for multi-language rollout.",
-        icon: BookOpen,
-      },
-    ],
-  },
-  {
     label: "Commerce & billing",
     items: [
+      {
+        title: "Stores",
+        href: "/admin/commerce/stores",
+        description:
+          "Review merchant storefronts, approvals, and operational readiness.",
+        icon: Store,
+      },
       {
         title: "Affiliate products",
         href: "/admin/commerce/products",
@@ -239,32 +217,11 @@ export const ADMIN_NAVIGATION: AdminNavGroup[] = [
           "Developer credentials, rotation, and usage quotas for public APIs.",
         icon: KeyRound,
       },
-      {
-        title: "Feature flags",
-        href: "/admin/platform/feature-flags",
-        description:
-          "Progressive delivery, kill switches, and audience targeting for releases.",
-        icon: Flag,
-      },
     ],
   },
   {
     label: "System",
     items: [
-      {
-        title: "Settings",
-        href: "/admin/system/settings",
-        description:
-          "Global toggles, environment linkage, and environment-specific overrides.",
-        icon: Settings,
-      },
-      {
-        title: "Branding",
-        href: "/admin/system/branding",
-        description:
-          "Logos, themes, and white-label chrome for tenant experiences.",
-        icon: Palette,
-      },
       {
         title: "Security & sessions",
         href: "/admin/system/security",

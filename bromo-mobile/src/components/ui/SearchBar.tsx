@@ -22,8 +22,8 @@ export function SearchBar({
   onSubmitEditing,
   returnKeyType = 'search',
 }: Props) {
-  const {palette, contract} = useTheme();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {palette, guidelines} = useTheme();
+  const {borderRadiusScale} = guidelines;
   const radius = borderRadiusScale === 'bold' ? 999 : borderRadiusScale === 'balanced' ? 12 : 8;
 
   return (

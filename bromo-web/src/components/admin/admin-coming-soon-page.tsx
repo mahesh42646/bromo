@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getAdminPageMeta } from "@/config/admin-navigation";
+import { siteConfig } from "@/config/site";
 import { ComingSoon } from "@/components/admin/coming-soon";
-import { fetchPublicPlatformSettings } from "@/lib/platform-settings";
 
 export function buildAdminMetadata(routeHref: string): Metadata {
   const { title } = getAdminPageMeta(routeHref);
@@ -10,12 +10,11 @@ export function buildAdminMetadata(routeHref: string): Metadata {
 
 export async function AdminComingSoonPage({ routeHref }: { routeHref: string }) {
   const { title, description } = getAdminPageMeta(routeHref);
-  const settings = await fetchPublicPlatformSettings();
   return (
     <ComingSoon
       title={title}
       description={description}
-      platformName={settings.branding.platformName}
+      platformName={siteConfig.platformName}
     />
   );
 }

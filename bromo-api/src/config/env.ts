@@ -27,6 +27,7 @@ export const env = {
   mongoUri: required("MONGODB_URI", "mongodb://127.0.0.1:27017/bromo_admin"),
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
+  adminSessionTtl: process.env.ADMIN_SESSION_TTL ?? "8h",
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS ?? 12),
   nodeEnv,
 } as const;

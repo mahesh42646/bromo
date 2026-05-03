@@ -9,26 +9,22 @@ const cdnBaseUrlStatic = String((bromoConfig as {cdnBaseUrl?: string}).cdnBaseUr
   .trim()
   .replace(/\/+$/, '');
 
-/** Overridden when `/settings/public` returns `media.cdnBaseUrl` (no app rebuild). */
-let cdnBaseUrlRuntime = '';
-
-/** Set CDN origin for `/uploads/*`. Empty string clears runtime override (use config + api base). */
-export function setRuntimeCdnBaseUrl(url: string | undefined | null): void {
-  cdnBaseUrlRuntime = String(url ?? '').trim().replace(/\/+$/, '');
-}
-
 export function mediaBaseUrl(): string {
-  return cdnBaseUrlRuntime || cdnBaseUrlStatic || apiBaseUrl;
+  return cdnBaseUrlStatic || apiBaseUrl;
 }
+
+export const appBranding = {
+  platformName: String((bromoConfig as {platformName?: string}).platformName ?? 'BROMO'),
+  adminTitle: String((bromoConfig as {adminTitle?: string}).adminTitle ?? 'BROMO Admin'),
+  appTitle: String((bromoConfig as {appTitle?: string}).appTitle ?? 'BROMO'),
+  logoUrl: String((bromoConfig as {logoUrl?: string}).logoUrl ?? ''),
+  faviconUrl: String((bromoConfig as {faviconUrl?: string}).faviconUrl ?? ''),
+} as const;
 
 export const settings = {
   apiBaseUrl,
   get cdnBaseUrl(): string {
     return mediaBaseUrl();
   },
-  // Optional web proxy endpoint (if you expose theme via bromo-web)
-  webThemeContractUrl: '',
-  // Poll admin settings once per minute; cached in AsyncStorage between opens
-  themeRefreshMs: 60_000,
   enableAnalytics: false,
 } as const;

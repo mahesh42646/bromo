@@ -28,7 +28,6 @@ import {
   Camera,
   Plus,
   Link2,
-  Lock,
   Globe,
   X,
   ChevronRight,
@@ -216,7 +215,7 @@ function SettingsModal({
 export function ProfileScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<AppStackParamList, 'Profile'>>();
-  const {palette, contract} = useTheme();
+  const {palette, branding} = useTheme();
   const {dbUser, logout, refreshDbUser} = useAuth();
   const [gridTab, setGridTab] = useState('posts');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -350,7 +349,7 @@ export function ProfileScreen() {
     setRefreshing(false);
   }, [refreshDbUser, loadPosts, gridTab, loadGridStats, dbUser?._id]);
 
-  const appName = contract.branding.appTitle || 'bromo';
+  const appName = branding.appTitle || 'bromo';
 
   const handleLogout = () => {
     setMenuOpen(false);

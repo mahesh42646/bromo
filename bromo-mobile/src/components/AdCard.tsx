@@ -55,10 +55,10 @@ interface Props {
 }
 
 export function AdCard({ad, placement = 'feed', isVideoVisible = true}: Props) {
-  const {palette, contract} = useTheme();
+  const {palette, guidelines} = useTheme();
   const navigation = useNavigation() as Nav;
   const {homeFeedMuted, toggleHomeFeedMuted} = usePlaybackMute();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const radius = borderRadiusScale === 'bold' ? 14 : 10;
 
   const impressionSent = useRef(false);

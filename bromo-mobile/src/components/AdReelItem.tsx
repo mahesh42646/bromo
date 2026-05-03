@@ -54,10 +54,10 @@ interface Props {
 
 export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 'reels'}: Props) {
   const insets = useSafeAreaInsets();
-  const {palette, contract} = useTheme();
+  const {palette, guidelines} = useTheme();
   const navigation = useNavigation() as Nav;
   const {reelsMuted, toggleReelsMuted} = usePlaybackMute();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const radius = borderRadiusScale === 'bold' ? 12 : 10;
   const tabBarTopFromBottom = 56 + Math.max(insets.bottom, 10);
 
@@ -73,6 +73,7 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
   const [moreOpen, setMoreOpen] = useState(false);
   const [adLiked, setAdLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  const mediaUrl = ad.mediaUrls[0] ?? '';
 
   // Fetch real engagement counts
   useEffect(() => {
@@ -90,7 +91,7 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
     setProgress(0);
     durationRef.current = 0;
     clearedSpinnerOnProgress.current = false;
-  }, [ad._id, ad.mediaUrls[0]]);
+  }, [ad._id, mediaUrl]);
 
   useEffect(() => {
     if (!isActive) setHoldPaused(false);
@@ -152,8 +153,6 @@ export function AdReelItem({ad, isActive, reelHeight, reelWidth, placement = 're
     }
     trackAdEvent(ad._id, 'click', {placement});
   }, [ad._id, adLiked, placement]);
-
-  const mediaUrl = ad.mediaUrls[0] ?? '';
 
   return (
     <View style={{width: reelWidth, height: reelHeight, backgroundColor: '#000', position: 'relative'}}>

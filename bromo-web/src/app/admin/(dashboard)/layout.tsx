@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { siteConfig } from "@/config/site";
 import { readAdminSession } from "@/lib/auth/session";
-import { fetchPublicPlatformSettings } from "@/lib/platform-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -14,27 +14,16 @@ export default async function AdminDashboardLayout({
   if (!session) {
     redirect("/admin/login");
   }
-  const settings = await fetchPublicPlatformSettings();
-
-  const densityClass =
-    settings.brandGuidelines.contentDensity === "compact"
-      ? "text-[13px] md:text-sm"
-      : "text-sm md:text-[15px]";
-
-  const maintenanceMessage = settings.maintenance.admin.enabled
-    ? settings.maintenance.admin.message
-    : null;
 
   return (
     <AdminShell
-      adminTitle={settings.branding.adminTitle}
-      sessionTtl={settings.security.adminSessionTtl}
+      adminTitle={siteConfig.adminTitle}
+      sessionTtl={siteConfig.adminSessionTtl}
       email={session.email}
       role={session.role}
-      maintenanceMessage={maintenanceMessage}
-      densityClass={densityClass}
-      brandSurface={settings.brandGuidelines.surfaceStyle}
-      brandHeadingCase={settings.brandGuidelines.headingCase}
+      densityClass="text-[13px] md:text-sm"
+      brandSurface="glass"
+      brandHeadingCase="uppercase"
     >
       {children}
     </AdminShell>

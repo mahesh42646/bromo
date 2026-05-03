@@ -2,5 +2,10 @@
   "apiBaseUrl": "https://bromo.darkunde.in",
   "apiInternalUrl": "https://bromo.darkunde.in",
   "cdnBaseUrl": "https://du6wof5tyuqi3.cloudfront.net",
+  "platformName": "BROMO",
+  "adminTitle": "BROMO Admin",
+  "appTitle": "BROMO",
+  "logoUrl": "",
+  "faviconUrl": "",
   "metroHost": "Maheshs-MacBook-Air.local"
 }

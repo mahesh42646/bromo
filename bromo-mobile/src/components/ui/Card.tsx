@@ -7,8 +7,8 @@ type Props = ViewProps & {
 };
 
 export function Card({style, elevated = false, ...props}: Props) {
-  const {palette, contract} = useTheme();
-  const {borderRadiusScale, surfaceStyle} = contract.brandGuidelines;
+  const {palette, guidelines} = useTheme();
+  const {borderRadiusScale, surfaceStyle} = guidelines;
 
   const radius = borderRadiusScale === 'bold' ? 20 : borderRadiusScale === 'balanced' ? 14 : 8;
 

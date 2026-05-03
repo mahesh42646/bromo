@@ -1,8 +1,8 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
+import { env } from "../config/env.js";
 import { Admin } from "../models/Admin.js";
-import { PlatformSettings } from "../models/PlatformSettings.js";
 import { signAdminToken } from "../utils/jwt.js";
 import { requireAdminToken, type AuthedRequest } from "../middleware/authBearer.js";
 
@@ -29,15 +29,13 @@ router.post("/login", loginLimiter, async (req, res) => {
   if (!ok) {
     return res.status(401).json({ message: "Invalid credentials" });
   }
-  const settings = await PlatformSettings.findOne({ key: "default" }).lean();
-  const sessionTtl = settings?.security?.adminSessionTtl;
   admin.lastLoginAt = new Date();
   await admin.save();
   const token = signAdminToken({
     sub: String(admin._id),
     email: admin.email,
     role: admin.role,
-  }, sessionTtl);
+  }, env.adminSessionTtl);
   return res.json({
     token,
     admin: {

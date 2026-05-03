@@ -185,7 +185,7 @@ export function AdminCompliance() {
       {activeTab === "exports" && (
         <div className="grid gap-4 sm:grid-cols-2">
           {[
-            { label: "Full platform export", desc: "All users, content, and settings as JSON/CSV", icon: Archive, size: "~2.4 GB" },
+            { label: "Full platform export", desc: "All users, content, stores, and audit data as JSON/CSV", icon: Archive, size: "~2.4 GB" },
             { label: "User data export", desc: "PII-only export with anonymization options", icon: Shield, size: "~180 MB" },
             { label: "Content export", desc: "All posts, reels, and stories metadata", icon: FileText, size: "~850 MB" },
             { label: "Audit log export", desc: "Admin action history — last 12 months", icon: CheckCircle2, size: "~12 MB" },

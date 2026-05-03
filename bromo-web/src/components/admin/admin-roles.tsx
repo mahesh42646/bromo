@@ -8,7 +8,6 @@ type Permission =
   | "users.view" | "users.edit" | "users.delete"
   | "content.view" | "content.edit" | "content.publish"
   | "analytics.view"
-  | "settings.view" | "settings.edit"
   | "billing.view" | "billing.edit"
   | "admins.manage";
 
@@ -36,13 +35,6 @@ const PERMISSION_GROUPS: { group: string; perms: { id: Permission; label: string
     perms: [{ id: "analytics.view", label: "View analytics" }],
   },
   {
-    group: "Settings",
-    perms: [
-      { id: "settings.view", label: "View settings" },
-      { id: "settings.edit", label: "Edit settings" },
-    ],
-  },
-  {
     group: "Billing",
     perms: [
       { id: "billing.view", label: "View billing" },
@@ -59,16 +51,16 @@ const DEFAULT_MATRIX: Record<Role, Set<Permission>> = {
   super_admin: new Set<Permission>([
     "users.view", "users.edit", "users.delete",
     "content.view", "content.edit", "content.publish",
-    "analytics.view", "settings.view", "settings.edit",
+    "analytics.view",
     "billing.view", "billing.edit", "admins.manage",
   ]),
   admin: new Set<Permission>([
     "users.view", "users.edit",
     "content.view", "content.edit", "content.publish",
-    "analytics.view", "settings.view",
+    "analytics.view",
     "billing.view",
   ]),
-  viewer: new Set<Permission>(["users.view", "content.view", "analytics.view", "settings.view"]),
+  viewer: new Set<Permission>(["users.view", "content.view", "analytics.view"]),
 };
 
 const ROLE_META: Record<Role, { label: string; desc: string; color: string }> = {

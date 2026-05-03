@@ -29,8 +29,8 @@ const weightMap: Record<Variant, '400' | '600' | '700' | '800' | '900'> = {
 };
 
 export function ThemedText({style, variant = 'body', ...props}: Props) {
-  const {palette, contract} = useTheme();
-  const {headingCase} = contract.brandGuidelines;
+  const {palette, guidelines, fontFamily} = useTheme();
+  const {headingCase} = guidelines;
 
   const colorMap: Record<Variant, string> = {
     heading: palette.foreground,
@@ -59,7 +59,7 @@ export function ThemedText({style, variant = 'body', ...props}: Props) {
           fontSize: sizeMap[variant],
           fontWeight: weightMap[variant],
           textTransform,
-          fontFamily: contract.theme.fontFamily !== 'system-ui' ? contract.theme.fontFamily : undefined,
+          fontFamily: fontFamily !== 'system-ui' ? fontFamily : undefined,
         },
         style,
       ]}

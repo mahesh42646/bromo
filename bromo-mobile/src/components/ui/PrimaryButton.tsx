@@ -29,8 +29,8 @@ export function PrimaryButton({
   style,
   fullWidth = false,
 }: Props) {
-  const {palette, contract} = useTheme();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {palette, guidelines} = useTheme();
+  const {borderRadiusScale} = guidelines;
 
   const radius = borderRadiusScale === 'bold' ? 14 : borderRadiusScale === 'balanced' ? 10 : 6;
   const paddingV = size === 'lg' ? 14 : size === 'sm' ? 7 : 10;

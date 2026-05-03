@@ -1,2 +1,2 @@
-/** Integrations, webhooks, API keys, feature flags — UI in /admin/platform. */
+/** Integrations, webhooks, and API keys — UI in /admin/platform. */
 export {};

@@ -237,7 +237,7 @@ const PostCard = React.memo(function PostCard({
   isVideoVisible = false,
   isFeedItemVisible = false,
 }: PostCardProps) {
-  const { palette, contract } = useTheme();
+  const { palette, guidelines } = useTheme();
   const { dbUser } = useAuth();
   const { width: windowW } = useWindowDimensions();
   const { homeFeedMuted, toggleHomeFeedMuted } = usePlaybackMute();
@@ -251,7 +251,7 @@ const PostCard = React.memo(function PostCard({
   const viewRecordedRef = useRef(false);
   const viewImpressionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promoImpressionLoggedRef = useRef(false);
-  const { borderRadiusScale } = contract.brandGuidelines;
+  const { borderRadiusScale } = guidelines;
   const radius = borderRadiusScale === 'bold' ? 14 : 10;
 
   const handleFollow = async () => {
@@ -998,7 +998,7 @@ function SuggestionCard({ user, onFollowToggle, navigation, palette, borderRadiu
 }
 
 export function HomeScreen() {
-  const { palette, contract, isDark } = useTheme();
+  const { palette, guidelines, branding, isDark } = useTheme();
   const { dbUser, ready: authReady } = useAuth();
   const { setHomeFeedMuted } = usePlaybackMute();
   const navigation = useNavigation() as Nav;
@@ -1015,11 +1015,11 @@ export function HomeScreen() {
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [notificationUnread, setNotificationUnread] = useState(0);
   const [messagesUnread, setMessagesUnread] = useState(0);
-  const { borderRadiusScale } = contract.brandGuidelines;
+  const { borderRadiusScale } = guidelines;
   const chipRadius = borderRadiusScale === 'bold' ? 999 : 12;
   const brandIconUri = useMemo(
-    () => resolveMediaUrl(contract.branding.faviconUrl || contract.branding.logoUrl),
-    [contract.branding.faviconUrl, contract.branding.logoUrl],
+    () => resolveMediaUrl(branding.faviconUrl || branding.logoUrl),
+    [branding.faviconUrl, branding.logoUrl],
   );
 
   const [posts, setPosts] = useState<Post[]>([]);
@@ -1691,7 +1691,7 @@ export function HomeScreen() {
                 maxWidth: 96,
                 marginRight: 8,
               }}>
-              {contract.branding.appTitle || 'BROMO'}
+              {branding.appTitle || 'BROMO'}
             </ThemedText>
             <SearchBar
               style={{ flex: 1, minWidth: 0 }}
@@ -1751,7 +1751,7 @@ export function HomeScreen() {
                   flexShrink: 1,
                   minWidth: 0,
                 }}>
-                {contract.branding.appTitle || 'BROMO'}
+                {branding.appTitle || 'BROMO'}
               </ThemedText>
             </View>
             <View style={{ flex: 1, minWidth: 16 }} />

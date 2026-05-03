@@ -4,7 +4,6 @@
 
 @layer base {
   :root {
-    /* Light palette - overridden at runtime by ThemeContext from /settings/public */
     --color-background: #ffffff;
     --color-foreground: #0a0a0a;
     --color-muted: #f4f4f5;

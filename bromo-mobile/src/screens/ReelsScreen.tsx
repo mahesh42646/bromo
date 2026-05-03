@@ -592,11 +592,10 @@ const ReelItem = React.memo(function ReelItem({
   onFirstFrame: (postId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
-  const {palette, contract} = useTheme();
+  const {palette, guidelines} = useTheme();
   const {dbUser} = useAuth();
   const {reelsMuted, toggleReelsMuted} = usePlaybackMute();
   const [holdPaused, setHoldPaused] = useState(false);
-  const suppressMuteTap = useRef(false);
   const [following, setFollowing] = useState(item.isFollowing);
   const [coverSpinner, setCoverSpinner] = useState(true);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -612,7 +611,7 @@ const ReelItem = React.memo(function ReelItem({
   const clearedSpinnerOnProgress = useRef(false);
   /** One completion signal per reel (avoids counting every loop when repeat is on). */
   const naturalEndSentRef = useRef(false);
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const avatarUri = item.author.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.author.displayName)}&background=random`;
 
   useEffect(() => {
@@ -626,7 +625,7 @@ const ReelItem = React.memo(function ReelItem({
       clearTimeout(impressionDelayRef.current);
       impressionDelayRef.current = null;
     }
-  }, [item._id, item.mediaUrl]);
+  }, [item._id, item.mediaUrl, item.poll]);
 
   useEffect(() => {
     if (!isActive) setHoldPaused(false);

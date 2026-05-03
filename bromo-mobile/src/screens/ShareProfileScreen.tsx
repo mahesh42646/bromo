@@ -15,9 +15,9 @@ import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 
 export function ShareProfileScreen() {
   const navigation = useNavigation();
-  const {palette, contract} = useTheme();
+  const {palette, guidelines} = useTheme();
   const {dbUser} = useAuth();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const btnR = borderRadiusScale === 'bold' ? 999 : 10;
 
   const profileUrl = `https://bromo.app/@${dbUser?.username ?? ''}`;

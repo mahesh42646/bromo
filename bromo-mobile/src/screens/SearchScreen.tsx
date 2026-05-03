@@ -141,12 +141,12 @@ function PersonRow({
 
 export function SearchScreen() {
   const navigation = useNavigation() as Nav;
-  const {palette, contract, isDark} = useTheme();
+  const {palette, guidelines, isDark} = useTheme();
   const {dbUser} = useAuth();
   const tabBarHeight = useBottomTabBarHeight();
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState('explore');
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const chipRadius = borderRadiusScale === 'bold' ? 999 : 10;
 
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
@@ -223,7 +223,7 @@ export function SearchScreen() {
         .catch(() => {})
         .finally(() => setLoadingExplore(false));
     }
-  }, [activeTab]);
+  }, [activeTab, explorePosts.length, suggestions.length]);
 
   useEffect(() => {
     if (exploreAds.length > 0) prefetchAdMedia(exploreAds);

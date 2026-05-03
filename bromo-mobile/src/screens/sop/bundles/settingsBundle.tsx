@@ -74,7 +74,6 @@ export function PrivacySettingsScreen() {
 }
 
 export function SecuritySettingsScreen() {
-  const {palette} = useTheme();
   return (
     <SopChrome title="Security">
       <SopMeta label="Two-factor authentication, active sessions, login alerts — UI only." />
@@ -110,10 +109,10 @@ export function HelpSupportScreen() {
 }
 
 export function AboutAppScreen() {
-  const {contract} = useTheme();
+  const {branding} = useTheme();
   return (
     <SopChrome title="About">
-      <SopMeta label={`${contract.branding.appTitle || 'BROMO'} — consumer + merchant super-app checklist implementation. Theme contract pulled from API URLs when reachable.`} />
+      <SopMeta label={`${branding.appTitle || 'BROMO'} — consumer + merchant super-app checklist implementation with fixed in-app light and dark themes.`} />
     </SopChrome>
   );
 }

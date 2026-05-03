@@ -17,7 +17,7 @@ export function SopChrome({
   contentStyle?: StyleProp<ViewStyle>;
 }) {
   const navigation = useNavigation();
-  const {palette, isDark} = useTheme();
+  const {palette} = useTheme();
 
   const body = scroll ? (
     <ScrollView contentContainerStyle={[{padding: 16, paddingBottom: 48}, contentStyle]} keyboardShouldPersistTaps="handled">
@@ -70,8 +70,8 @@ export function SopRow({
   sub?: string;
   onPress?: () => void;
 }) {
-  const {palette, contract} = useTheme();
-  const r = contract.brandGuidelines.borderRadiusScale === 'bold' ? 14 : 10;
+  const {palette, guidelines} = useTheme();
+  const r = guidelines.borderRadiusScale === 'bold' ? 14 : 10;
   return (
     <Pressable
       onPress={onPress}

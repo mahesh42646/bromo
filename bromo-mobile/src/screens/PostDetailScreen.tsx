@@ -56,9 +56,9 @@ export function PostDetailScreen() {
   const route = useRoute<Route>();
   const {postId} = route.params;
   const {width: windowWidth} = useWindowDimensions();
-  const {palette, contract} = useTheme();
+  const {palette, guidelines} = useTheme();
   const {dbUser} = useAuth();
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
 
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);

@@ -60,7 +60,7 @@ export function ChatThreadScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<R>();
   const {peerId, sharePostId, prefilledText} = route.params;
-  const {palette, contract, isDark} = useTheme();
+  const {palette, guidelines, isDark} = useTheme();
   const {
     peers,
     messagesByPeer,
@@ -77,7 +77,7 @@ export function ChatThreadScreen() {
   } = useMessaging();
 
   const peer = peers[peerId];
-  const messages = messagesByPeer[peerId] ?? [];
+  const messages = useMemo(() => messagesByPeer[peerId] ?? [], [messagesByPeer, peerId]);
   const listRef = useRef<FlatList<RowItem>>(null);
 
   const [input, setInput] = useState(prefilledText ?? '');
@@ -385,7 +385,7 @@ export function ChatThreadScreen() {
     );
   }
 
-  const {borderRadiusScale} = contract.brandGuidelines;
+  const {borderRadiusScale} = guidelines;
   const bubbleR = borderRadiusScale === 'bold' ? 20 : 16;
 
   const renderDelivery = (m: ChatMessage) => {
