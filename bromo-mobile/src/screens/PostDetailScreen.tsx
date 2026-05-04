@@ -16,13 +16,25 @@ import {
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BadgeCheck, Bookmark, ChevronLeft, Heart, MessageCircle, MoreHorizontal, Pencil, Send, Trash2, Volume2, VolumeX} from 'lucide-react-native';
+import {BadgeCheck, Bookmark, Heart, MessageCircle, MoreHorizontal, Pencil, Send, Trash2, Volume2, VolumeX} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {Screen} from '../components/ui/Screen';
+import {ActionSheet} from '../components/ui/ActionSheet';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {deletePost, getPost, resolveVideoUrl, toggleLike, toggleSavePost, type CarouselItem, type Post, votePostPoll} from '../api/postsApi';
+import {
+  deletePost,
+  getPost,
+  recordShare,
+  reportPost,
+  resolveVideoUrl,
+  toggleLike,
+  toggleSavePost,
+  type CarouselItem,
+  type Post,
+  votePostPoll,
+} from '../api/postsApi';
 import {EditMetaLayers} from '../components/media/EditMetaLayers';
 import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
@@ -67,6 +79,7 @@ export function PostDetailScreen() {
   const [videoMuted, setVideoMuted] = useState(true);
   const [pollBusy, setPollBusy] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [otherMenuOpen, setOtherMenuOpen] = useState(false);
 
   useEffect(() => {
     getPost(postId)
@@ -152,28 +165,22 @@ export function PostDetailScreen() {
 
   if (loading) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="Post" scroll={false}>
         <StatusBar barStyle="light-content" />
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 16}}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <ActivityIndicator color={palette.primary} size="large" />
         </View>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   if (!post) {
     return (
-      <ThemedSafeScreen>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 16}}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
+      <Screen title="Post" scroll={false}>
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <Text style={{color: palette.mutedForeground}}>Post not found</Text>
         </View>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
@@ -188,7 +195,20 @@ export function PostDetailScreen() {
   const mediaWidth = Math.max(1, windowWidth);
 
   return (
-    <ThemedSafeScreen>
+    <Screen
+      title="Post"
+      scroll={false}
+      right={
+        <Pressable
+          hitSlop={12}
+          style={{padding: 8}}
+          onPress={() => {
+            if (isOwnPost) setMenuOpen(true);
+            else setOtherMenuOpen(true);
+          }}>
+          <MoreHorizontal size={22} color={palette.foreground} />
+        </Pressable>
+      }>
       <StatusBar barStyle="light-content" />
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
@@ -236,29 +256,6 @@ export function PostDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 8, paddingVertical: 8,
-        borderBottomWidth: 1, borderBottomColor: palette.border,
-      }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 8}}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={{flex: 1, color: palette.foreground, fontSize: 17, fontWeight: '800', textAlign: 'center'}}>
-          Post
-        </Text>
-        <Pressable
-          hitSlop={12}
-          style={{padding: 8}}
-          onPress={() => {
-            if (isOwnPost) setMenuOpen(true);
-            else Alert.alert('Post', 'Report and share options coming soon.');
-          }}>
-          <MoreHorizontal size={22} color={palette.foreground} />
-        </Pressable>
-      </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Author row */}
@@ -484,6 +481,28 @@ export function PostDetailScreen() {
           </Text>
         </Pressable>
       </ScrollView>
-    </ThemedSafeScreen>
+
+      <ActionSheet
+        visible={otherMenuOpen}
+        onCancel={() => setOtherMenuOpen(false)}
+        title="Post options"
+        options={[
+          {
+            label: 'Report',
+            destructive: true,
+            onPress: () => {
+              void reportPost(post._id, 'inappropriate').catch(() => null);
+            },
+          },
+          {
+            label: 'Share…',
+            onPress: () => {
+              void recordShare(post._id);
+              parentNavigate(navigation, 'ShareSend', {postId: post._id});
+            },
+          },
+        ]}
+      />
+    </Screen>
   );
 }

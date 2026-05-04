@@ -133,6 +133,7 @@ PODS:
   - hermes-engine (250829098.0.9):
     - hermes-engine/Pre-built (= 250829098.0.9)
   - hermes-engine/Pre-built (250829098.0.9)
+  - JitsiWebRTC (124.0.2)
   - nanopb (3.30910.0):
     - nanopb/decode (= 3.30910.0)
     - nanopb/encode (= 3.30910.0)
@@ -1921,6 +1922,9 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-webrtc (124.0.7):
+    - JitsiWebRTC (~> 124.0.0)
+    - React-Core
   - react-native-webview (13.16.1):
     - hermes-engine
     - RCTRequired
@@ -2746,6 +2750,7 @@ DEPENDENCIES:
   - "react-native-slider (from `../node_modules/@react-native-community/slider`)"
   - react-native-video (from `../node_modules/react-native-video`)
   - react-native-view-shot (from `../node_modules/react-native-view-shot`)
+  - react-native-webrtc (from `../node_modules/react-native-webrtc`)
   - react-native-webview (from `../node_modules/react-native-webview`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
@@ -2814,6 +2819,7 @@ SPEC REPOS:
     - GoogleUtilities
     - GTMAppAuth
     - GTMSessionFetcher
+    - JitsiWebRTC
     - nanopb
     - PromisesObjC
     - RecaptchaInterop
@@ -2918,6 +2924,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-video"
   react-native-view-shot:
     :path: "../node_modules/react-native-view-shot"
+  react-native-webrtc:
+    :path: "../node_modules/react-native-webrtc"
   react-native-webview:
     :path: "../node_modules/react-native-webview"
   React-NativeModulesApple:
@@ -3033,6 +3041,7 @@ SPEC CHECKSUMS:
   GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
   hermes-engine: 2fd998e681e77d86f7d6dea49b298447e2b32f16
+  JitsiWebRTC: b47805ab5668be38e7ee60e2258f49badfe8e1d0
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   RCTDeprecation: af44b104091a34482596cd9bd7e8d90c4e9b4bd7
@@ -3081,6 +3090,7 @@ SPEC CHECKSUMS:
   react-native-slider: 18a19901b3bda943d7dc74e79abe6acdd979c101
   react-native-video: 396045938e856a6da94f3e2efa4814c25799012a
   react-native-view-shot: 8853a6bacbf77899d550773a84986f251f509ffc
+  react-native-webrtc: e8f0ce746353adc2744a2b933645e1aeb41eaa74
   react-native-webview: b8dbc288f28a87766d7b1158ef185619768e3339
   React-NativeModulesApple: 5ba0903927f6b8d335a091700e9fda143980f819
   React-networking: ad2727500e93943a43da70d3b162454af151469c
@@ -3113,7 +3123,7 @@ SPEC CHECKSUMS:
   React-utils: 7ace4a70a287291541c646e3f02688ba439ed743
   React-webperformancenativemodule: 4b56d01c3a3f403231c3756ac7031db8ab64f504
   ReactAppDependencyProvider: e96e93b493d8d86eeaee3e590ba0be53f6abe46f
-  ReactCodegen: a04582450997ef839321877cacc3ecdd53bfb939
+  ReactCodegen: 0b223e09944eff2376500e1473e939bfd9290d28
   ReactCommon: 07572bf9e687c8a52fbe4a3641e9e3a1a477c78e
   ReactNativeDependencies: 2779d5be01d281b5af198096d312d742a73b2263
   RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba
@@ -3122,10 +3132,10 @@ SPEC CHECKSUMS:
   RNFBMessaging: 40923618afea919a321d1f0eab610d363229293e
   RNGestureHandler: 88b46a372c2823029c528ff163a12eccbcc7e000
   RNGoogleSignin: 4590097b5c265e55e01bf2e824e0f5f5f66d2dfd
-  RNReanimated: f3c811deaf24b25bb6280ebf893d60e0a535f15d
+  RNReanimated: a0bfbbcaa9255c70eea10d32b9192f431fae6f24
   RNScreens: ca829379d20b0d1ff41a0b87bc37bdc50276cef5
   RNSVG: 68baaafbd26ef58405193d56290537362fa8e6e4
-  RNWorklets: 96c8c6448e2c5ec97c54607bf05beb1b0c8160f1
+  RNWorklets: 3254b47883849fab1f7313cb025dd0c8493dee03
   VisionCamera: 7187b3dac1ff3071234ead959ce311875748e14f
   Yoga: 846fbe6f595136be802ad81d05688ff748839764
 

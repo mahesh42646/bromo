@@ -7,6 +7,13 @@ import {getAuth} from '@react-native-firebase/auth';
 import {apiBase, getIdToken} from '../api/authApi';
 import type {Post} from '../api/postsApi';
 
+export type CallSocketIncoming = {
+  callId: string;
+  fromUserId: string;
+  callType: 'audio' | 'video';
+  callerName?: string;
+};
+
 type SocketEvents = {
   // Server → client
   'post:new': (post: Post) => void;
@@ -25,6 +32,22 @@ type SocketEvents = {
   'live:viewer_count': (data: {streamId: string; viewerCount: number}) => void;
   'live:comment': (data: {streamId: string; username: string; text: string}) => void;
   'notification': (data: {type: string; actorId: string; targetId?: string; message: string}) => void;
+
+  'call:incoming': (data: CallSocketIncoming) => void;
+  'call:accepted': (data: {callId: string; peerUserId: string}) => void;
+  'call:rejected': (data: {callId: string}) => void;
+  'call:ended': (data: {callId: string; byUserId: string}) => void;
+  'call:sdp': (data: {
+    callId: string;
+    fromUserId: string;
+    sdp: string;
+    sdpType: 'offer' | 'answer';
+  }) => void;
+  'call:ice': (data: {
+    callId: string;
+    fromUserId: string;
+    candidate: Record<string, unknown> | null;
+  }) => void;
 };
 
 class SocketService {
@@ -106,6 +129,44 @@ class SocketService {
 
   sendLiveLike(streamId: string): void {
     this.socket?.emit('live:send_like', {streamId});
+  }
+
+  emitCallInvite(payload: {
+    callId: string;
+    toUserId: string;
+    callType: 'audio' | 'video';
+    callerName?: string;
+  }): void {
+    this.socket?.emit('call:invite', payload);
+  }
+
+  emitCallAccept(payload: {callId: string}): void {
+    this.socket?.emit('call:accept', payload);
+  }
+
+  emitCallReject(payload: {callId: string}): void {
+    this.socket?.emit('call:reject', payload);
+  }
+
+  emitCallEnd(payload: {callId: string}): void {
+    this.socket?.emit('call:end', payload);
+  }
+
+  emitCallSdp(payload: {
+    toUserId: string;
+    callId: string;
+    sdp: string;
+    sdpType: 'offer' | 'answer';
+  }): void {
+    this.socket?.emit('call:sdp', payload);
+  }
+
+  emitCallIce(payload: {
+    toUserId: string;
+    callId: string;
+    candidate: Record<string, unknown>;
+  }): void {
+    this.socket?.emit('call:ice', payload);
   }
 
   isConnected(): boolean {

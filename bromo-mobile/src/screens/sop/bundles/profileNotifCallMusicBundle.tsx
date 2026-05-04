@@ -3,7 +3,7 @@ import {ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Switch
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BarChart2, Eye, Heart, MessageCircle, Phone, Send, TrendingUp, Video as VideoIcon} from 'lucide-react-native';
+import {BarChart2, Eye, Heart, MessageCircle, Send, TrendingUp} from 'lucide-react-native';
 import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
@@ -16,7 +16,7 @@ import {useAuth} from '../../../context/AuthContext';
 import {connectMyStore, submitCreatorForm} from '../../../api/authApi';
 import {getMyFollowAttribution} from '../../../api/followApi';
 import {parentNavigate} from '../../../navigation/parentNavigate';
-import {fetchTurnCredentials} from '../../../api/callsApi';
+import {WebRtcCallShell} from '../../../webrtc/WebRtcCallShell';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
 export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
@@ -828,47 +828,38 @@ export function NotificationSettingsScreen() {
 export function VoiceCallScreen() {
   const route = useRoute<RouteProp<AppStackParamList, 'VoiceCall'>>();
   const navigation = useNavigation<Nav>();
-  const {palette} = useTheme();
-  const [turnReady, setTurnReady] = useState<boolean | null>(null);
+  const {remoteUserId, peerName, direction, callId} = route.params;
   useEffect(() => {
-    let alive = true;
-    void fetchTurnCredentials().then(c => {
-      if (alive) setTurnReady(Boolean(c?.iceServers?.length));
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    if (!remoteUserId?.trim()) navigation.goBack();
+  }, [navigation, remoteUserId]);
+  if (!remoteUserId?.trim()) return null;
   return (
-    <SopChrome title="Voice call" scroll={false}>
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20, paddingHorizontal: 20}}>
-        <Phone size={64} color={palette.primary} />
-        <Text style={{fontWeight: '800', color: palette.foreground, fontSize: 18}}>{route.params.peerName}</Text>
-        <Text style={{color: palette.foregroundMuted, textAlign: 'center'}}>
-          {turnReady === null
-            ? 'Preparing secure connection…'
-            : turnReady
-              ? 'TURN credentials OK · signaling not wired (stub)'
-              : 'TURN not configured on server — calls cannot traverse restrictive networks'}
-        </Text>
-        <PrimaryButton label="End call" onPress={() => navigation.goBack()} variant="outline" />
-      </View>
-    </SopChrome>
+    <WebRtcCallShell
+      media="audio"
+      remoteUserId={remoteUserId}
+      peerName={peerName}
+      direction={direction}
+      callId={callId}
+    />
   );
 }
 
 export function VideoCallScreen() {
   const route = useRoute<RouteProp<AppStackParamList, 'VideoCall'>>();
-  const {palette} = useTheme();
+  const navigation = useNavigation<Nav>();
+  const {remoteUserId, peerName, direction, callId} = route.params;
+  useEffect(() => {
+    if (!remoteUserId?.trim()) navigation.goBack();
+  }, [navigation, remoteUserId]);
+  if (!remoteUserId?.trim()) return null;
   return (
-    <SopChrome title="Video call" scroll={false}>
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20}}>
-        <VideoIcon size={64} color={palette.primary} />
-        <Text style={{fontWeight: '800', color: palette.foreground, fontSize: 18}}>{route.params.peerName}</Text>
-        <Text style={{color: palette.foregroundMuted}}>Connecting video...</Text>
-        <PrimaryButton label="End call" onPress={() => Alert.alert('Call ended')} variant="outline" />
-      </View>
-    </SopChrome>
+    <WebRtcCallShell
+      media="video"
+      remoteUserId={remoteUserId}
+      peerName={peerName}
+      direction={direction}
+      callId={callId}
+    />
   );
 }
 

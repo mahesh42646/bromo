@@ -86,16 +86,22 @@ export async function getUserMutuals(userId: string, limit = 3): Promise<{count:
   return res.json() as Promise<{count: number; sample: SuggestedUser[]}>;
 }
 
-export async function getFollowers(userId: string, page = 1): Promise<{users: SuggestedUser[]; hasMore: boolean}> {
+export async function getFollowers(
+  userId: string,
+  page = 1,
+): Promise<{users: SuggestedUser[]; hasMore: boolean; total?: number}> {
   const res = await authedFetch(`/users/${userId}/followers?page=${page}`);
   if (!res.ok) throw new Error('Failed to get followers');
-  return res.json() as Promise<{users: SuggestedUser[]; hasMore: boolean}>;
+  return res.json() as Promise<{users: SuggestedUser[]; hasMore: boolean; total?: number}>;
 }
 
-export async function getFollowing(userId: string, page = 1): Promise<{users: SuggestedUser[]; hasMore: boolean}> {
+export async function getFollowing(
+  userId: string,
+  page = 1,
+): Promise<{users: SuggestedUser[]; hasMore: boolean; total?: number}> {
   const res = await authedFetch(`/users/${userId}/following?page=${page}`);
   if (!res.ok) throw new Error('Failed to get following');
-  return res.json() as Promise<{users: SuggestedUser[]; hasMore: boolean}>;
+  return res.json() as Promise<{users: SuggestedUser[]; hasMore: boolean; total?: number}>;
 }
 
 export type FollowAttributionSummary = {kind: string; refId?: string; count: number; lastAt: string};

@@ -632,15 +632,16 @@ followRouter.get(
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = (page - 1) * 30;
 
-      const follows = await Follow.find({
-        followingId: req.params.userId,
-        status: "accepted",
-      })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(30)
-        .populate("followerId", USER_SELECT)
-        .lean();
+      const filter = { followingId: req.params.userId, status: "accepted" as const };
+      const [total, follows] = await Promise.all([
+        Follow.countDocuments(filter),
+        Follow.find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(30)
+          .populate("followerId", USER_SELECT)
+          .lean(),
+      ]);
       const users = follows.map((f) => f.followerId).filter(isPublicUserRow);
       const decoratedUsers = await serializeUsersWithRelations(req.dbUser, users);
 
@@ -648,6 +649,7 @@ followRouter.get(
         users: decoratedUsers,
         page,
         hasMore: follows.length === 30,
+        total,
       });
     } catch (err) {
       console.error("[follow] followers error:", err);
@@ -665,15 +667,16 @@ followRouter.get(
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const skip = (page - 1) * 30;
 
-      const follows = await Follow.find({
-        followerId: req.params.userId,
-        status: "accepted",
-      })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(30)
-        .populate("followingId", USER_SELECT)
-        .lean();
+      const filter = { followerId: req.params.userId, status: "accepted" as const };
+      const [total, follows] = await Promise.all([
+        Follow.countDocuments(filter),
+        Follow.find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(30)
+          .populate("followingId", USER_SELECT)
+          .lean(),
+      ]);
       const users = follows.map((f) => f.followingId).filter(isPublicUserRow);
       const decoratedUsers = await serializeUsersWithRelations(req.dbUser, users);
 
@@ -681,6 +684,7 @@ followRouter.get(
         users: decoratedUsers,
         page,
         hasMore: follows.length === 30,
+        total,
       });
     } catch (err) {
       console.error("[follow] following error:", err);

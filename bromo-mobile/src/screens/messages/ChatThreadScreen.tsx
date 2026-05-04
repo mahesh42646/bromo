@@ -641,22 +641,34 @@ export function ChatThreadScreen() {
           </View>
         </Pressable>
         <Pressable
-          onPress={() =>
+          onPress={() => {
+            if (!peer?.userId || peer.isGroup) {
+              Alert.alert('Calls unavailable', 'Voice calls work only in direct messages.');
+              return;
+            }
             parentNavigate(navigation, 'VoiceCall', {
               peerId,
+              remoteUserId: peer.userId,
               peerName: peer.displayName,
-            })
-          }
+              direction: 'outgoing',
+            });
+          }}
           style={{padding: 8}}>
           <Phone size={22} color={palette.foreground} />
         </Pressable>
         <Pressable
-          onPress={() =>
+          onPress={() => {
+            if (!peer?.userId || peer.isGroup) {
+              Alert.alert('Calls unavailable', 'Video calls work only in direct messages.');
+              return;
+            }
             parentNavigate(navigation, 'VideoCall', {
               peerId,
+              remoteUserId: peer.userId,
               peerName: peer.displayName,
-            })
-          }
+              direction: 'outgoing',
+            });
+          }}
           style={{padding: 8}}>
           <VideoCallIcon size={22} color={palette.foreground} />
         </Pressable>

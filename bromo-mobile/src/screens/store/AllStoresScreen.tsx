@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {Screen} from '../../components/ui/Screen';
 import {listStores, STORE_CATEGORIES, type Store} from '../../api/storeApi';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 
@@ -102,7 +102,7 @@ export function AllStoresScreen() {
   const hasActiveFilter = distFilter !== 'all' || deliveryOnly || !!activeCategory;
 
   return (
-    <ThemedSafeScreen>
+    <Screen bare scroll={false}>
       <StatusBar barStyle="light-content" />
 
       {/* Header */}
@@ -248,7 +248,7 @@ export function AllStoresScreen() {
         )}
         <View style={{height: 32}} />
       </ScrollView>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

@@ -5,8 +5,10 @@ import admin from "firebase-admin";
 import { User } from "../models/User.js";
 import { Notification } from "../models/Notification.js";
 import { Conversation } from "../models/Conversation.js";
+import { attachCallSignalingHandlers, pruneStaleCalls } from "./callSignaling.js";
 
 let io: Server | null = null;
+let callPruneTimer: ReturnType<typeof setInterval> | null = null;
 
 function sumConversationUnreadForUser(
   conversations: Array<{ unreadCounts?: unknown }>,
@@ -76,6 +78,11 @@ export function initSocketServer(httpServer: HttpServer): Server {
     }
   });
 
+  if (!callPruneTimer) {
+    callPruneTimer = setInterval(() => pruneStaleCalls(), 30_000);
+    callPruneTimer.unref?.();
+  }
+
   io.on("connection", (socket: Socket) => {
     const mongoId = socket.data.mongoUserId as string | null;
     const firebaseUid = socket.data.firebaseUid as string;
@@ -84,6 +91,8 @@ export function initSocketServer(httpServer: HttpServer): Server {
       void emitNotificationUnreadForUser(mongoId);
       void emitChatUnreadForUser(mongoId);
     }
+
+    if (io) attachCallSignalingHandlers(io, socket, mongoId);
 
     // Live room join/leave
     socket.on("live:join", ({streamId}: {streamId: string}) => {

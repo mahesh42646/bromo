@@ -9,10 +9,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {Screen} from '../../components/ui/Screen';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {ChevronLeft, Trash2, Clock, FileText} from 'lucide-react-native';
+import {Trash2, Clock, FileText} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import type {ThemePalette} from '../../theme/tokens';
 import {useCreateDraft} from '../../create/CreateDraftContext';
@@ -38,14 +38,6 @@ function timeAgo(iso: string): string {
 function makeStyles(palette: ThemePalette) {
   return StyleSheet.create({
     root: {flex: 1, backgroundColor: palette.background},
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 8,
-      paddingVertical: 8,
-    },
-    title: {color: palette.foreground, fontSize: 18, fontWeight: '800'},
     deleteAll: {color: palette.destructive, fontSize: 14, fontWeight: '700'},
     empty: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12},
     emptyTitle: {color: palette.foreground, fontSize: 18, fontWeight: '800'},
@@ -200,21 +192,17 @@ export function DraftsScreen() {
   );
 
   return (
-    <ThemedSafeScreen style={styles.root}>
-      <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()}>
-          <ChevronLeft size={28} color={palette.foreground} />
-        </Pressable>
-        <Text style={styles.title}>Drafts</Text>
-        {drafts.length > 0 ? (
-          <Pressable onPress={clearAll}>
+    <Screen
+      title="Drafts"
+      scroll={false}
+      style={styles.root}
+      right={
+        drafts.length > 0 ? (
+          <Pressable onPress={clearAll} hitSlop={8}>
             <Text style={styles.deleteAll}>Clear all</Text>
           </Pressable>
-        ) : (
-          <View style={{width: 60}} />
-        )}
-      </View>
-
+        ) : null
+      }>
       {loading ? (
         <View style={styles.empty}>
           <ActivityIndicator color={palette.foreground} />
@@ -262,6 +250,6 @@ export function DraftsScreen() {
           }}
         />
       )}
-    </ThemedSafeScreen>
+    </Screen>
   );
 }

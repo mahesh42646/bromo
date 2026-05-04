@@ -3,15 +3,14 @@ import {
   Alert,
   Pressable,
   Share,
-  StatusBar,
   Text,
   View,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
-import {ChevronLeft, Copy, Link2, Share2} from 'lucide-react-native';
+import {Copy, Link2, Share2} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {Screen} from '../components/ui/Screen';
 
 export function ShareProfileScreen() {
   const navigation = useNavigation();
@@ -35,23 +34,7 @@ export function ShareProfileScreen() {
   }, [profileUrl]);
 
   return (
-    <ThemedSafeScreen>
-      <StatusBar barStyle="light-content" />
-
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 8, paddingVertical: 8,
-        borderBottomWidth: 1, borderBottomColor: palette.border,
-      }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 8}}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={{flex: 1, color: palette.foreground, fontSize: 17, fontWeight: '800', textAlign: 'center'}}>
-          Share Profile
-        </Text>
-        <View style={{width: 42}} />
-      </View>
-
+    <Screen title="Share profile" scroll={false}>
       <View style={{flex: 1, padding: 24, gap: 16}}>
 
         {/* URL display */}
@@ -96,6 +79,6 @@ export function ShareProfileScreen() {
           Anyone with this link can view your public profile
         </Text>
       </View>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }

@@ -3,7 +3,10 @@
  */
 import './global.css';
 import React from 'react';
+import {registerGlobals} from 'react-native-webrtc';
 import {Platform, StatusBar, View} from 'react-native';
+
+registerGlobals();
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {
   DarkTheme,
@@ -16,6 +19,7 @@ import {AuthProvider} from './src/context/AuthContext';
 import {PlaybackMuteProvider} from './src/context/PlaybackMuteContext';
 import {BootstrapNavigator} from './src/navigation/BootstrapNavigator';
 import {navigationRef} from './src/navigation/rootNavigation';
+import {CallProvider} from './src/calls/CallProvider';
 
 function AppContent() {
   const {isDark, palette} = useTheme();
@@ -40,7 +44,9 @@ function AppContent() {
         translucent={Platform.OS === 'android' ? false : true}
       />
       <NavigationContainer ref={navigationRef} theme={navigationTheme}>
-        <BootstrapNavigator />
+        <CallProvider>
+          <BootstrapNavigator />
+        </CallProvider>
       </NavigationContainer>
     </View>
   );

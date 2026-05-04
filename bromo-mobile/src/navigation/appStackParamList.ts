@@ -94,8 +94,23 @@ export type AppStackParamList = {
   CollabInbox: undefined;
   ReferralDashboard: undefined;
 
-  VoiceCall: {peerId: string; peerName: string};
-  VideoCall: {peerId: string; peerName: string};
+  /** Voice/video — `peerId` kept as conversation id for deep links; signaling uses `remoteUserId`. */
+  VoiceCall: {
+    peerId?: string;
+    remoteUserId: string;
+    peerName: string;
+    direction: 'outgoing' | 'incoming';
+    callId?: string;
+    callerName?: string;
+  };
+  VideoCall: {
+    peerId?: string;
+    remoteUserId: string;
+    peerName: string;
+    direction: 'outgoing' | 'incoming';
+    callId?: string;
+    callerName?: string;
+  };
   LiveWatch: {hlsUrl: string; title?: string; streamerName?: string};
   CallHistory: undefined;
 

@@ -1,7 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   Pressable,
   Text,
@@ -16,6 +15,7 @@ import {Screen} from '../components/ui/Screen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {getFollowers, getFollowing, type SuggestedUser} from '../api/followApi';
 import {RelationButton} from '../components/relations/RelationButton';
+import {RefreshableFlatList} from '../components/ui/RefreshableFlatList';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'FollowersFollowing'>;
@@ -39,6 +39,8 @@ export function FollowersFollowingScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [listTotal, setListTotal] = useState<number | null>(null);
 
   const load = useCallback(async (targetPage: number, reset = false) => {
     try {
@@ -48,6 +50,7 @@ export function FollowersFollowingScreen() {
       if (reset) {
         setUsers(res.users);
         setPage(2);
+        if (typeof res.total === 'number') setListTotal(res.total);
       } else {
         setUsers(prev => [...prev, ...res.users]);
         setPage(targetPage + 1);
@@ -68,17 +71,29 @@ export function FollowersFollowingScreen() {
     setLoadingMore(false);
   }, [hasMore, loadingMore, load, page]);
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load(1, true);
+    setRefreshing(false);
+  }, [load]);
+
+  const title =
+    (tab === 'followers' ? 'Followers' : 'Following') +
+    (listTotal != null ? ` (${listTotal})` : '');
+
   return (
-    <Screen title={tab === 'followers' ? 'Followers' : 'Following'}>
+    <Screen title={title}>
       {loading ? (
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <ActivityIndicator color={palette.primary} size="large" />
         </View>
       ) : (
-        <FlatList
+        <RefreshableFlatList
           data={users}
           keyExtractor={u => u._id}
           contentContainerStyle={{paddingVertical: 8}}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.4}
           ListEmptyComponent={
@@ -131,3 +146,4 @@ export function FollowersFollowingScreen() {
     </Screen>
   );
 }
+
