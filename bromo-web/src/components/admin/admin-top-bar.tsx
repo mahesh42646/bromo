@@ -4,6 +4,7 @@ import { useFormStatus } from "react-dom";
 import { usePathname } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 import { logoutAction } from "@/app/admin/logout/actions";
+import { AdminAppearanceSelect } from "@/components/admin/admin-appearance-select";
 import { getAdminPageMeta, ADMIN_NAVIGATION } from "@/config/admin-navigation";
 
 function getGroupLabel(pathname: string): string {
@@ -71,8 +72,9 @@ export function AdminTopBar({
         </nav>
       </div>
 
-      {/* Right: session + logout */}
+      {/* Right: appearance + session + logout */}
       <div className="flex shrink-0 items-center gap-2">
+        <AdminAppearanceSelect />
         <span className="hidden items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[10px] font-medium text-muted-foreground md:flex">
           <span className="size-1.5 rounded-full bg-success" />
           Session · {sessionTtl}

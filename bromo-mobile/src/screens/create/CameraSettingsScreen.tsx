@@ -4,7 +4,7 @@ import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {useNavigation} from '@react-navigation/native';
 import {ChevronRight, Radio, Clapperboard, CirclePlus} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import type {ThemePalette} from '../../config/platform-theme';
+import type {ThemePalette} from '../../theme/tokens';
 import {
   loadCameraSettings,
   saveCameraSettings,

@@ -18,6 +18,7 @@ import {
 import ViewShot from 'react-native-view-shot';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {ThemedConfirmModal} from '../../components/ui/ThemedConfirmModal';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
@@ -82,7 +83,7 @@ import {createDraft} from '../../api/draftsApi';
 import {searchUsers, type SuggestedUser} from '../../api/followApi';
 import {listProducts, type AffiliateProduct} from '../../api/productsApi';
 import {searchPlaces, type PlaceItem} from '../../api/placesApi';
-import type {ThemePalette} from '../../config/platform-theme';
+import type {ThemePalette} from '../../theme/tokens';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'ShareFinal'>;
 
@@ -727,6 +728,10 @@ export function ShareScreen() {
   const [productHits, setProductHits] = useState<AffiliateProduct[]>([]);
   const [busy, setBusy] = useState<'draft' | 'publish' | 'schedule' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [publishDone, setPublishDone] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState(() =>
     toDateInputs(draft.advanced.scheduledAt),
@@ -1307,15 +1312,14 @@ export function ShareScreen() {
         }
 
         toastOk(scheduleIso ? 'Scheduled' : 'Posted');
-        Alert.alert(
-          scheduleIso ? 'Scheduled' : 'Done',
-          scheduleIso
+        setPublishDone({
+          title: scheduleIso ? 'Scheduled' : 'Done',
+          message: scheduleIso
             ? 'Your content is scheduled and will publish automatically.'
             : useAsync
             ? 'Upload finished. We are processing it in the background now.'
             : 'Your content is live.',
-          [{text: 'OK', onPress: closeAll}],
-        );
+        });
       } catch (err) {
         Alert.alert(
           scheduleIso ? 'Failed to schedule' : 'Failed to post',
@@ -1449,6 +1453,15 @@ export function ShareScreen() {
 
   return (
     <ThemedSafeScreen style={styles.root}>
+      <ThemedConfirmModal
+        visible={publishDone != null}
+        title={publishDone?.title ?? 'Done'}
+        message={publishDone?.message ?? ''}
+        onConfirm={() => {
+          setPublishDone(null);
+          closeAll();
+        }}
+      />
       <View style={styles.header}>
         <Pressable
           style={styles.headerIconBtn}

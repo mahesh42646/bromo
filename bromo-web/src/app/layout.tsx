@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
+import { WEB_APPEARANCE_STORAGE_KEY } from "@/config/appearance";
 import { siteConfig } from "@/config/site";
+import { buildAppearanceBootScript } from "@/lib/web-appearance";
+import { WebAppearanceSync } from "@/components/web-appearance-sync";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,6 +23,8 @@ export const metadata: Metadata = {
   applicationName: siteConfig.platformName,
 };
 
+const appearanceBootScript = buildAppearanceBootScript(WEB_APPEARANCE_STORAGE_KEY);
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,10 +33,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      data-theme="dark"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+      <body className="flex min-h-full flex-col" suppressHydrationWarning>
+        <Script id="bromo-appearance-boot" strategy="beforeInteractive">
+          {appearanceBootScript}
+        </Script>
+        <WebAppearanceSync />
         {children}
       </body>
     </html>

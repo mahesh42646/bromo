@@ -23,7 +23,7 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
-import type {ThemePalette} from '../../../config/platform-theme';
+import type {ThemePalette} from '../../../theme/tokens';
 import {useAuth} from '../../../context/AuthContext';
 import {useTheme} from '../../../context/ThemeContext';
 import type {BootstrapParamList} from '../../../navigation/bootstrapParamList';

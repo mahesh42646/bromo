@@ -38,7 +38,7 @@ import {
   Zap,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import type {ThemePalette} from '../../config/platform-theme';
+import type {ThemePalette} from '../../theme/tokens';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import {socketService} from '../../services/socketService';

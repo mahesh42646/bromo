@@ -44,6 +44,8 @@ import { ContentDeliveryLog } from "../models/ContentDeliveryLog.js";
 import { LRUCache } from "lru-cache";
 import { cacheGetJson, cacheSetJson } from "../services/cacheLayer.js";
 import { isCanaryUser, perfFlags } from "../config/perfFlags.js";
+import { ECONOMY_CONFIG } from "../config/economy.js";
+import { creditWallet } from "./wallet.js";
 
 export const postsRouter = Router();
 
@@ -636,6 +638,54 @@ function recomputeTrending(postId: string): void {
 // once, so shipping 20 in the first response wastes bandwidth on rows the user
 // may never scroll to. Next page loads on demand at the end-reached threshold.
 const PAGE_SIZE = 6;
+
+async function awardPostingMilestones(
+  userId: mongoose.Types.ObjectId,
+  postsCount: number,
+): Promise<void> {
+  if (postsCount <= 0) return;
+  const rewards: Array<Promise<unknown>> = [];
+  if (postsCount === 1) {
+    rewards.push(
+      creditWallet(
+        userId,
+        ECONOMY_CONFIG.firstPostReward,
+        "reward",
+        undefined,
+        undefined,
+        { kind: "first_post" },
+        `reward:first_post:${String(userId)}`,
+      ),
+    );
+  }
+  if (postsCount === 10) {
+    rewards.push(
+      creditWallet(
+        userId,
+        ECONOMY_CONFIG.tenPostsReward,
+        "reward",
+        undefined,
+        undefined,
+        { kind: "ten_posts" },
+        `reward:ten_posts:${String(userId)}`,
+      ),
+    );
+  }
+  if (postsCount % 100 === 0) {
+    rewards.push(
+      creditWallet(
+        userId,
+        ECONOMY_CONFIG.hundredPostsReward,
+        "reward",
+        undefined,
+        undefined,
+        { kind: "hundred_posts", postsCount },
+        `reward:hundred_posts:${String(userId)}:${postsCount}`,
+      ),
+    );
+  }
+  await Promise.allSettled(rewards);
+}
 const TRENDING_WINDOW_MS = 48 * 3600 * 1000;
 const FEED_TOPIC_TABS = new Set(["politics", "sports", "shopping", "tech"]);
 const FEED_TYPES = { type: { $in: ["post", "reel"] } } as const;
@@ -2674,6 +2724,10 @@ postsRouter.post(
           (id, idx, arr) => arr.findIndex((x) => String(x) === String(id)) === idx,
         );
         await User.updateMany({_id: {$in: countIds}}, { $inc: { postsCount: 1 } });
+        const authorAfter = await User.findById(user._id).select("postsCount").lean();
+        if (authorAfter?.postsCount) {
+          await awardPostingMilestones(user._id as mongoose.Types.ObjectId, authorAfter.postsCount);
+        }
       }
 
       const populated = await Post.findById(post._id)

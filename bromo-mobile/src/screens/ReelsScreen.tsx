@@ -85,7 +85,7 @@ import {peekReelFeedCache, saveReelFeedCache} from '../lib/reelFeedCache';
 import {getCachedPost, mergePostsWithSessionCache, prefetchPostThumbnails} from '../lib/postEntityCache';
 import {getAuthorMerge, rememberAuthor} from '../lib/authorSessionCache';
 import {perfFlags} from '../config/perfFlags';
-import type {ThemePalette} from '../config/platform-theme';
+import type {ThemePalette} from '../theme/tokens';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
 import {openExternalUrl} from '../lib/openExternalUrl';
 

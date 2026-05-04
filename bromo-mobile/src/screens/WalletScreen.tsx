@@ -27,6 +27,7 @@ import {
   type LedgerEntry,
   type CoinPackage,
 } from '../api/walletApi';
+import {EconomyConfig} from '../config/economy';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 
@@ -52,6 +53,8 @@ function reasonLabel(reason: LedgerEntry['reason']): string {
     admin_credit: 'Admin credit',
     admin_debit: 'Admin debit',
     referral_reward: 'Referral reward',
+    reward: 'Reward earned',
+    store_redemption: 'Store redemption',
   };
   return map[reason] ?? reason;
 }
@@ -229,6 +232,27 @@ export function WalletScreen() {
               )}
             </Pressable>
           ))}
+        </View>
+
+        <Text style={{
+          color: palette.foregroundSubtle, fontSize: 11, fontWeight: '800',
+          letterSpacing: 0.8, paddingHorizontal: 16, paddingBottom: 10,
+        }}>
+          HOW TO EARN
+        </Text>
+        <View style={{paddingHorizontal: 16, paddingBottom: 20, gap: 8}}>
+          <Text style={{color: palette.foregroundMuted, fontSize: 13}}>
+            • Watch a reel {EconomyConfig.reelViewMinPercent}%+ → +{EconomyConfig.coinPerReelView} coin
+          </Text>
+          <Text style={{color: palette.foregroundMuted, fontSize: 13}}>
+            • First {EconomyConfig.reelScrollMilestone.count} reels viewed → +{EconomyConfig.reelScrollMilestone.reward} coins
+          </Text>
+          <Text style={{color: palette.foregroundMuted, fontSize: 13}}>
+            • First post → +{EconomyConfig.firstPostReward}, first 10 posts → +{EconomyConfig.tenPostsReward}
+          </Text>
+          <Text style={{color: palette.foregroundMuted, fontSize: 13}}>
+            • Every 100 posts/reels → +{EconomyConfig.hundredPostsReward} coins
+          </Text>
         </View>
 
         {/* Transaction history */}

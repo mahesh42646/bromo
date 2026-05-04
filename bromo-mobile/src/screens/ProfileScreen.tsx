@@ -268,7 +268,6 @@ export function ProfileScreen() {
 
   const displayName = dbUser?.displayName || 'User';
   const username = dbUser?.username || '';
-  const email = dbUser?.email || '';
   const avatar = dbUser?.profilePicture || null;
   const bio = dbUser?.bio || '';
   const isVerified = Boolean(dbUser?.isVerified || dbUser?.verificationStatus === 'verified');
@@ -605,10 +604,6 @@ export function ProfileScreen() {
                 <BadgeCheck size={16} color={palette.accent} fill={palette.accent} />
               )}
             </View>
-
-            {email ? (
-              <Text style={[styles.emailLine, {color: palette.placeholder}]}>{email}</Text>
-            ) : null}
 
             {bio ? (
               <Text style={[styles.bioText, {color: palette.foreground}]}>{bio}</Text>
@@ -986,9 +981,6 @@ const styles = StyleSheet.create({
   displayName: {
     fontSize: 15,
     fontWeight: '700',
-  },
-  emailLine: {
-    fontSize: 13,
   },
   bioText: {
     fontSize: 14,

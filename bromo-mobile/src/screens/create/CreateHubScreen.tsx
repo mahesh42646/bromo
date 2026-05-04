@@ -41,7 +41,7 @@ import {FILTER_IDS} from '../../create/createTypes';
 import {FILTER_LABELS, FILTER_LAYER_STACKS} from '../../create/filterStyles';
 import {loadCameraSettings} from '../../lib/cameraSettingsStorage';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
-import type {ThemePalette} from '../../config/platform-theme';
+import type {ThemePalette} from '../../theme/tokens';
 import {getPost} from '../../api/postsApi';
 import {useHubCameraCapture} from './useHubCameraCapture';
 

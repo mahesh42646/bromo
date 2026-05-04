@@ -454,7 +454,14 @@ export async function votePostPoll(
 
 export async function deletePost(id: string): Promise<void> {
   const res = await authedFetch(`/posts/${id}`, {method: 'DELETE'});
-  if (!res.ok) throw new Error('Failed to delete post');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const message =
+      typeof (body as {message?: unknown}).message === 'string'
+        ? (body as {message: string}).message
+        : 'Failed to delete post';
+    throw new Error(message);
+  }
 }
 
 export type PostUpdatePayload = {

@@ -6,7 +6,9 @@ export type LedgerReason =
   | 'promotion_refund'
   | 'admin_credit'
   | 'admin_debit'
-  | 'referral_reward';
+  | 'referral_reward'
+  | 'store_redemption'
+  | 'reward';
 
 export type LedgerEntry = {
   _id: string;

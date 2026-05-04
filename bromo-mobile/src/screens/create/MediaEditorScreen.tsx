@@ -61,7 +61,7 @@ import {
 } from '../../create/editAdjustUtils';
 import { FILTER_LABELS, FILTER_LAYER_STACKS } from '../../create/filterStyles';
 import type { CreateStackParamList } from '../../navigation/CreateStackNavigator';
-import type { ThemePalette } from '../../config/platform-theme';
+import type { ThemePalette } from '../../theme/tokens';
 import { EditorTimeline } from './EditorTimeline';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'MediaEditor'>;
@@ -525,6 +525,11 @@ export function MediaEditorScreen() {
     }, 120_000);
     return () => clearTimeout(t);
   }, [cur?.uri, endMediaImportOverlay]);
+
+  useEffect(() => {
+    if (!cur?.uri || cur.type === 'video') return;
+    Image.prefetch(cur.uri).catch(() => null);
+  }, [cur?.uri, cur?.type]);
 
   const [activeTool, setActiveTool] = useState<EditorTool | null>(null);
   const [activeAdjustKey, setActiveAdjustKey] =

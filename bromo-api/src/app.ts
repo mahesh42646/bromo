@@ -54,6 +54,7 @@ import { draftsRouter } from "./routes/drafts.js";
 import { placesRouter } from "./routes/places.js";
 import { storeRouter } from "./routes/storeRoutes.js";
 import { dashboardOverviewRouter } from "./routes/dashboardOverview.js";
+import { callsRouter } from "./routes/calls.js";
 import { startPromotionBillingWorker } from "./workers/promotionBillingWorker.js";
 import { startScheduledPostWorker } from "./workers/scheduledPostWorker.js";
 import { initFirebase } from "./config/firebase.js";
@@ -164,6 +165,7 @@ export function createApp() {
   app.use("/places", placesRouter);
   app.use("/stores", storeRouter);
   app.use("/dashboard", dashboardOverviewRouter);
+  app.use("/calls", callsRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });

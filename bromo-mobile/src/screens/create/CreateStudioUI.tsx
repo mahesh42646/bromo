@@ -7,7 +7,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import type { ThemePalette } from '../../config/platform-theme';
+import type { ThemePalette } from '../../theme/tokens';
 import type { CreateMode } from '../../create/createTypes';
 
 const MODE_OPTIONS: Array<{ id: CreateMode; label: string }> = [

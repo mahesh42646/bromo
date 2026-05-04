@@ -12,7 +12,7 @@ import {
   Truck,
 } from 'lucide-react-native';
 import type {Store as BromoStore} from '../../api/storeApi';
-import type {ThemePalette} from '../../config/platform-theme';
+import type {ThemePalette} from '../../theme/tokens';
 
 function fmtDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;

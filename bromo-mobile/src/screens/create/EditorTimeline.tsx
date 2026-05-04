@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { Minus, Plus } from 'lucide-react-native';
-import type { ThemePalette } from '../../config/platform-theme';
+import type { ThemePalette } from '../../theme/tokens';
 
 const HANDLE = 16;
 const TRACK_H = 48;

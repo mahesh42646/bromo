@@ -14,7 +14,7 @@ import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {ChevronLeft, Trash2, Clock, FileText} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import type {ThemePalette} from '../../config/platform-theme';
+import type {ThemePalette} from '../../theme/tokens';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import {unpackClientSnapshot} from '../../create/draftSnapshot';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';

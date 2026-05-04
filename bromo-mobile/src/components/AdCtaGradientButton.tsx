@@ -2,7 +2,7 @@ import React, {useMemo} from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {ExternalLink} from 'lucide-react-native';
-import type {ThemePalette} from '../config/platform-theme';
+import type {ThemePalette} from '../theme/tokens';
 
 type Props = {
   palette: ThemePalette;

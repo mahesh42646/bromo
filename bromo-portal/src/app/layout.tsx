@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { FirebaseAnalyticsInit } from "@/components/firebase-analytics-init";
+import { WebAppearanceSync } from "@/components/web-appearance-sync";
+import { WEB_APPEARANCE_STORAGE_KEY } from "@/config/appearance";
 import { site } from "@/config/site";
+import { buildAppearanceBootScript } from "@/lib/web-appearance";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,14 +31,20 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+const appearanceBootScript = buildAppearanceBootScript(WEB_APPEARANCE_STORAGE_KEY);
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="dark" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
-      <body className="min-h-full antialiased">
+    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full`}>
+      <body className="min-h-full antialiased" suppressHydrationWarning>
+        <Script id="bromo-appearance-boot" strategy="beforeInteractive">
+          {appearanceBootScript}
+        </Script>
+        <WebAppearanceSync />
         <FirebaseAnalyticsInit />
         {children}
       </body>
