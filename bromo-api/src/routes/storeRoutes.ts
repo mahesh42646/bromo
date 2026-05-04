@@ -1,4 +1,5 @@
 import express, { type Response } from "express";
+import mongoose from "mongoose";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
@@ -925,6 +926,8 @@ storeRouter.post("/:id/redeem", requireVerifiedUser, async (req: FirebaseAuthedR
       `store:${store._id}:user:${req.dbUser!._id}:${Date.now()}`,
     );
     if (!debit.success) return res.status(402).json({message: "Not enough coins", balance: debit.balance});
+    const otp = String(100000 + Math.floor(Math.random() * 900000));
+    const qrToken = `redeem_${Date.now()}_${randomBytes(6).toString("hex")}`;
     const redemption = await StoreRedemption.create({
       store: store._id,
       user: req.dbUser!._id,
@@ -933,18 +936,43 @@ storeRouter.post("/:id/redeem", requireVerifiedUser, async (req: FirebaseAuthedR
       coinsDeducted: quote.coinsRequired,
       discountPercent: quote.discountPercent,
       payableInr: quote.payableInr,
-      qrToken: `redeem_${Date.now()}_${randomBytes(6).toString("hex")}`,
-      status: "redeemed",
-      redeemedAt: new Date(),
+      qrToken,
+      otp,
+      status: "pending",
     });
     res.status(201).json({
       redemption,
+      otp,
+      qrPayload: {token: qrToken, otp},
       balance: debit.balance,
-      message: `Pay ₹${quote.payableInr} to Store`,
+      message: `Pay ₹${quote.payableInr} to Store · Share OTP ${otp} with cashier`,
       ownerMessage: `Collect only ₹${quote.payableInr} from this customer`,
     });
   } catch (err) {
     console.error("[storeRoutes] redeem error:", err);
+    res.status(500).json({message: "Server error"});
+  }
+});
+
+/** POST /stores/:id/redemptions/:rid/confirm — owner verifies OTP at checkout */
+storeRouter.post("/:id/redemptions/:rid/confirm", requireVerifiedUser, async (req: FirebaseAuthedRequest, res: Response) => {
+  try {
+    const store = await Store.findOne({_id: req.params.id, owner: req.dbUser!._id}).lean();
+    if (!store) return res.status(404).json({message: "Store not found"});
+    const rid = String(req.params.rid);
+    if (!mongoose.Types.ObjectId.isValid(rid)) return res.status(400).json({message: "Invalid redemption"});
+    const otp = String((req.body as {otp?: unknown}).otp ?? "").trim();
+    const redemption = await StoreRedemption.findOne({_id: rid, store: store._id});
+    if (!redemption) return res.status(404).json({message: "Redemption not found"});
+    if (redemption.status !== "pending") return res.status(400).json({message: "Already processed"});
+    if (redemption.otp !== otp) return res.status(400).json({message: "Invalid OTP"});
+    redemption.status = "redeemed";
+    redemption.redeemedAt = new Date();
+    redemption.ownerConfirmedAt = new Date();
+    await redemption.save();
+    return res.json({ok: true});
+  } catch (err) {
+    console.error("[storeRoutes] redeem confirm error:", err);
     res.status(500).json({message: "Server error"});
   }
 });

@@ -289,7 +289,7 @@ export function NearbyPeopleScreen() {
               </Text>
             </View>
           </View>
-          <PrimaryButton label="Follow" onPress={() => followUser(r._id).catch(() => null)} />
+          <PrimaryButton label="Follow" onPress={() => followUser(r._id, {kind: 'discover'}).catch(() => null)} />
         </View>
       ))}
     </SopChrome>

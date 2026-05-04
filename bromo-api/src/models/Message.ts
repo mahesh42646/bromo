@@ -9,6 +9,8 @@ export interface MessageDoc extends Document {
   meta: Record<string, unknown>;
   replyToId?: Types.ObjectId;
   isUnsent: boolean;
+  /** When true, both participants see a tombstone (delete for everyone). */
+  deletedForEveryone: boolean;
   editedAt?: Date;
   reactions: Array<{ userId: Types.ObjectId; emoji: string }>;
   readBy: Array<{ userId: Types.ObjectId; readAt: Date }>;
@@ -35,6 +37,7 @@ const messageSchema = new Schema<MessageDoc>(
     meta: { type: Schema.Types.Mixed, default: {} },
     replyToId: { type: Schema.Types.ObjectId, ref: "Message" },
     isUnsent: { type: Boolean, default: false },
+    deletedForEveryone: { type: Boolean, default: false },
     editedAt: { type: Date },
     reactions: [
       {

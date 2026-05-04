@@ -44,6 +44,7 @@ function apiMsgToLocal(m: ApiMessage, myDbUserId: string, peerId: string): ChatM
     delivery: 'read' as MessageDelivery,
     reactions: m.reactions.map(r => ({emoji: r.emoji, count: 1, includesMe: r.userId === myDbUserId})),
     unsent: m.isUnsent,
+    deletedForEveryone: Boolean(m.deletedForEveryone),
     editedAt: m.editedAt ? new Date(m.editedAt).getTime() : undefined,
     replyToId: m.replyToId?._id,
   };
@@ -102,6 +103,7 @@ function apiConvToPeer(conv: ApiConversation, myDbUserId: string): ChatPeer {
 }
 
 function messagePreview(m: ChatMessage): string {
+  if (m.deletedForEveryone) return 'This message was deleted';
   if (m.unsent) return 'You unsent a message';
   switch (m.kind) {
     case 'text': return m.text;
@@ -331,7 +333,9 @@ export function MessagingProvider({children, myDbUserId}: Props) {
       setMessagesByPeer(prev => ({
         ...prev,
         [peerId]: (prev[peerId] ?? []).map(m =>
-          m.id === messageId && m.senderId === SELF ? {...m, unsent: true} : m,
+          m.id === messageId && m.senderId === SELF
+            ? {...m, unsent: true, deletedForEveryone: true}
+            : m,
         ),
       }));
       if (isMongoId(peerId) && isMongoId(messageId) && myDbUserId) {
@@ -361,7 +365,7 @@ export function MessagingProvider({children, myDbUserId}: Props) {
   const forwardMessage = useCallback(
     (fromPeerId: string, messageId: string, toPeerId: string) => {
       const src = messagesByPeer[fromPeerId]?.find(m => m.id === messageId);
-      if (!src || src.unsent || !peers[toPeerId]) return;
+      if (!src || src.unsent || src.deletedForEveryone || !peers[toPeerId]) return;
       const copy = {
         ...src,
         id: newMsgId(),

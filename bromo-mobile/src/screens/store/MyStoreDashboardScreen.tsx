@@ -19,7 +19,6 @@ import {
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {
-  ChevronLeft,
   Plus,
   Package,
   Eye,
@@ -36,19 +35,25 @@ import {
   Save,
   X,
   ShieldCheck,
+  QrCode,
 } from 'lucide-react-native';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {useTheme} from '../../context/ThemeContext';
+import {Screen} from '../../components/ui/Screen';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {
   STORE_CATEGORIES,
   deleteProduct,
   getMyStore,
+  getStoreDashboard,
+  getStoreLeads,
   listProducts,
   updateProduct,
   updateStore,
   type Store,
   type StoreCategory,
+  type StoreDashboardData,
+  type StoreLeadRow,
   type StoreProduct,
 } from '../../api/storeApi';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
@@ -133,6 +138,8 @@ export function MyStoreDashboardScreen() {
 
   const [store, setStore] = useState<Store | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [dashboard, setDashboard] = useState<StoreDashboardData | null>(null);
+  const [leads, setLeads] = useState<StoreLeadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
@@ -149,10 +156,18 @@ export function MyStoreDashboardScreen() {
       const s = await getMyStore();
       setStore(s);
       if (s.approvalStatus === 'approved' && s.isActive) {
-        const p = await listProducts(s._id);
+        const [p, dash, leadRows] = await Promise.all([
+          listProducts(s._id),
+          getStoreDashboard(s._id).catch(() => null),
+          getStoreLeads(s._id).catch(() => [] as StoreLeadRow[]),
+        ]);
         setProducts(p);
+        setDashboard(dash);
+        setLeads(leadRows);
       } else {
         setProducts([]);
+        setDashboard(null);
+        setLeads([]);
       }
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to load store');
@@ -336,15 +351,15 @@ export function MyStoreDashboardScreen() {
 
   if (loading) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="My Store">
         <ActivityIndicator color={palette.primary} style={{flex: 1}} />
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   if (!store) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="My Store">
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12}}>
           <ShoppingBag size={48} color={palette.foregroundSubtle} />
           <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '700'}}>No store found</Text>
@@ -354,7 +369,7 @@ export function MyStoreDashboardScreen() {
             <Text style={{color: palette.primaryForeground, fontWeight: '700'}}>Create Store</Text>
           </Pressable>
         </View>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
@@ -367,22 +382,22 @@ export function MyStoreDashboardScreen() {
     navigation.navigate('AddProduct', {storeId: store._id});
   };
 
-  return (
-    <ThemedSafeScreen>
-      <StatusBar barStyle="light-content" />
+  const dashViews = dashboard?.views ?? store.totalViews;
+  const dashProducts = dashboard?.products ?? products.length;
+  const dashRatingAvg = dashboard?.ratings?.average ?? store.ratingAvg;
+  const dashRatingCount = dashboard?.ratings?.count ?? store.ratingCount;
 
-      {/* Header */}
-      <View style={[s.header, {borderBottomColor: palette.glassFaint}]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <ChevronLeft size={22} color={palette.foreground} />
-        </Pressable>
-        <Text style={[s.headerTitle, {color: palette.foreground}]} numberOfLines={1}>My Store</Text>
+  return (
+    <Screen
+      title="My Store"
+      right={
         <Pressable
           onPress={openProductCreate}
           style={[s.addBtn, {backgroundColor: storeLocked ? palette.warning : palette.primary}]}>
           <Plus size={16} color={palette.primaryForeground} />
         </Pressable>
-      </View>
+      }>
+      <StatusBar barStyle="light-content" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -481,15 +496,24 @@ export function MyStoreDashboardScreen() {
             palette={palette}
             onPress={openWebDashboard}
           />
+          {!storeLocked ? (
+            <QuickAction
+              icon={QrCode}
+              label="Scan redemption"
+              sublabel="QR + OTP at checkout"
+              palette={palette}
+              onPress={() => navigation.navigate('RedemptionScanner')}
+            />
+          ) : null}
         </View>
 
         {/* Analytics row */}
         <View style={[s.analyticsRow, {borderColor: palette.glassMid}]}>
           {[
-            {icon: Eye, label: 'Views', value: compactNumber(store.totalViews), color: palette.primary},
-            {icon: Package, label: 'Products', value: compactNumber(products.length), color: palette.accent},
-            {icon: Star, label: 'Rating', value: store.ratingAvg > 0 ? store.ratingAvg.toFixed(1) : '—', color: palette.warning},
-            {icon: BarChart2, label: 'Reviews', value: compactNumber(store.ratingCount), color: palette.success},
+            {icon: Eye, label: 'Views', value: compactNumber(dashViews), color: palette.primary},
+            {icon: Package, label: 'Products', value: compactNumber(dashProducts), color: palette.accent},
+            {icon: Star, label: 'Rating', value: dashRatingAvg > 0 ? dashRatingAvg.toFixed(1) : '—', color: palette.warning},
+            {icon: BarChart2, label: 'Reviews', value: compactNumber(dashRatingCount), color: palette.success},
           ].map(({icon: Icon, label, value, color}) => (
             <View key={label} style={[s.statCard, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
               <Icon size={18} color={color} />
@@ -498,6 +522,45 @@ export function MyStoreDashboardScreen() {
             </View>
           ))}
         </View>
+
+        {dashboard ? (
+          <View style={{paddingHorizontal: 16, marginBottom: 14, gap: 10}}>
+            <View style={[s.statCard, {backgroundColor: palette.glassFaint, borderColor: palette.border, padding: 12}]}>
+              <Text style={{color: palette.foreground, fontWeight: '900', marginBottom: 6}}>Engagement</Text>
+              <Text style={{color: palette.foregroundSubtle, fontSize: 13}}>
+                Favorites: {dashboard.engagement.favorites} · B2B leads: {dashboard.engagement.leads} · Redemptions:{' '}
+                {dashboard.engagement.redemptions}
+              </Text>
+              <Text style={{color: palette.foregroundSubtle, fontSize: 13, marginTop: 4}}>
+                Coins redeemed (offers): {compactNumber(dashboard.redeemedCoins)}
+              </Text>
+            </View>
+            {leads.length ? (
+              <View style={[s.statCard, {backgroundColor: palette.glassFaint, borderColor: palette.border, padding: 12}]}>
+                <Text style={{color: palette.foreground, fontWeight: '900', marginBottom: 8}}>Recent B2B leads</Text>
+                {leads.slice(0, 8).map(row => (
+                  <View key={row._id} style={{marginBottom: 8}}>
+                    <Text style={{color: palette.foreground, fontSize: 13, fontWeight: '700'}}>
+                      {row.contactName ?? 'Lead'}
+                    </Text>
+                    <Text style={{color: palette.foregroundSubtle, fontSize: 12}}>{row.phone ?? ''}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {dashboard.recentRedemptions?.length ? (
+              <View style={[s.statCard, {backgroundColor: palette.glassFaint, borderColor: palette.border, padding: 12}]}>
+                <Text style={{color: palette.foreground, fontWeight: '900', marginBottom: 8}}>Recent redemptions</Text>
+                {dashboard.recentRedemptions.slice(0, 6).map((row, idx) => (
+                  <Text key={`r_${idx}`} style={{color: palette.foregroundSubtle, fontSize: 12, marginBottom: 4}}>
+                    {String((row as {coinsDeducted?: number}).coinsDeducted ?? '')} coins ·{' '}
+                    {String((row as {createdAt?: string}).createdAt ?? '')}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {storeLocked ? (
           <View style={[s.lockedProducts, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
@@ -608,7 +671,7 @@ export function MyStoreDashboardScreen() {
         }}
         onSave={saveProductChanges}
       />
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

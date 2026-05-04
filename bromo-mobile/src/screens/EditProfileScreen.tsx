@@ -14,11 +14,11 @@ import {
   View,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
-import {Camera, ChevronLeft, Globe, Phone, User} from 'lucide-react-native';
+import {Camera, Globe, Phone, User} from 'lucide-react-native';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {Screen} from '../components/ui/Screen';
 import {updateProfile, uploadAvatar} from '../api/authApi';
 
 export function EditProfileScreen() {
@@ -76,15 +76,10 @@ export function EditProfileScreen() {
   const initials = displayName.trim().charAt(0).toUpperCase() || '?';
 
   return (
-    <ThemedSafeScreen>
-      <StatusBar barStyle="light-content" />
-
-      {/* Header */}
-      <View style={[styles.header, {borderBottomColor: palette.border}]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 4}}>
-          <ChevronLeft size={24} color={palette.foreground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, {color: palette.foreground}]}>Edit profile</Text>
+    <Screen
+      title="Edit profile"
+      scroll={false}
+      right={
         <Pressable
           onPress={save}
           disabled={saving}
@@ -95,7 +90,8 @@ export function EditProfileScreen() {
             <Text style={[styles.saveBtnText, {color: palette.primaryForeground}]}>Save</Text>
           )}
         </Pressable>
-      </View>
+      }>
+      <StatusBar barStyle="light-content" />
 
       <KeyboardAvoidingView
         style={{flex: 1}}
@@ -181,7 +177,7 @@ export function EditProfileScreen() {
 
         </ScrollView>
       </KeyboardAvoidingView>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 
@@ -232,19 +228,6 @@ function Field({label, icon, value, onChangeText, placeholder, maxLength, multil
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
   saveBtn: {
     borderRadius: 8,
     paddingHorizontal: 16,

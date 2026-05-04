@@ -46,6 +46,7 @@ import { cacheGetJson, cacheSetJson } from "../services/cacheLayer.js";
 import { isCanaryUser, perfFlags } from "../config/perfFlags.js";
 import { ECONOMY_CONFIG } from "../config/economy.js";
 import { creditWallet } from "./wallet.js";
+import { WalletLedger } from "../models/WalletLedger.js";
 
 export const postsRouter = Router();
 
@@ -133,11 +134,22 @@ postsRouter.post("/views/batch", requireFirebaseToken, async (req: FirebaseAuthe
         })
         .catch(() => null);
       recomputeTrending(postId);
-      if (agg.get(postId)?.impression) awardReelViewPoint(postId);
     }
   }
 
-  return res.json({ ok: true, n: agg.size });
+  let coinCredited = 0;
+  const viewerId = req.dbUser!._id as mongoose.Types.ObjectId;
+  if (ops.length > 0) {
+    const impressionIds = [...agg.entries()]
+      .filter(([, v]) => v.impression)
+      .map(([pid]) => pid);
+    const results = await Promise.all(
+      impressionIds.map((pid) => awardReelViewRewards(pid, viewerId)),
+    );
+    coinCredited = results.reduce((a, r) => a + r.viewerCredited, 0);
+  }
+
+  return res.json({ ok: true, n: agg.size, coinCredited });
 });
 
 type ReelPageResult = {posts: unknown[]; hasMore: boolean; nextCursor: string | null};
@@ -315,23 +327,78 @@ function mentionedIdsFromStoryMeta(storyMeta: Record<string, unknown> | undefine
   return ids;
 }
 
-function awardReelViewPoint(postId: string): void {
-  if (!mongoose.Types.ObjectId.isValid(postId)) return;
-  Post.findOneAndUpdate(
-    {_id: postId, type: "reel", isActive: true, isDeleted: {$ne: true}},
-    {$inc: {rewardPointsAccrued: 1}},
-    {new: true},
+function utcDayKey(d = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Author reward points (legacy) + viewer wallet credit for watching a reel impression.
+ * Skips self-views. One wallet credit per viewer per reel per UTC day (idempotency).
+ */
+async function awardReelViewRewards(
+  postId: string,
+  viewerId: mongoose.Types.ObjectId,
+): Promise<{ viewerCredited: number }> {
+  if (!mongoose.Types.ObjectId.isValid(postId)) return { viewerCredited: 0 };
+
+  const post = await Post.findOne(
+    { _id: postId, type: "reel", isActive: true, isDeleted: { $ne: true } },
+    { authorId: 1 },
+  ).lean();
+  if (!post) return { viewerCredited: 0 };
+
+  if (String(post.authorId) === String(viewerId)) {
+    return { viewerCredited: 0 };
+  }
+
+  void Post.findOneAndUpdate(
+    { _id: postId, type: "reel" },
+    { $inc: { rewardPointsAccrued: 1 } },
   )
-    .select("authorId")
-    .lean()
-    .then((post) => {
-      if (!post) return;
+    .then((p) => {
+      if (!p) return;
       return User.updateOne(
-        {_id: post.authorId, isCreator: true, creatorStatus: "verified"},
-        {$inc: {rewardPoints: 1}},
+        { _id: p.authorId, isCreator: true, creatorStatus: "verified" },
+        { $inc: { rewardPoints: 1 } },
       );
     })
     .catch(() => null);
+
+  const day = utcDayKey();
+  const start = new Date(`${day}T00:00:00.000Z`);
+  const end = new Date(`${day}T23:59:59.999Z`);
+  const [agg] = await WalletLedger.aggregate<{ t: number }>([
+    {
+      $match: {
+        userId: viewerId,
+        reason: "reel_view",
+        createdAt: { $gte: start, $lte: end },
+      },
+    },
+    { $group: { _id: null, t: { $sum: "$delta" } } },
+  ]);
+  const todayReelViewCoins = agg?.t ?? 0;
+  if (todayReelViewCoins >= ECONOMY_CONFIG.maxReelViewCoinsPerDay) {
+    return { viewerCredited: 0 };
+  }
+
+  const coins = ECONOMY_CONFIG.coinPerReelView;
+  if (todayReelViewCoins + coins > ECONOMY_CONFIG.maxReelViewCoinsPerDay) {
+    return { viewerCredited: 0 };
+  }
+
+  const idem = `reel_view:${String(viewerId)}:${postId}:${day}`;
+  const oid = new mongoose.Types.ObjectId(postId);
+  await creditWallet(
+    viewerId,
+    coins,
+    "reel_view",
+    undefined,
+    oid,
+    { postId: String(postId) },
+    idem,
+  );
+  return { viewerCredited: coins };
 }
 
 const interestScoreCache = new LRUCache<string, Map<string, number>>({
@@ -867,9 +934,11 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
           ? rewritePublicMediaUrl(item.thumbnailUrl)
           : item.thumbnailUrl,
     }));
-  const isVerifiedCreator =
-    Boolean(author?.isCreator && author?.creatorStatus === "verified") || Boolean(author?.isVerified);
-  const connectedStore = author?.connectedStore as { enabled?: boolean; website?: string } | undefined;
+  const isVerifiedCreator = Boolean(author?.isCreator && author?.creatorStatus === "verified");
+  const connectedStore = author?.connectedStore as { enabled?: boolean; website?: string; icon?: boolean; productCatalogUrl?: string } | undefined;
+  const productTagged =
+    Array.isArray((p as { productIds?: unknown }).productIds) &&
+    (((p as { productIds: unknown[] }).productIds ?? []).length > 0);
   return {
     ...p,
     mediaUrl,
@@ -893,9 +962,12 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
     isFollowing,
     showStoreIcon:
       isVerifiedCreator &&
-      ((Array.isArray((p as { productIds?: unknown }).productIds) &&
-        ((p as { productIds?: unknown[] }).productIds ?? []).length > 0) ||
-        Boolean(connectedStore?.enabled && connectedStore.website)),
+      (productTagged || (Boolean(connectedStore?.enabled) && connectedStore?.icon === true)),
+    /** Prefer catalog URL for “Shop now”; fallback website (SOP 7.4). */
+    storeEntryUrl:
+      isVerifiedCreator && Boolean(connectedStore?.enabled)
+        ? String(connectedStore?.productCatalogUrl || connectedStore?.website || "").trim() || undefined
+        : undefined,
     authorId: undefined,
   };
 }
@@ -994,12 +1066,12 @@ postsRouter.get(
             ...FEED_TYPES,
             ...VISIBLE_POST,
           };
-          const query =
+          const innerQuery =
             cf && mongoose.Types.ObjectId.isValid(cf)
               ? { ...baseQuery, _id: { $lt: new mongoose.Types.ObjectId(cf) } }
               : baseQuery;
-
-          const posts = await Post.find(query)
+          /** For-you friends mix: include category-tagged posts from people you follow (SOP 2.1). Category tabs still isolate by `feedCategory`. */
+          const posts = await Post.find(innerQuery)
             .sort({ _id: -1 })
             .limit(PAGE_SIZE)
             .populate("authorId", AUTHOR_SELECT)
@@ -1905,6 +1977,61 @@ postsRouter.post(
   },
 );
 
+const STORY_REACTIONS = new Set(["like", "love", "haha", "wow", "sad", "fire"]);
+
+// ── POST /posts/stories/:storyPostId/react ──────────────────────────
+postsRouter.post(
+  "/stories/:storyPostId/react",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const dbUser = req.dbUser;
+      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const storyPostId = req.params.storyPostId;
+      const reaction = String((req.body as { reaction?: unknown }).reaction ?? "");
+      if (!STORY_REACTIONS.has(reaction)) {
+        return res.status(400).json({ message: "Invalid reaction" });
+      }
+      const story = await Post.findOne({
+        _id: storyPostId,
+        type: "story",
+        ...VISIBLE_POST,
+        expiresAt: { $gt: new Date() },
+      })
+        .select("authorId")
+        .lean();
+      if (!story) return res.status(404).json({ message: "Story not found" });
+      if (String(dbUser._id) === String(story.authorId)) {
+        return res.status(400).json({ message: "Cannot react to own story" });
+      }
+      const okFollow = await Follow.countDocuments({
+        followerId: dbUser._id,
+        followingId: story.authorId,
+        status: "accepted",
+      });
+      if (okFollow === 0) {
+        return res.status(403).json({ message: "Not allowed" });
+      }
+      await StorySeen.findOneAndUpdate(
+        { viewerId: dbUser._id, storyPostId },
+        {
+          $set: {
+            viewerId: dbUser._id,
+            storyPostId,
+            reaction,
+            reactedAt: new Date(),
+          },
+        },
+        { upsert: true },
+      );
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[posts] story react error:", err);
+      return res.status(500).json({ message: "Failed to react" });
+    }
+  },
+);
+
 // ── GET /posts/stories/:storyPostId/viewers ────────────────────────
 postsRouter.get(
   "/stories/:storyPostId/viewers",
@@ -1923,6 +2050,8 @@ postsRouter.get(
         viewers: rows.map((row) => ({
           viewedAt: row.updatedAt,
           user: row.viewerId,
+          reaction: row.reaction,
+          reactedAt: row.reactedAt,
         })),
       });
     } catch (err) {
@@ -1945,6 +2074,15 @@ postsRouter.get(
         .lean();
       if (!story) return res.status(404).json({message: "Story not found"});
       const uniqueViewers = await StorySeen.countDocuments({storyPostId});
+      const oid = new mongoose.Types.ObjectId(storyPostId);
+      const reactionAgg = await StorySeen.aggregate<{ _id: string; n: number }>([
+        {$match: {storyPostId: oid, reaction: {$exists: true, $ne: null}}},
+        {$group: {_id: "$reaction", n: {$sum: 1}}},
+      ]);
+      const reactions: Record<string, number> = {};
+      for (const r of reactionAgg) {
+        if (r._id) reactions[r._id] = r.n;
+      }
       return res.json({
         viewersCount: uniqueViewers,
         impressions: Number(story.impressionsCount) || 0,
@@ -1953,6 +2091,7 @@ postsRouter.get(
         linkTapCount: Number(story.linkTapsCount) || 0,
         mentionTapCount: Number(story.mentionTapsCount) || 0,
         sharesCount: Number(story.sharesCount) || 0,
+        reactions,
       });
     } catch (err) {
       console.error("[posts] story analytics error:", err);
@@ -3180,6 +3319,7 @@ postsRouter.post(
   async (req: FirebaseAuthedRequest, res: Response) => {
     const watchMs = Math.min(Math.max(0, Number((req.body as {watchMs?: unknown}).watchMs) || 0), 3_600_000);
     const postId = String(req.params.id);
+    const viewerId = req.dbUser!._id as mongoose.Types.ObjectId;
 
     /** Impression (watchMs === 0) counts a view once; watch-time updates must not inflate viewsCount. */
     const inc =
@@ -3187,22 +3327,27 @@ postsRouter.post(
         ? {viewsCount: 1, impressionsCount: 1, totalWatchTimeMs: 0}
         : {totalWatchTimeMs: watchMs};
 
-    Post.findOneAndUpdate(
-      {_id: postId, isActive: true, isDeleted: {$ne: true}},
-      {$inc: inc},
-      {new: true},
-    )
-      .then((p) => {
-        if (p && p.viewsCount > 0) {
-          const avg = p.totalWatchTimeMs / p.viewsCount;
-          Post.updateOne({_id: postId}, {$set: {avgWatchTimeMs: avg}}).catch(() => null);
-        }
-        recomputeTrending(postId);
-        if (watchMs <= 0) awardReelViewPoint(postId);
-      })
-      .catch(() => null);
+    let coinCredited = 0;
+    try {
+      const p = await Post.findOneAndUpdate(
+        {_id: postId, isActive: true, isDeleted: {$ne: true}},
+        {$inc: inc},
+        {new: true},
+      ).lean();
+      if (p && p.viewsCount > 0) {
+        const avg = p.totalWatchTimeMs / p.viewsCount;
+        void Post.updateOne({_id: postId}, {$set: {avgWatchTimeMs: avg}}).catch(() => null);
+      }
+      recomputeTrending(postId);
+      if (watchMs <= 0) {
+        const r = await awardReelViewRewards(postId, viewerId);
+        coinCredited = r.viewerCredited;
+      }
+    } catch {
+      /* ignore */
+    }
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, coinCredited });
   },
 );
 

@@ -41,6 +41,8 @@ export function EditorTimeline({
 }: Props) {
   const [outerW, setOuterW] = useState(0);
   const innerW = Math.max(0, outerW - HANDLE * 2);
+  const innerWRef = useRef(0);
+  innerWRef.current = innerW;
   const endRef = useRef(trimEnd);
   const startRef = useRef(trimStart);
   endRef.current = trimEnd;
@@ -80,12 +82,13 @@ export function EditorTimeline({
           baseStart.current = startRef.current;
         },
         onPanResponderMove: (_, g) => {
-          if (innerW <= 0) return;
-          const next = baseStart.current + g.dx / innerW;
+          const w = innerWRef.current;
+          if (w <= 0) return;
+          const next = baseStart.current + g.dx / w;
           applyTrim(next, endRef.current);
         },
       }),
-    [applyTrim, innerW],
+    [applyTrim],
   );
 
   const panR = useMemo(
@@ -97,15 +100,16 @@ export function EditorTimeline({
           baseEnd.current = endRef.current;
         },
         onPanResponderMove: (_, g) => {
-          if (innerW <= 0) return;
-          const next = baseEnd.current + g.dx / innerW;
+          const w = innerWRef.current;
+          if (w <= 0) return;
+          const next = baseEnd.current + g.dx / w;
           applyTrim(startRef.current, next);
         },
       }),
-    [applyTrim, innerW],
+    [applyTrim],
   );
 
-  const stripes = Math.min(80, Math.max(16, Math.round(28 * zoom)));
+  const stripes = Math.min(24, Math.max(16, Math.round(28 * zoom)));
   const selW = innerW * Math.max(0, trimEnd - trimStart);
   const selLeft = HANDLE + innerW * trimStart;
 

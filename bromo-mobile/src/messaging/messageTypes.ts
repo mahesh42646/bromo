@@ -31,6 +31,8 @@ export type MessageBase = {
   reactions: ReactionEntry[];
   /** If present, message was removed for everyone (placeholder kept for thread ordering) */
   unsent?: boolean;
+  /** Server-driven delete-for-everyone tombstone (distinct from legacy unsend UX copy). */
+  deletedForEveryone?: boolean;
 };
 
 export type TextMessage = MessageBase & {kind: 'text'; text: string};

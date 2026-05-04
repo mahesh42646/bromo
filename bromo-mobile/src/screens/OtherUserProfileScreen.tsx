@@ -239,7 +239,7 @@ export function OtherUserProfileScreen() {
   const handleFollow = async () => {
     try {
       if (followStatus === 'requested') return;
-      const res = await followUser(userId);
+      const res = await followUser(userId, {kind: 'profile', refId: userId});
       const next = res.status === 'pending' ? 'requested' : 'following';
       setFollowStatus(next);
       setProfile(p => p ? {

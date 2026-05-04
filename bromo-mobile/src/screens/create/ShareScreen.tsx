@@ -83,6 +83,7 @@ import {createDraft} from '../../api/draftsApi';
 import {searchUsers, type SuggestedUser} from '../../api/followApi';
 import {listProducts, type AffiliateProduct} from '../../api/productsApi';
 import {searchPlaces, type PlaceItem} from '../../api/placesApi';
+import {useAudioPickerTracks} from '../../create/useAudioPickerTracks';
 import type {ThemePalette} from '../../theme/tokens';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'ShareFinal'>;
@@ -110,15 +111,6 @@ type SheetKey =
   | 'advanced'
   | 'story'
   | 'preview';
-
-const AUDIO_CATALOG_FALLBACK = [
-  {id: 'a1', title: 'Original audio', artist: 'BROMO Sound'},
-  {id: 'a2', title: 'City Nights', artist: 'Lo-Fi Pack'},
-  {id: 'a3', title: 'Drill Beat', artist: 'Trending'},
-  {id: 'a4', title: 'Acoustic Warm', artist: 'UGC Lite'},
-  {id: 'a5', title: 'Trap Vibes', artist: 'Hip Hop'},
-  {id: 'a6', title: 'Chill Wave', artist: 'Ambient'},
-];
 
 function slugFeedCategory(manual: string, preset: string): string {
   const t = manual
@@ -726,6 +718,11 @@ export function ShareScreen() {
   const [collabHits, setCollabHits] = useState<SuggestedUser[]>([]);
   const [productQuery, setProductQuery] = useState('');
   const [productHits, setProductHits] = useState<AffiliateProduct[]>([]);
+  const [musicQuery, setMusicQuery] = useState('');
+  const {tracks: musicPickerTracks, loading: musicRemoteLoading} = useAudioPickerTracks(
+    activeSheet === 'music',
+    musicQuery,
+  );
   const [busy, setBusy] = useState<'draft' | 'publish' | 'schedule' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [publishDone, setPublishDone] = useState<{
@@ -2093,9 +2090,24 @@ export function ShareScreen() {
         subtitle={
           draft.selectedAudio
             ? `Now: ${draft.selectedAudio.title}`
-            : 'Pick a track or keep original'
+            : 'Licensed catalog + sounds from the community'
         }
         palette={palette}>
+        <View style={styles.searchBox}>
+          <Search size={16} color={palette.foregroundMuted} />
+          <TextInput
+            value={musicQuery}
+            onChangeText={setMusicQuery}
+            placeholder="Search music"
+            placeholderTextColor={palette.placeholder}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+        {musicRemoteLoading ? (
+          <ActivityIndicator color={palette.accent} style={{marginVertical: 8}} />
+        ) : null}
         <ScrollView keyboardShouldPersistTaps="handled">
           <Pressable
             onPress={() => {
@@ -2114,7 +2126,7 @@ export function ShareScreen() {
               <Check size={18} color={palette.accent} />
             ) : null}
           </Pressable>
-          {AUDIO_CATALOG_FALLBACK.map(track => {
+          {musicPickerTracks.map(track => {
             const active = draft.selectedAudio?.id === track.id;
             return (
               <Pressable

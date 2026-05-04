@@ -5,7 +5,7 @@ import {
   requireVerifiedUser,
   type FirebaseAuthedRequest,
 } from "../middleware/firebaseAuth.js";
-import { Follow } from "../models/Follow.js";
+import { Follow, type FollowDoc } from "../models/Follow.js";
 import { Like } from "../models/Like.js";
 import { Post } from "../models/Post.js";
 import { User } from "../models/User.js";
@@ -373,6 +373,47 @@ followRouter.post(
   },
 );
 
+// ── GET /users/me/follow-attribution (for creator analytics) ───────
+followRouter.get(
+  "/me/follow-attribution",
+  requireVerifiedUser,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const me = req.dbUser!._id;
+      const rows = await Follow.find({
+        followingId: me,
+        status: "accepted",
+        sourceKind: {$exists: true, $ne: null},
+      })
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .select("followerId sourceKind sourceRefId createdAt")
+        .lean();
+      const grouped = new Map<string, { kind: string; refId?: string; count: number; lastAt: string }>();
+      for (const r of rows) {
+        const k = `${r.sourceKind ?? ""}:${r.sourceRefId ? String(r.sourceRefId) : ""}`;
+        const prev = grouped.get(k);
+        const t = (r.createdAt as Date).toISOString();
+        if (!prev) {
+          grouped.set(k, {
+            kind: r.sourceKind ?? "unknown",
+            refId: r.sourceRefId ? String(r.sourceRefId) : undefined,
+            count: 1,
+            lastAt: t,
+          });
+        } else {
+          prev.count += 1;
+          if (t > prev.lastAt) prev.lastAt = t;
+        }
+      }
+      return res.json({ items: [...grouped.values()] });
+    } catch (err) {
+      console.error("[follow] attribution error:", err);
+      return res.status(500).json({ message: "Failed to load attribution" });
+    }
+  },
+);
+
 // ── GET /users/:userId/profile ──────────────────────────────────────
 followRouter.get(
   "/:userId/profile",
@@ -692,8 +733,33 @@ followRouter.post(
         return res.json({ status: existing.status });
       }
 
+      const rawSource = (req.body as { source?: { kind?: string; refId?: string } }).source;
+      const allowedKinds = new Set([
+        "profile",
+        "post",
+        "reel",
+        "story",
+        "search",
+        "discover",
+        "chat",
+        "wallet",
+      ]);
+      const sourceKind =
+        rawSource?.kind && allowedKinds.has(rawSource.kind)
+          ? (rawSource.kind as FollowDoc["sourceKind"])
+          : undefined;
+      const sourceRefId =
+        rawSource?.refId && mongoose.Types.ObjectId.isValid(rawSource.refId)
+          ? new mongoose.Types.ObjectId(rawSource.refId)
+          : undefined;
+
       const status = target.isPrivate ? "pending" : "accepted";
-      await Follow.create({ followerId: follower._id, followingId: targetId, status });
+      await Follow.create({
+        followerId: follower._id,
+        followingId: targetId,
+        status,
+        ...(sourceKind ? { sourceKind, ...(sourceRefId ? { sourceRefId } : {}) } : {}),
+      });
 
       if (status === "accepted") {
         const targetAlreadyFollowsMe = await Follow.exists({

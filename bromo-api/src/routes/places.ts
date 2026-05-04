@@ -8,9 +8,13 @@ export const placesRouter = Router();
 
 type Place = { name: string; address?: string; lat?: number; lng?: number; placeId?: string; type?: string };
 
+function googlePlacesKey(): string | undefined {
+  return process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_PLACES_KEY;
+}
+
 /**
  * GET /places/nearby?lat=..&lng=..&q=..
- * Returns nearby places. Uses Google Places if GOOGLE_PLACES_KEY set,
+ * Returns nearby places. Uses Google Places if GOOGLE_PLACES_API_KEY or GOOGLE_PLACES_KEY set,
  * otherwise falls back to OpenStreetMap Nominatim (no key, rate-limited).
  */
 placesRouter.get(
@@ -25,7 +29,7 @@ placesRouter.get(
         return res.status(400).json({ message: "lat and lng required" });
       }
 
-      const key = process.env.GOOGLE_PLACES_KEY;
+      const key = googlePlacesKey();
       if (key) {
         const url = q
           ? `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q)}&location=${lat},${lng}&radius=5000&key=${key}`
@@ -103,7 +107,7 @@ placesRouter.get(
     try {
       const q = String(req.query.q ?? "").trim();
       if (!q) return res.json({ items: [] });
-      const key = process.env.GOOGLE_PLACES_KEY;
+      const key = googlePlacesKey();
       if (key) {
         const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q)}&key=${key}`;
         const resp = await fetch(url);
@@ -142,6 +146,83 @@ placesRouter.get(
     } catch (err) {
       console.error("[places] search:", err);
       return res.json({ items: [] });
+    }
+  },
+);
+
+/**
+ * GET /places/details?placeId= — Google Place Details (requires API key).
+ */
+placesRouter.get(
+  "/details",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const placeId = String(req.query.placeId ?? "").trim();
+      const key = googlePlacesKey();
+      if (!placeId) return res.status(400).json({ message: "placeId required" });
+      if (!key) return res.status(503).json({ message: "Google Places not configured" });
+      const fields = "name,formatted_address,geometry,place_id,types";
+      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent(fields)}&key=${key}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`google ${resp.status}`);
+      const data = (await resp.json()) as {
+        result?: {
+          name?: string;
+          formatted_address?: string;
+          place_id?: string;
+          geometry?: { location?: { lat: number; lng: number } };
+          types?: string[];
+        };
+      };
+      const r = data.result;
+      if (!r) return res.status(404).json({ message: "Place not found" });
+      return res.json({
+        place: {
+          name: r.name,
+          address: r.formatted_address,
+          lat: r.geometry?.location?.lat,
+          lng: r.geometry?.location?.lng,
+          placeId: r.place_id,
+          type: r.types?.[0],
+        },
+      });
+    } catch (err) {
+      console.error("[places] details:", err);
+      return res.status(500).json({ message: "Failed to load place" });
+    }
+  },
+);
+
+/**
+ * GET /places/geocode?lat=&lng= — reverse geocode via Google Geocoding API.
+ */
+placesRouter.get(
+  "/geocode",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({ message: "lat and lng required" });
+      }
+      const key = googlePlacesKey();
+      if (!key) return res.json({ formattedAddress: null as string | null });
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${key}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`google ${resp.status}`);
+      const data = (await resp.json()) as {
+        results?: Array<{ formatted_address?: string; place_id?: string }>;
+      };
+      const first = data.results?.[0];
+      return res.json({
+        formattedAddress: first?.formatted_address ?? null,
+        placeId: first?.place_id ?? null,
+      });
+    } catch (err) {
+      console.error("[places] geocode:", err);
+      return res.json({ formattedAddress: null as string | null, placeId: null as string | null });
     }
   },
 );

@@ -2,17 +2,21 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Clipboard,
   Image,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
@@ -76,6 +80,14 @@ export function StorePublicProfileScreen() {
     message: string;
   } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [redeemSheet, setRedeemSheet] = useState<{
+    otp: string;
+    qrValue: string;
+    redemptionId: string;
+    payableInr: number;
+    message: string;
+    balance: number;
+  } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -179,7 +191,20 @@ export function StorePublicProfileScreen() {
     setActionLoading(true);
     try {
       const result = await redeemStoreOffer(store._id, total);
-      Alert.alert('Offer redeemed', `${result.message}. Store owner has been notified.`);
+      const redemptionId = String((result.redemption as {_id?: unknown})?._id ?? '').trim();
+      const qrValue = JSON.stringify({
+        s: store._id,
+        r: redemptionId,
+        t: result.qrPayload.token,
+      });
+      setRedeemSheet({
+        otp: result.otp,
+        qrValue,
+        redemptionId,
+        payableInr: redeemPreview?.payableInr ?? 0,
+        message: result.message,
+        balance: result.balance,
+      });
     } catch (err) {
       Alert.alert('Redeem failed', err instanceof Error ? err.message : 'Could not redeem offer');
     } finally {
@@ -212,6 +237,49 @@ export function StorePublicProfileScreen() {
   return (
     <ThemedSafeScreen>
       <StatusBar barStyle="light-content" />
+
+      <Modal visible={Boolean(redeemSheet)} transparent animationType="fade" onRequestClose={() => setRedeemSheet(null)}>
+        <Pressable style={s.sheetBackdrop} onPress={() => setRedeemSheet(null)}>
+          <Pressable style={[s.sheetCard, {backgroundColor: palette.surface}]} onPress={e => e.stopPropagation()}>
+            <Text style={[s.sheetTitle, {color: palette.foreground}]}>Show cashier</Text>
+            {redeemSheet ? (
+              <>
+                <Text style={[s.sheetOtpLabel, {color: palette.foregroundMuted}]}>One-time PIN</Text>
+                <Text selectable style={[s.sheetOtp, {color: palette.foreground}]}>{redeemSheet.otp}</Text>
+                <View style={{alignItems: 'center', marginVertical: 14}}>
+                  <QRCode value={redeemSheet.qrValue} size={Math.min(220, 280)} color={palette.foreground} backgroundColor={palette.surface} />
+                </View>
+                <Text style={{color: palette.foregroundMuted, fontSize: 12, textAlign: 'center'}}>{redeemSheet.message}</Text>
+                <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 6, textAlign: 'center'}}>
+                  Balance · {redeemSheet.balance} coins
+                </Text>
+                <View style={s.sheetActions}>
+                  <Pressable
+                    style={[s.sheetBtn, {borderColor: palette.border}]}
+                    onPress={() => {
+                      void Clipboard.setString(redeemSheet.otp);
+                      Alert.alert('Copied', 'OTP copied to clipboard');
+                    }}>
+                    <Text style={{color: palette.foreground, fontWeight: '800'}}>Copy OTP</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[s.sheetBtn, {backgroundColor: palette.primary}]}
+                    onPress={() =>
+                      void Share.share({
+                        message: `${redeemSheet.message}\nOTP: ${redeemSheet.otp}`,
+                      })
+                    }>
+                    <Text style={{color: palette.primaryForeground, fontWeight: '800'}}>Share</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : null}
+            <Pressable style={{marginTop: 12}} onPress={() => setRedeemSheet(null)}>
+              <Text style={{color: palette.primary, fontWeight: '800', textAlign: 'center'}}>Done</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Banner */}
@@ -623,6 +691,13 @@ const s = StyleSheet.create({
   actionTextarea: {minHeight: 82, textAlignVertical: 'top'},
   actionButton: {height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center'},
   redeemResult: {borderWidth: 1, borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8},
+  sheetBackdrop: {flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', padding: 20},
+  sheetCard: {borderRadius: 16, padding: 18, maxWidth: 400, alignSelf: 'center', width: '100%'},
+  sheetTitle: {fontSize: 18, fontWeight: '900', marginBottom: 8, textAlign: 'center'},
+  sheetOtpLabel: {fontSize: 12, fontWeight: '700', textAlign: 'center'},
+  sheetOtp: {fontSize: 32, fontWeight: '900', textAlign: 'center', letterSpacing: 4, marginTop: 4},
+  sheetActions: {flexDirection: 'row', gap: 10, marginTop: 16, justifyContent: 'center'},
+  sheetBtn: {flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1},
   productsSection: {paddingHorizontal: 16, paddingTop: 4},
   emptyProducts: {
     alignItems: 'center',

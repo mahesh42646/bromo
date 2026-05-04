@@ -110,6 +110,13 @@ export function PromoteCampaignScreen() {
 
       await activateCampaign(campaign._id);
 
+      try {
+        const w = await getWallet();
+        setWalletBalance(w.balance);
+      } catch {
+        /* ignore */
+      }
+
       Alert.alert(
         'Campaign Launched!',
         `Your ${contentType} is now being promoted with ${finalBudget} coins budget.`,

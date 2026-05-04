@@ -104,11 +104,27 @@ promotionsRouter.post("/:id/activate", requireVerifiedUser, async (req: Firebase
     return;
   }
 
+  const uid = req.dbUser!._id as mongoose.Types.ObjectId;
+  const cid = campaign._id as mongoose.Types.ObjectId;
+  const reserve = await debitWallet(
+    uid,
+    ACTIVATION_RESERVE_COINS,
+    "promotion_reserve",
+    "Promotion",
+    cid,
+    { phase: "activate" },
+    `promotion_reserve:${String(cid)}`,
+  );
+  if (!reserve.success) {
+    res.status(402).json({ message: `Insufficient wallet balance. Need at least ${ACTIVATION_RESERVE_COINS} Bromo coins to activate` });
+    return;
+  }
+
   campaign.status = "active";
   campaign.startAt = new Date();
   await campaign.save();
 
-  res.json({ ok: true, campaign });
+  res.json({ ok: true, campaign, balanceAfterReserve: reserve.balance });
 });
 
 // ─── POST /promotions/:id/pause ───────────────────────────────────────────────
@@ -156,6 +172,18 @@ promotionsRouter.post("/:id/resume", requireVerifiedUser, async (req: FirebaseAu
     res.status(402).json({ message: "Insufficient wallet balance to resume" });
     return;
   }
+
+  const uid = req.dbUser!._id as mongoose.Types.ObjectId;
+  const cid = campaign._id as mongoose.Types.ObjectId;
+  await debitWallet(
+    uid,
+    ACTIVATION_RESERVE_COINS,
+    "promotion_reserve",
+    "Promotion",
+    cid,
+    { phase: "resume" },
+    `promotion_reserve:${String(cid)}`,
+  );
 
   campaign.status = "active";
   await campaign.save();

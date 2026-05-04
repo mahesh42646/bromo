@@ -12,9 +12,9 @@ import {
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {BadgeCheck, ChevronLeft, MessageSquarePlus, Search} from 'lucide-react-native';
+import {BadgeCheck, MessageSquarePlus, Search} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {Screen} from '../../components/ui/Screen';
 import {SearchBar} from '../../components/ui/SearchBar';
 import {useMessaging} from '../../messaging/MessagingContext';
 import {formatThreadRowTime} from '../../messaging/formatTime';
@@ -118,33 +118,20 @@ export function ChatListScreen() {
   }, [search]);
 
   return (
-    <ThemedSafeScreen style={{backgroundColor: palette.background}}>
+    <Screen
+      title="Messages"
+      onBackPress={() => navigation.getParent()?.goBack()}
+      scroll={false}
+      style={{backgroundColor: palette.background}}
+      right={
+        <>
+          {loadingConversations ? <ActivityIndicator color={palette.primary} size="small" /> : null}
+          <Pressable hitSlop={12} style={{padding: 8}}>
+            <MessageSquarePlus size={22} color={palette.foreground} />
+          </Pressable>
+        </>
+      }>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 8,
-          paddingVertical: 8,
-          borderBottomWidth: 1,
-          borderBottomColor: palette.border,
-          gap: 4,
-        }}>
-        <Pressable
-          onPress={() => navigation.getParent()?.goBack()}
-          hitSlop={12}
-          style={{padding: 8}}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={{color: palette.foreground, fontSize: 20, fontWeight: '800', flex: 1}}>
-          Messages
-        </Text>
-        {loadingConversations && <ActivityIndicator color={palette.primary} size="small" />}
-        <Pressable hitSlop={12} style={{padding: 8}}>
-          <MessageSquarePlus size={22} color={palette.foreground} />
-        </Pressable>
-      </View>
 
       <View style={{paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8}}>
         <SearchBar
@@ -295,6 +282,6 @@ export function ChatListScreen() {
           </Pressable>
         )}
       />
-    </ThemedSafeScreen>
+    </Screen>
   );
 }

@@ -49,6 +49,12 @@ export interface UserDoc extends Document {
     website: string;
     planId: string;
     purchasedAt?: Date;
+    /** e.g. shopify | woocommerce | custom */
+    provider?: string;
+    /** Deep link or catalog feed URL for “Shop now” on posts/reels */
+    productCatalogUrl?: string;
+    /** When true, store glyph may show without product tags (plan-gated). */
+    icon?: boolean;
   };
   followersCount: number;
   followingCount: number;
@@ -188,6 +194,9 @@ const userSchema = new Schema<UserDoc>(
       website: { type: String, default: "" },
       planId: { type: String, default: "" },
       purchasedAt: { type: Date },
+      provider: { type: String, default: "" },
+      productCatalogUrl: { type: String, default: "" },
+      icon: { type: Boolean, default: false },
     },
     followersCount: {
       type: Number,

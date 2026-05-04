@@ -185,6 +185,39 @@ export async function getStore(storeId: string): Promise<Store> {
   return normalizeStore((await res.json()).store);
 }
 
+export type StoreDashboardData = {
+  reviews: unknown[];
+  ratings: {average: number; count: number};
+  dailyReach: number;
+  engagement: {favorites: number; leads: number; redemptions: number};
+  views: number;
+  products: number;
+  redeemedCoins: number;
+  recentRedemptions: Array<Record<string, unknown>>;
+};
+
+export async function getStoreDashboard(storeId: string): Promise<StoreDashboardData> {
+  const res = await authorizedFetch(`${apiBase()}/stores/${storeId}/dashboard`);
+  if (!res.ok) throw new Error('Failed to load dashboard');
+  return res.json() as Promise<StoreDashboardData>;
+}
+
+export type StoreLeadRow = {
+  _id: string;
+  contactName?: string;
+  phone?: string;
+  quantity?: string;
+  details?: string;
+  createdAt?: string;
+};
+
+export async function getStoreLeads(storeId: string): Promise<StoreLeadRow[]> {
+  const res = await authorizedFetch(`${apiBase()}/stores/${storeId}/leads`);
+  if (!res.ok) throw new Error('Failed to load leads');
+  const data = (await res.json()) as {leads?: StoreLeadRow[]};
+  return data.leads ?? [];
+}
+
 export type StoresFilter = {
   city?: string;
   delivery?: boolean;
@@ -520,15 +553,43 @@ export async function calculateStoreRedemption(storeId: string, totalInr: number
   return res.json();
 }
 
-export async function redeemStoreOffer(storeId: string, totalInr: number): Promise<{
+export type StoreRedemptionQrPayload = {
+  token: string;
+  otp: string;
+};
+
+export type RedeemStoreOfferResult = {
   message: string;
   ownerMessage: string;
   balance: number;
-}> {
+  otp: string;
+  qrPayload: StoreRedemptionQrPayload;
+  redemption: {_id: string};
+};
+
+export async function redeemStoreOffer(storeId: string, totalInr: number): Promise<RedeemStoreOfferResult> {
   const res = await authorizedFetch(`${apiBase()}/stores/${storeId}/redeem`, {
     method: 'POST',
     body: JSON.stringify({totalInr}),
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'Redemption failed');
-  return res.json();
+  return res.json() as Promise<RedeemStoreOfferResult>;
+}
+
+export async function confirmStoreRedemption(
+  storeId: string,
+  redemptionId: string,
+  otp: string,
+): Promise<void> {
+  const res = await authorizedFetch(
+    `${apiBase()}/stores/${storeId}/redemptions/${encodeURIComponent(redemptionId)}/confirm`,
+    {
+      method: 'POST',
+      body: JSON.stringify({otp}),
+    },
+  );
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as {message?: string};
+    throw new Error(j.message ?? 'Confirm failed');
+  }
 }

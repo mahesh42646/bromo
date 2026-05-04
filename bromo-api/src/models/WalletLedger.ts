@@ -4,10 +4,13 @@ export type LedgerReason =
   | "topup"
   | "promotion_spend"
   | "promotion_refund"
+  | "promotion_reserve"
+  | "promotion_release"
   | "admin_credit"
   | "admin_debit"
   | "referral_reward"
   | "reward"
+  | "reel_view"
   | "store_redemption";
 
 export interface WalletLedgerDoc extends Document {
@@ -29,7 +32,19 @@ const walletLedgerSchema = new Schema<WalletLedgerDoc>(
     balanceAfter: { type: Number, required: true },
     reason: {
       type: String,
-      enum: ["topup", "promotion_spend", "promotion_refund", "admin_credit", "admin_debit", "referral_reward", "reward", "store_redemption"],
+      enum: [
+        "topup",
+        "promotion_spend",
+        "promotion_refund",
+        "promotion_reserve",
+        "promotion_release",
+        "admin_credit",
+        "admin_debit",
+        "referral_reward",
+        "reward",
+        "reel_view",
+        "store_redemption",
+      ],
       required: true,
     },
     refType: { type: String, enum: ["Promotion", "Admin", "Store"] },

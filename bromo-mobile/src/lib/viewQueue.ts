@@ -1,5 +1,6 @@
 import {AppState} from 'react-native';
 import {authedFetch} from '../api/authApi';
+import {emitViewCoins} from './viewRewardEvents';
 
 /**
  * Batches post view / watch-time updates to cut API traffic (~20–50x fewer requests
@@ -50,6 +51,14 @@ async function flushNow(): Promise<void> {
       if (res.status === 404) {
         useBatchEndpoint = false;
         await flushLegacy(chunk);
+        return;
+      }
+      if (res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {coinCredited?: number};
+        const n = typeof data.coinCredited === 'number' ? data.coinCredited : 0;
+        if (n > 0) {
+          emitViewCoins(n);
+        }
       }
     } catch {
       useBatchEndpoint = false;
@@ -61,13 +70,18 @@ async function flushNow(): Promise<void> {
 }
 
 async function flushLegacy(chunk: [string, Pending][]): Promise<void> {
+  let coinSum = 0;
   for (const [postId, p] of chunk) {
     try {
       if (p.impression) {
-        await authedFetch(`/posts/${encodeURIComponent(postId)}/view`, {
+        const res = await authedFetch(`/posts/${encodeURIComponent(postId)}/view`, {
           method: 'POST',
           body: JSON.stringify({watchMs: 0}),
         });
+        if (res.ok) {
+          const data = (await res.json().catch(() => ({}))) as {coinCredited?: number};
+          coinSum += typeof data.coinCredited === 'number' ? data.coinCredited : 0;
+        }
       }
       if (p.watchMs > 0) {
         await authedFetch(`/posts/${encodeURIComponent(postId)}/view`, {
@@ -78,6 +92,9 @@ async function flushLegacy(chunk: [string, Pending][]): Promise<void> {
     } catch {
       /* ignore */
     }
+  }
+  if (coinSum > 0) {
+    emitViewCoins(coinSum);
   }
 }
 

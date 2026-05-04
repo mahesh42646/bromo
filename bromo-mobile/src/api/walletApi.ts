@@ -4,11 +4,14 @@ export type LedgerReason =
   | 'topup'
   | 'promotion_spend'
   | 'promotion_refund'
+  | 'promotion_reserve'
+  | 'promotion_release'
   | 'admin_credit'
   | 'admin_debit'
   | 'referral_reward'
   | 'store_redemption'
-  | 'reward';
+  | 'reward'
+  | 'reel_view';
 
 export type LedgerEntry = {
   _id: string;

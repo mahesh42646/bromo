@@ -8,7 +8,7 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {BarChart2, ChevronRight, Coins, Megaphone, TrendingUp} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {Screen} from '../components/ui/Screen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {getUserGridStats, type UserGridStats} from '../api/postsApi';
@@ -80,32 +80,19 @@ export function ProfessionalHubScreen() {
     }, [load]),
   );
 
-  return (
-    <ThemedSafeScreen>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: palette.border,
-        }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <Text style={{color: palette.primary, fontSize: 17, fontWeight: '700'}}>‹ Back</Text>
-        </Pressable>
-        <Text style={{flex: 1, textAlign: 'center', color: palette.foreground, fontSize: 17, fontWeight: '800'}}>
-          Professional dashboard
-        </Text>
-        <View style={{width: 56}} />
-      </View>
-
-      {loading ? (
+  if (loading) {
+    return (
+      <Screen title="Professional dashboard">
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <ActivityIndicator color={palette.primary} size="large" />
         </View>
-      ) : (
-        <ScrollView contentContainerStyle={{padding: 16, gap: 12}} showsVerticalScrollIndicator={false}>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen title="Professional dashboard" scroll contentContainerStyle={{padding: 16, gap: 12}}>
+      <>
           {organicReach != null && (organicReach.gridTotal > 0 || organicReach.totalViews > 0) ? (
             <View
               style={{
@@ -263,8 +250,7 @@ export function ProfessionalHubScreen() {
               campaigns appear under each promotion.
             </Text>
           </View>
-        </ScrollView>
-      )}
-    </ThemedSafeScreen>
+      </>
+    </Screen>
   );
 }

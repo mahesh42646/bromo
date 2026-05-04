@@ -43,6 +43,7 @@ import {loadCameraSettings} from '../../lib/cameraSettingsStorage';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import type {ThemePalette} from '../../theme/tokens';
 import {getPost} from '../../api/postsApi';
+import {resolveMediaUrl} from '../../lib/resolveMediaUrl';
 import {useHubCameraCapture} from './useHubCameraCapture';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'CreateHub'>;
@@ -226,8 +227,36 @@ export function CreateHubScreen() {
             });
           })
           .catch(() => null);
+      } else if (remixId && initialMode === 'story') {
+        getPost(remixId)
+          .then(({post}) => {
+            const uri = resolveMediaUrl(post.mediaUrl) || post.mediaUrl;
+            if (!uri) return;
+            const title = post.music?.trim() ? post.music.trim() : 'Original audio';
+            if (post.originalAudioId || post.music?.trim()) {
+              setSelectedAudio({
+                id: post.originalAudioId ?? post._id,
+                title: post.originalAudioTitle?.trim() || title,
+                artist: `@${post.author.username}`,
+                url: post.mediaUrl,
+                originalAudioId: post.originalAudioId,
+                sourcePostId: post._id,
+              });
+            }
+            goToEditorWithAssets([
+              {
+                uri,
+                type: 'video',
+                fileName: null,
+                width: undefined,
+                height: undefined,
+              },
+            ]);
+          })
+          .catch(() => null);
       }
     }, [
+      goToEditorWithAssets,
       navigation,
       reset,
       route.params?.bootstrapTs,

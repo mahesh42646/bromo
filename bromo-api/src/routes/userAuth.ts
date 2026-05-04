@@ -11,6 +11,7 @@ import {
   isUsernameAvailable,
   generateSuggestions,
 } from "../utils/username.js";
+import { assertTrustedCreatorMediaUrl } from "../utils/trustedCreatorMediaUrl.js";
 
 export const userAuthRouter = Router();
 
@@ -40,6 +41,8 @@ userAuthRouter.post(
         phone,
         emailVerified: fb.emailVerified,
         provider: "email",
+        isVerified: false,
+        verificationStatus: "none",
       });
 
       return res.status(201).json({ user, created: true });
@@ -78,6 +81,8 @@ userAuthRouter.post(
         emailVerified: true,
         provider: "google",
         profilePicture: (req.body.photoURL as string | undefined) ?? "",
+        isVerified: false,
+        verificationStatus: "none",
       });
 
       return res.status(201).json({ user, created: true });
@@ -301,6 +306,13 @@ userAuthRouter.post(
       const documents = Array.isArray(body.documents)
         ? body.documents.map((v) => String(v).trim()).filter(Boolean).slice(0, 10)
         : [];
+      for (const u of documents) {
+        try {
+          assertTrustedCreatorMediaUrl(u);
+        } catch {
+          return res.status(400).json({message: "Each document must be an uploaded file URL (/uploads/…)"});
+        }
+      }
       user.creatorStatus = "pending";
       user.isCreator = false;
       user.creatorBadge = false;

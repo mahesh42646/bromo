@@ -65,9 +65,12 @@ import {
 import {CreateStoreScreen} from '../screens/store/CreateStoreScreen';
 import {MyStoreDashboardScreen as ManageStoreScreen} from '../screens/store/MyStoreDashboardScreen';
 import {StorePublicProfileScreen} from '../screens/store/StorePublicProfileScreen';
+import {RedemptionScannerScreen} from '../screens/store/RedemptionScannerScreen';
+import {LiveWatchScreen} from '../screens/LiveWatchScreen';
 import {StoreProductDetailScreen} from '../screens/store/StoreProductDetailScreen';
 import {AllStoresScreen} from '../screens/store/AllStoresScreen';
 import {AddProductScreen} from '../screens/store/AddProductScreen';
+import {CollabInboxScreen} from '../screens/CollabInboxScreen';
 import {
   AudioDetailScreen,
   AutoDmScreen,
@@ -164,6 +167,8 @@ export function MainAppNavigator() {
       <Stack.Screen name="CreateStore" component={CreateStoreScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="ManageStore" component={ManageStoreScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="StorePublicProfile" component={StorePublicProfileScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="RedemptionScanner" component={RedemptionScannerScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="LiveWatch" component={LiveWatchScreen} options={{animation: 'fade'}} />
       <Stack.Screen name="StoreProductDetail" component={StoreProductDetailScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="AllStores" component={AllStoresScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="AddProduct" component={AddProductScreen} options={{animation: 'slide_from_bottom', presentation: 'modal'}} />
@@ -185,6 +190,7 @@ export function MainAppNavigator() {
       <Stack.Screen name="ContentInsights" component={ContentInsightsScreen} />
       <Stack.Screen name="ProfessionalHub" component={ProfessionalHubScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="CreatorDashboard" component={CreatorDashboardScreen} />
+      <Stack.Screen name="CollabInbox" component={CollabInboxScreen} options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} />
       <Stack.Screen name="VoiceCall" component={VoiceCallScreen} />
       <Stack.Screen name="VideoCall" component={VideoCallScreen} />

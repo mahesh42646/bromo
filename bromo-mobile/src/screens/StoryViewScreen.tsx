@@ -8,6 +8,7 @@ import {
   Image,
   Modal,
   Pressable,
+  ScrollView,
   StatusBar,
   Text,
   TextInput,
@@ -17,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {AtSign, BarChart2, ChevronLeft, Heart, MoreVertical, Send, Share2, Users} from 'lucide-react-native';
+import {AtSign, BarChart2, ChevronLeft, MoreVertical, Send, Share2, Users} from 'lucide-react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
@@ -28,11 +29,12 @@ import {
   getStoryAnalytics,
   getStoryViewers,
   markStorySeenPost,
+  reactToStory,
   recordStoryTap,
   resolveVideoUrl,
-  toggleLike,
   type PostAuthor,
   type StoryGroup,
+  type StoryReactionKey,
 } from '../api/postsApi';
 import {loadStoriesFeedDeduped, peekStoriesFromCache} from '../lib/storiesFeedCache';
 import {prefetchStoryVideoToDisk, resolveStoryVideoPlayUri} from '../lib/storyVideoCache';
@@ -56,6 +58,20 @@ const STORIES_FOCUS_REFRESH_MIN_MS = 120_000;
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
 const CACHE_KEY = '@bromo/story_media_cache_v2';
 const {width: W, height: H} = Dimensions.get('window');
+
+const STORY_REACTION_ROW: Array<{key: StoryReactionKey; sym: string}> = [
+  {key: 'like', sym: '❤️'},
+  {key: 'love', sym: '💕'},
+  {key: 'haha', sym: '😂'},
+  {key: 'wow', sym: '😮'},
+  {key: 'sad', sym: '😢'},
+  {key: 'fire', sym: '🔥'},
+];
+
+function reactionEmoji(key: string): string {
+  const row = STORY_REACTION_ROW.find(r => r.key === key);
+  return row?.sym ?? key;
+}
 
 type StoryMediaCache = Record<string, number>;
 
@@ -97,13 +113,15 @@ export function StoryViewScreen() {
   const [storyIdx, setStoryIdx] = useState(0);
   const {isCellular, maxBitRate} = usePlaybackNetworkCap();
   const [paused, setPaused] = useState(false);
-  const [liked, setLiked] = useState(false);
+  const [pickedReaction, setPickedReaction] = useState<StoryReactionKey | null>(null);
   const [replyText, setReplyText] = useState('');
   const [showReply, setShowReply] = useState(false);
   const [ownMenuOpen, setOwnMenuOpen] = useState(false);
   const [mentionsOpen, setMentionsOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const [storyViewers, setStoryViewers] = useState<Array<{viewedAt: string; user: PostAuthor}>>([]);
+  const [storyViewers, setStoryViewers] = useState<
+    Array<{viewedAt: string; user: PostAuthor; reaction?: string | null; reactedAt?: string | null}>
+  >([]);
   const [storyAnalytics, setStoryAnalytics] = useState<{
     viewersCount: number;
     impressions: number;
@@ -111,6 +129,8 @@ export function StoryViewScreen() {
     replyCount: number;
     linkTapCount: number;
     mentionTapCount: number;
+    sharesCount?: number;
+    reactions?: Record<string, number>;
   } | null>(null);
   const [mediaReady, setMediaReady] = useState(false);
   const [storyDurationMs, setStoryDurationMs] = useState(STORY_DURATION_IMAGE_MS);
@@ -293,7 +313,7 @@ export function StoryViewScreen() {
     } else {
       navigation.goBack();
     }
-    setLiked(false);
+    setPickedReaction(null);
   }, [current?._id, storyIdx, stories.length, groupIdx, groups.length, navigation]);
 
   const onStoryVideoEnd = useCallback(() => {
@@ -312,7 +332,7 @@ export function StoryViewScreen() {
       setGroupIdx(gi => gi - 1);
       setStoryIdx(0);
     }
-    setLiked(false);
+    setPickedReaction(null);
   }, [storyIdx, groupIdx]);
 
   // Reset per-story state when the current story changes
@@ -362,11 +382,19 @@ export function StoryViewScreen() {
     }
   }, [videoProgressAnim]);
 
-  const handleLike = useCallback(async () => {
-    if (!current) return;
-    setLiked(l => !l);
-    try { await toggleLike(current._id); } catch {}
-  }, [current]);
+  const handleStoryReaction = useCallback(
+    async (key: StoryReactionKey) => {
+      if (!current || !group) return;
+      if (dbUser?._id && String(group.author._id) === String(dbUser._id)) return;
+      setPickedReaction(key);
+      try {
+        await reactToStory(current._id, key);
+      } catch {
+        setPickedReaction(null);
+      }
+    },
+    [current, group, dbUser?._id],
+  );
 
   const handleReply = useCallback(async () => {
     if (!replyText.trim() || !group) return;
@@ -524,6 +552,7 @@ export function StoryViewScreen() {
                 ['Replies', storyAnalytics?.replyCount ?? 0],
                 ['Mention taps', storyAnalytics?.mentionTapCount ?? 0],
                 ['Link taps', storyAnalytics?.linkTapCount ?? 0],
+                ['Shares', storyAnalytics?.sharesCount ?? 0],
               ].map(([label, value]) => (
                 <View key={String(label)} style={{width: '30%', minWidth: 92, padding: 10, borderRadius: 12, backgroundColor: palette.surfaceHigh}}>
                   <Text style={{color: palette.foreground, fontWeight: '900'}}>{String(value)}</Text>
@@ -531,14 +560,35 @@ export function StoryViewScreen() {
                 </View>
               ))}
             </View>
+            {storyAnalytics?.reactions && Object.keys(storyAnalytics.reactions).length > 0 ? (
+              <View style={{marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8}}>
+                {Object.entries(storyAnalytics.reactions).map(([k, n]) => (
+                  <View
+                    key={k}
+                    style={{paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: palette.surfaceHigh}}>
+                    <Text style={{color: palette.foreground, fontSize: 13}}>
+                      {reactionEmoji(k)} {n}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
             <Text style={{color: palette.foreground, fontSize: 14, fontWeight: '900', marginTop: 18, marginBottom: 8}}>Viewers</Text>
             {storyViewers.length === 0 ? (
               <Text style={{color: palette.foregroundMuted}}>No viewers yet.</Text>
             ) : (
               storyViewers.map(row => (
-                <View key={`${row.user._id}-${row.viewedAt}`} style={{flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8}}>
-                  <Image source={{uri: row.user.profilePicture || `https://ui-avatars.com/api/?name=${row.user.displayName}`}} style={{width: 34, height: 34, borderRadius: 17}} />
-                  <Text style={{color: palette.foreground, fontWeight: '700'}}>{row.user.displayName}</Text>
+                <View
+                  key={`${row.user._id}-${row.viewedAt}`}
+                  style={{flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8}}>
+                  <Image
+                    source={{uri: row.user.profilePicture || `https://ui-avatars.com/api/?name=${row.user.displayName}`}}
+                    style={{width: 34, height: 34, borderRadius: 17}}
+                  />
+                  <Text style={{color: palette.foreground, fontWeight: '700', flex: 1}}>{row.user.displayName}</Text>
+                  {row.reaction ? (
+                    <Text style={{fontSize: 18}}>{reactionEmoji(row.reaction)}</Text>
+                  ) : null}
                 </View>
               ))
             )}
@@ -809,16 +859,29 @@ export function StoryViewScreen() {
             </Text>
           </Pressable>
 
-          <Pressable
-            onPress={handleLike}
-            hitSlop={12}
-            style={{alignItems: 'center', justifyContent: 'center', width: 40, height: 40}}>
-            <Heart
-              size={26}
-              color={liked ? '#ef4444' : '#fff'}
-              fill={liked ? '#ef4444' : 'transparent'}
-            />
-          </Pressable>
+          {!viewingOwnStories ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{flexDirection: 'row', alignItems: 'center', gap: 4, paddingRight: 4}}>
+              {STORY_REACTION_ROW.map(r => (
+                <Pressable
+                  key={r.key}
+                  onPress={() => void handleStoryReaction(r.key)}
+                  hitSlop={8}
+                  style={{
+                    paddingHorizontal: 4,
+                    paddingVertical: 2,
+                    opacity: pickedReaction === r.key ? 1 : 0.9,
+                    borderWidth: pickedReaction === r.key ? 1 : 0,
+                    borderColor: 'rgba(255,255,255,0.4)',
+                    borderRadius: 8,
+                  }}>
+                  <Text style={{fontSize: 24}}>{r.sym}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
 
           <Pressable
             onPress={() => parentNavigate(navigation, 'ShareSend', {postId: current._id})}

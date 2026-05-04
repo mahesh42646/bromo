@@ -42,6 +42,7 @@ import {
   MapPin,
   Play,
   Plus,
+  Radio,
   Search,
   Send,
   ShoppingBag,
@@ -84,9 +85,11 @@ import {
   recordStoreClick,
   resolveVideoUrl,
   deletePost,
+  votePostPoll,
   type Post,
   type StoryGroup,
 } from '../api/postsApi';
+import { getActiveLiveStreams, type ActiveLiveStream } from '../api/liveApi';
 import { mergePostsWithSessionCache, prefetchPostThumbnails } from '../lib/postEntityCache';
 import { getAuthorMerge, rememberAuthor } from '../lib/authorSessionCache';
 import { logPromotionDelivery } from '../api/promotionsApi';
@@ -248,6 +251,8 @@ const PostCard = React.memo(function PostCard({
   const [videoEnded, setVideoEnded] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [pollBusy, setPollBusy] = useState(false);
+  const [pollLocal, setPollLocal] = useState<Post['poll'] | undefined>(undefined);
   const viewRecordedRef = useRef(false);
   const viewImpressionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promoImpressionLoggedRef = useRef(false);
@@ -260,7 +265,7 @@ const PostCard = React.memo(function PostCard({
         await unfollowUser(post.author._id);
         setFollowing(false);
       } else {
-        await followUser(post.author._id);
+        await followUser(post.author._id, {kind: 'post', refId: post._id});
         setFollowing(true);
       }
     } catch { }
@@ -354,6 +359,12 @@ const PostCard = React.memo(function PostCard({
   useEffect(() => {
     setFollowing(post.isFollowing);
   }, [post.isFollowing]);
+
+  useEffect(() => {
+    setPollLocal(undefined);
+  }, [post._id]);
+
+  const poll = pollLocal ?? post.poll;
 
   useEffect(() => {
     if (isVideoVisible && post.mediaType === 'video') {
@@ -585,6 +596,52 @@ const PostCard = React.memo(function PostCard({
         </View>
       ) : null}
 
+      {poll?.options?.length ? (
+        <View style={{ paddingHorizontal: 14, paddingBottom: 8, gap: 8 }}>
+          {poll.question ? (
+            <ThemedText variant="label" style={{ fontSize: 13, fontWeight: '800' }}>
+              {poll.question}
+            </ThemedText>
+          ) : null}
+          {poll.options.map((opt, idx) => {
+            const total = poll.votes?.reduce((s, v) => s + Number(v || 0), 0) ?? 0;
+            const count = Number(poll.votes?.[idx] ?? 0);
+            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+            return (
+              <Pressable
+                key={`${post._id}_poll_${idx}`}
+                disabled={pollBusy}
+                onPress={async () => {
+                  try {
+                    setPollBusy(true);
+                    const out = await votePostPoll(post._id, idx);
+                    setPollLocal(out.poll);
+                  } catch {
+                    /* ignore */
+                  } finally {
+                    setPollBusy(false);
+                  }
+                }}
+                style={{
+                  borderRadius: 10,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: palette.border,
+                  backgroundColor: palette.card,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                }}>
+                <ThemedText variant="body" style={{ fontSize: 13, fontWeight: '700' }}>
+                  {opt}
+                </ThemedText>
+                <ThemedText variant="caption" style={{ marginTop: 4 }}>
+                  {count} votes ({pct}%)
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
       {post.feedCategory && post.feedCategory !== 'general' && post.feedCategory !== 'followers' ? (
         <View style={{paddingHorizontal: 14, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10}}>
           <View style={{paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: palette.surfaceHigh}}>
@@ -607,7 +664,10 @@ const PostCard = React.memo(function PostCard({
           <Pressable
             onPress={() => {
               void recordStoreClick(post._id);
-              const url = post.author.connectedStore?.website;
+              const url =
+                post.storeEntryUrl?.trim() ||
+                post.author.connectedStore?.productCatalogUrl?.trim() ||
+                post.author.connectedStore?.website?.trim();
               if (url) void openExternalUrl(url);
             }}
             style={{alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: palette.surfaceHigh, borderWidth: 1, borderColor: palette.border}}>
@@ -955,7 +1015,7 @@ function SuggestionCard({ user, onFollowToggle, navigation, palette, borderRadiu
         await unfollowUser(user._id);
         setFollowing(false);
       } else {
-        await followUser(user._id);
+        await followUser(user._id, {kind: 'discover'});
         setFollowing(true);
       }
       onFollowToggle(user._id, !following);
@@ -1027,6 +1087,7 @@ export function HomeScreen() {
   const [feedAds, setFeedAds] = useState<Ad[]>([]);
   const [storyAds, setStoryAds] = useState<Ad[]>([]);
   const [activeStoryAd, setActiveStoryAd] = useState<Ad | null>(null);
+  const [liveStreams, setLiveStreams] = useState<ActiveLiveStream[]>([]);
 
   const myStoryGroup = useMemo(
     () => (dbUser?._id ? storyGroups.find(g => g.author._id === dbUser._id) : undefined),
@@ -1110,6 +1171,25 @@ export function HomeScreen() {
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 },
     );
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      void getActiveLiveStreams().then(rows => {
+        if (alive) setLiveStreams(rows);
+      });
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      void getActiveLiveStreams().then(setLiveStreams);
+    }, 45000);
+    return () => clearInterval(t);
   }, []);
 
   const onFeedViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -1830,6 +1910,46 @@ export function HomeScreen() {
           keyExtractor={item => item.key}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: tabBarHeight + 16 }}
+          ListHeaderComponent={
+            liveStreams.length === 0 ? null : (
+              <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10, gap: 8 }}>
+                {liveStreams.map(stream => (
+                  <Pressable
+                    key={stream.streamId}
+                    onPress={() =>
+                      parentNavigate(navigation, 'LiveWatch', {
+                        hlsUrl: stream.hlsUrl,
+                        title: stream.title,
+                        streamerName: stream.displayName,
+                      })
+                    }
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: 12,
+                      borderRadius: 12,
+                      backgroundColor: `${palette.destructive}18`,
+                      borderWidth: 1,
+                      borderColor: `${palette.destructive}40`,
+                    }}>
+                    <Radio size={18} color={palette.destructive} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: palette.foreground, fontWeight: '900', fontSize: 13 }} numberOfLines={1}>
+                        LIVE · {stream.displayName}
+                      </Text>
+                      {stream.title ? (
+                        <Text style={{ color: palette.mutedForeground, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                          {stream.title}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Play size={16} color={palette.foreground} fill={palette.foreground} />
+                  </Pressable>
+                ))}
+              </View>
+            )
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -2083,7 +2203,7 @@ export function HomeScreen() {
                               <Image
                                 source={{ uri: thumb }}
                                 style={{ width: '100%', aspectRatio: 9 / 16, backgroundColor: palette.muted }}
-                                resizeMode="cover"
+                                resizeMode="contain"
                               />
                             )}
                             <View

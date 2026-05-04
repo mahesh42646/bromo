@@ -30,6 +30,7 @@ export type ApiMessage = {
   meta: Record<string, unknown>;
   replyToId?: ApiMessage;
   isUnsent: boolean;
+  deletedForEveryone?: boolean;
   editedAt?: string;
   reactions: Array<{userId: string; emoji: string}>;
   readBy?: Array<{userId: string; readAt: string}>;

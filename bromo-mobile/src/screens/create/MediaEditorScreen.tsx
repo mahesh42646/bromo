@@ -63,17 +63,10 @@ import { FILTER_LABELS, FILTER_LAYER_STACKS } from '../../create/filterStyles';
 import type { CreateStackParamList } from '../../navigation/CreateStackNavigator';
 import type { ThemePalette } from '../../theme/tokens';
 import { EditorTimeline } from './EditorTimeline';
+import { useAudioPickerTracks } from '../../create/useAudioPickerTracks';
+import { fetchStickerCatalog } from '../../api/contentApi';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'MediaEditor'>;
-
-const AUDIO_CATALOG = [
-  { id: 'a1', title: 'Original audio', artist: 'BROMO Sound' },
-  { id: 'a2', title: 'City Nights', artist: 'Lo-Fi Pack' },
-  { id: 'a3', title: 'Drill Beat', artist: 'Trending' },
-  { id: 'a4', title: 'Acoustic Warm', artist: 'UGC Lite' },
-  { id: 'a5', title: 'Trap Vibes', artist: 'Hip Hop' },
-  { id: 'a6', title: 'Chill Wave', artist: 'Ambient' },
-];
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2, 3];
 
@@ -532,6 +525,36 @@ export function MediaEditorScreen() {
   }, [cur?.uri, cur?.type]);
 
   const [activeTool, setActiveTool] = useState<EditorTool | null>(null);
+  const [catalogStickers, setCatalogStickers] = useState<Array<{id: string; label: string}>>([]);
+  const [audioQuery, setAudioQuery] = useState('');
+
+  useEffect(() => {
+    void fetchStickerCatalog()
+      .then(rows =>
+        setCatalogStickers(
+          rows.map(r => ({
+            id: r.id,
+            label: r.emoji ? `${r.emoji} ${r.label}` : r.label,
+          })),
+        ),
+      )
+      .catch(() => null);
+  }, []);
+
+  const stickerChoices = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{id: string; label: string}> = [];
+    for (const s of [...QUICK_STICKERS, ...catalogStickers]) {
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      out.push(s);
+    }
+    return out;
+  }, [catalogStickers]);
+  const { tracks: audioRemoteTracks, loading: audioRemoteLoading } = useAudioPickerTracks(
+    activeTool === 'audio',
+    audioQuery,
+  );
   const [activeAdjustKey, setActiveAdjustKey] =
     useState<(typeof ADJUST_KEYS)[number]['key']>('brightness');
   const [textDraft, setTextDraft] = useState('');
@@ -1241,9 +1264,29 @@ export function MediaEditorScreen() {
         visible={activeTool === 'audio'}
         onClose={closeTool}
         title="Audio"
-        subtitle="Pick a track or keep original"
+        subtitle="Licensed catalog + original sounds from /posts/audio/search"
         palette={palette}
-        height={290}>
+        height={380}>
+        <TextInput
+          value={audioQuery}
+          onChangeText={setAudioQuery}
+          placeholder="Search music…"
+          placeholderTextColor={palette.placeholder}
+          style={{
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.border,
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            color: palette.foreground,
+            marginBottom: 10,
+          }}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {audioRemoteLoading ? (
+          <ActivityIndicator color={palette.accent} style={{ marginBottom: 8 }} />
+        ) : null}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1272,7 +1315,7 @@ export function MediaEditorScreen() {
               Original
             </Text>
           </Pressable>
-          {AUDIO_CATALOG.map(track => (
+          {audioRemoteTracks.map(track => (
             <Pressable
               key={track.id}
               onPress={() => setSelectedAudio(track)}
@@ -1398,7 +1441,7 @@ export function MediaEditorScreen() {
         palette={palette}
         height={300}>
         <View style={styles.stickerGrid}>
-          {QUICK_STICKERS.map(sticker => (
+          {stickerChoices.map(sticker => (
             <Pressable
               key={sticker.id}
               onPress={() => onPickSticker(sticker)}

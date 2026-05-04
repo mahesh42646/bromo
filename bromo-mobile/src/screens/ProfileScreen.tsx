@@ -791,7 +791,7 @@ export function ProfileScreen() {
                     <Pressable
                       onPress={async () => {
                         try {
-                          await followUser(u._id);
+                          await followUser(u._id, {kind: 'discover'});
                           setDiscoverPeople(prev => prev.filter(x => x._id !== u._id));
                         } catch {
                           /* ignore */

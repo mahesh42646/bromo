@@ -53,7 +53,9 @@ import type {NavigationProp, RouteProp} from '@react-navigation/native';
 import type {MainTabParamList} from '../navigation/appStackParamList';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
+import {CoinEarnToast} from '../components/ui/CoinEarnToast';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {addViewCoinListener} from '../lib/viewRewardEvents';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {blockUser, followUser, unfollowUser} from '../api/followApi';
 import {
@@ -682,7 +684,7 @@ const ReelItem = React.memo(function ReelItem({
         await unfollowUser(item.author._id);
         setFollowing(false);
       } else {
-        await followUser(item.author._id);
+        await followUser(item.author._id, {kind: 'reel', refId: item._id});
         setFollowing(true);
       }
     } catch {}
@@ -1076,6 +1078,7 @@ export function ReelsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [autoScroll, setAutoScroll] = useState(false);
+  const [coinToast, setCoinToast] = useState<{visible: boolean; amount: number}>({visible: false, amount: 0});
   const listRef = useRef<FlatList>(null);
   const pageRef = useRef(1);
   const cursorRef = useRef<string | null>(null);
@@ -1105,6 +1108,12 @@ export function ReelsScreen() {
   useEffect(() => {
     if (reelAds.length > 0) prefetchAdMedia(reelAds);
   }, [reelAds]);
+
+  useEffect(() => {
+    return addViewCoinListener(n => {
+      setCoinToast({visible: true, amount: n});
+    });
+  }, []);
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;
@@ -1588,6 +1597,12 @@ export function ReelsScreen() {
           </View>
         </View>
       </Modal>
+      <CoinEarnToast
+        visible={coinToast.visible}
+        amount={coinToast.amount}
+        label="Bromo coins"
+        onHide={() => setCoinToast(c => ({...c, visible: false}))}
+      />
     </ThemedSafeScreen>
   );
 }

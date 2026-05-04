@@ -18,7 +18,14 @@ export type UserProfile = {
   isCreator?: boolean;
   creatorStatus?: 'none' | 'pending' | 'verified' | 'rejected';
   creatorBadge?: boolean;
-  connectedStore?: {enabled?: boolean; website?: string; planId?: string};
+  connectedStore?: {
+    enabled?: boolean;
+    website?: string;
+    planId?: string;
+    provider?: string;
+    productCatalogUrl?: string;
+    icon?: boolean;
+  };
   interests?: string[];
   followStatus: 'none' | 'following' | 'requested';
   followsMe?: boolean;
@@ -91,8 +98,29 @@ export async function getFollowing(userId: string, page = 1): Promise<{users: Su
   return res.json() as Promise<{users: SuggestedUser[]; hasMore: boolean}>;
 }
 
-export async function followUser(userId: string): Promise<{status: 'accepted' | 'pending'}> {
-  const res = await authedFetch(`/users/${userId}/follow`, {method: 'POST'});
+export type FollowAttributionSummary = {kind: string; refId?: string; count: number; lastAt: string};
+
+export async function getMyFollowAttribution(): Promise<{items: FollowAttributionSummary[]}> {
+  const res = await authedFetch('/users/me/follow-attribution');
+  if (!res.ok) throw new Error('Failed to load follow attribution');
+  return res.json() as Promise<{items: FollowAttributionSummary[]}>;
+}
+
+export type FollowAttribution = {
+  kind: 'profile' | 'post' | 'reel' | 'story' | 'search' | 'discover' | 'chat' | 'wallet';
+  refId?: string;
+};
+
+export async function followUser(
+  userId: string,
+  attribution?: FollowAttribution,
+): Promise<{status: 'accepted' | 'pending'}> {
+  const res = await authedFetch(`/users/${userId}/follow`, {
+    method: 'POST',
+    body: JSON.stringify(
+      attribution ? {source: {kind: attribution.kind, ...(attribution.refId ? {refId: attribution.refId} : {})}} : {},
+    ),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as {message?: string}).message ?? 'Failed to follow');

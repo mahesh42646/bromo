@@ -74,7 +74,14 @@ export type PostAuthor = {
   isCreator?: boolean;
   creatorStatus?: 'none' | 'pending' | 'verified' | 'rejected';
   creatorBadge?: boolean;
-  connectedStore?: {enabled?: boolean; website?: string; planId?: string};
+  connectedStore?: {
+    enabled?: boolean;
+    website?: string;
+    planId?: string;
+    productCatalogUrl?: string;
+    provider?: string;
+    icon?: boolean;
+  };
 };
 
 export type StoryOverlay = {
@@ -159,6 +166,8 @@ export type Post = {
   feedCategory?: string;
   categoryName?: string;
   showStoreIcon?: boolean;
+  /** Resolved shop URL for taps (catalog preferred over bare website). */
+  storeEntryUrl?: string;
   originalAudioId?: string;
   originalAudioTitle?: string;
   remixOfPostId?: string;
@@ -511,12 +520,39 @@ export async function markStorySeenPost(storyPostId: string): Promise<void> {
   }).catch(() => null);
 }
 
+export type StoryReactionKey = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'fire';
+
+export async function reactToStory(storyPostId: string, reaction: StoryReactionKey): Promise<void> {
+  const res = await authedFetch(`/posts/stories/${encodeURIComponent(storyPostId)}/react`, {
+    method: 'POST',
+    body: JSON.stringify({reaction}),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as {message?: string}).message ?? 'Reaction failed');
+  }
+}
+
 export async function getStoryViewers(
   storyPostId: string,
-): Promise<{viewers: Array<{viewedAt: string; user: PostAuthor}>}> {
+): Promise<{
+  viewers: Array<{
+    viewedAt: string;
+    user: PostAuthor;
+    reaction?: string | null;
+    reactedAt?: string | null;
+  }>;
+}> {
   const res = await authedFetch(`/posts/stories/${encodeURIComponent(storyPostId)}/viewers`);
   if (!res.ok) throw new Error('Failed to fetch story viewers');
-  return res.json() as Promise<{viewers: Array<{viewedAt: string; user: PostAuthor}>}>;
+  return res.json() as Promise<{
+    viewers: Array<{
+      viewedAt: string;
+      user: PostAuthor;
+      reaction?: string | null;
+      reactedAt?: string | null;
+    }>;
+  }>;
 }
 
 export async function getStoryAnalytics(storyPostId: string): Promise<{
@@ -526,6 +562,8 @@ export async function getStoryAnalytics(storyPostId: string): Promise<{
   replyCount: number;
   linkTapCount: number;
   mentionTapCount: number;
+  sharesCount?: number;
+  reactions?: Record<string, number>;
 }> {
   const res = await authedFetch(`/posts/stories/${encodeURIComponent(storyPostId)}/analytics`);
   if (!res.ok) throw new Error('Failed to fetch story analytics');
@@ -536,6 +574,8 @@ export async function getStoryAnalytics(storyPostId: string): Promise<{
     replyCount: number;
     linkTapCount: number;
     mentionTapCount: number;
+    sharesCount?: number;
+    reactions?: Record<string, number>;
   }>;
 }
 

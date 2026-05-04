@@ -14,7 +14,9 @@ import {getPost, getPostAnalytics, getSavedPosts, getUserPosts, type Post, type 
 import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
 import {useAuth} from '../../../context/AuthContext';
 import {connectMyStore, submitCreatorForm} from '../../../api/authApi';
+import {getMyFollowAttribution} from '../../../api/followApi';
 import {parentNavigate} from '../../../navigation/parentNavigate';
+import {fetchTurnCredentials} from '../../../api/callsApi';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
 export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
@@ -316,6 +318,36 @@ export function CreatorDashboardScreen() {
   const [website, setWebsite] = useState(dbUser?.website ?? '');
   const [documents, setDocuments] = useState('');
   const [storeWebsite, setStoreWebsite] = useState(dbUser?.connectedStore?.website ?? dbUser?.website ?? '');
+  const [followAttrByKind, setFollowAttrByKind] = useState<{kind: string; count: number}[]>([]);
+
+  const statusEarly = dbUser?.creatorStatus ?? 'none';
+  const verifiedCreatorEarly = Boolean(dbUser?.isCreator && statusEarly === 'verified');
+
+  useEffect(() => {
+    if (!verifiedCreatorEarly || !dbUser?._id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const {items} = await getMyFollowAttribution();
+        if (cancelled) return;
+        const byKind = new Map<string, number>();
+        for (const it of items) {
+          const k = it.kind ?? 'unknown';
+          byKind.set(k, (byKind.get(k) ?? 0) + it.count);
+        }
+        setFollowAttrByKind(
+          [...byKind.entries()]
+            .map(([kind, count]) => ({kind, count}))
+            .sort((a, b) => b.count - a.count),
+        );
+      } catch {
+        if (!cancelled) setFollowAttrByKind([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [verifiedCreatorEarly, dbUser?._id]);
 
   useEffect(() => {
     if (!dbUser?._id) return;
@@ -447,6 +479,23 @@ export function CreatorDashboardScreen() {
           </View>
         ) : null}
 
+        {verifiedCreator && followAttrByKind.length > 0 ? (
+          <View style={{borderWidth: 1, borderColor: palette.border, borderRadius: 18, padding: 14, marginBottom: 16}}>
+            <Text style={{color: palette.foreground, fontSize: 16, fontWeight: '900'}}>Follower sources</Text>
+            <Text style={{color: palette.foregroundMuted, marginTop: 4, lineHeight: 18}}>
+              Where people followed you from (attributed taps).
+            </Text>
+            <View style={{marginTop: 10, gap: 6}}>
+              {followAttrByKind.map(row => (
+                <View key={row.kind} style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+                  <Text style={{color: palette.foreground, fontWeight: '700', textTransform: 'capitalize'}}>{row.kind}</Text>
+                  <Text style={{color: palette.foregroundMuted, fontWeight: '800'}}>{row.count}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         <View style={{flexDirection: 'row', gap: 10, marginBottom: 16}}>
           <StatCard icon={<Eye size={18} color={palette.primary} />} label="Views" value={fmtCount(totals.views)} palette={palette} />
           <StatCard icon={<TrendingUp size={18} color={palette.primary} />} label="Clicks" value={fmtCount(totals.clicks)} palette={palette} />
@@ -474,6 +523,18 @@ export function CreatorDashboardScreen() {
           <Text style={{color: palette.foregroundMuted, marginTop: 4}}>
             Paid and unpaid brand deals suggested by BROMO appear here with accept or decline actions.
           </Text>
+          <Pressable
+            onPress={() => navigation.navigate('CollabInbox')}
+            style={{
+              marginTop: 10,
+              alignSelf: 'flex-start',
+              backgroundColor: palette.primary,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 12,
+            }}>
+            <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 13}}>Open collaboration inbox</Text>
+          </Pressable>
           <View style={{marginTop: 12, gap: 10}}>
             <DealRow title="Suggested brand deal" body="No active suggestions yet" paid={false} palette={palette} />
             <DealRow title="Deal history" body="Accepted, declined, paid, and unpaid collaborations will be listed here with total income." paid palette={palette} />
@@ -766,14 +827,31 @@ export function NotificationSettingsScreen() {
 
 export function VoiceCallScreen() {
   const route = useRoute<RouteProp<AppStackParamList, 'VoiceCall'>>();
+  const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
+  const [turnReady, setTurnReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void fetchTurnCredentials().then(c => {
+      if (alive) setTurnReady(Boolean(c?.iceServers?.length));
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   return (
     <SopChrome title="Voice call" scroll={false}>
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20}}>
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20, paddingHorizontal: 20}}>
         <Phone size={64} color={palette.primary} />
         <Text style={{fontWeight: '800', color: palette.foreground, fontSize: 18}}>{route.params.peerName}</Text>
-        <Text style={{color: palette.foregroundMuted}}>Ringing...</Text>
-        <PrimaryButton label="End call" onPress={() => Alert.alert('Call ended')} variant="outline" />
+        <Text style={{color: palette.foregroundMuted, textAlign: 'center'}}>
+          {turnReady === null
+            ? 'Preparing secure connection…'
+            : turnReady
+              ? 'TURN credentials OK · signaling not wired (stub)'
+              : 'TURN not configured on server — calls cannot traverse restrictive networks'}
+        </Text>
+        <PrimaryButton label="End call" onPress={() => navigation.goBack()} variant="outline" />
       </View>
     </SopChrome>
   );

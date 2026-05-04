@@ -1,0 +1,5 @@
+[
+  {"id": "cat_1", "title": "Studio Pulse", "artist": "Bromo Sound", "durationSec": 180, "license": "catalog"},
+  {"id": "cat_2", "title": "Night Drive", "artist": "Bromo Sound", "durationSec": 210, "license": "catalog"},
+  {"id": "cat_3", "title": "Morning Lift", "artist": "Bromo Sound", "durationSec": 195, "license": "catalog"}
+]

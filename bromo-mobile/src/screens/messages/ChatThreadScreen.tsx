@@ -355,7 +355,7 @@ export function ChatThreadScreen() {
           ]),
       },
     ];
-    if (mine && m.kind === 'text' && !m.unsent) {
+    if (mine && m.kind === 'text' && !m.unsent && !m.deletedForEveryone) {
       buttons.push({
         text: 'Edit',
         onPress: () => {
@@ -389,7 +389,7 @@ export function ChatThreadScreen() {
   const bubbleR = borderRadiusScale === 'bold' ? 20 : 16;
 
   const renderDelivery = (m: ChatMessage) => {
-    if (m.senderId !== 'me' || m.unsent) return null;
+    if (m.senderId !== 'me' || m.unsent || m.deletedForEveryone) return null;
     const color = m.delivery === 'read' ? palette.primary : palette.mutedForeground;
     if (m.delivery === 'sending') {
       return <Text style={{fontSize: 10, color: palette.mutedForeground, marginLeft: 4}}>⋯</Text>;
@@ -406,11 +406,16 @@ export function ChatThreadScreen() {
     const bg = mine ? palette.primary : palette.muted;
     const fg = mine ? palette.primaryForeground : palette.foreground;
 
-    if (m.unsent) {
+    if (m.unsent || m.deletedForEveryone) {
+      const tombstone = m.deletedForEveryone
+        ? 'This message was deleted'
+        : mine
+          ? 'You unsent a message'
+          : 'Message unsent';
       return (
         <View style={{alignSelf: align, maxWidth: '85%', marginVertical: 4}}>
           <Text style={{color: palette.mutedForeground, fontSize: 13, fontStyle: 'italic'}}>
-            {mine ? 'You unsent a message' : 'Message unsent'}
+            {tombstone}
           </Text>
         </View>
       );

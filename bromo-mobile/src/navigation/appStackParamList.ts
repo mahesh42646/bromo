@@ -65,6 +65,8 @@ export type AppStackParamList = {
   CreateStore: undefined;
   ManageStore: undefined;
   StorePublicProfile: {storeId: string};
+  /** Owner scans customer redemption QR + enters OTP */
+  RedemptionScanner: undefined;
   StoreProductDetail: {storeId: string; productId: string};
   AllStores: undefined;
   AddProduct: {storeId: string};
@@ -89,10 +91,12 @@ export type AppStackParamList = {
   ContentInsights: {focusPostId?: string} | undefined;
   ProfessionalHub: undefined;
   CreatorDashboard: undefined;
+  CollabInbox: undefined;
   ReferralDashboard: undefined;
 
   VoiceCall: {peerId: string; peerName: string};
   VideoCall: {peerId: string; peerName: string};
+  LiveWatch: {hlsUrl: string; title?: string; streamerName?: string};
   CallHistory: undefined;
 
   MusicLibrary: undefined;

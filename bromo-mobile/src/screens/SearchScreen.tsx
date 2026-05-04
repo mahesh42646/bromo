@@ -87,7 +87,7 @@ function PersonRow({
         await unfollowUser(user._id);
         setFollowStatus('none');
       } else {
-        const res = await followUser(user._id);
+        const res = await followUser(user._id, {kind: 'search'});
         setFollowStatus(res.status === 'pending' ? 'requested' : 'following');
       }
     } catch {}

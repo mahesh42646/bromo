@@ -10,9 +10,9 @@ import {
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BadgeCheck, ChevronLeft} from 'lucide-react-native';
+import {BadgeCheck} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {Screen} from '../components/ui/Screen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {getFollowers, getFollowing, type SuggestedUser} from '../api/followApi';
 import {RelationButton} from '../components/relations/RelationButton';
@@ -69,20 +69,7 @@ export function FollowersFollowingScreen() {
   }, [hasMore, loadingMore, load, page]);
 
   return (
-    <ThemedSafeScreen>
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 8, paddingVertical: 8,
-        borderBottomWidth: 1, borderBottomColor: palette.border, gap: 4,
-      }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 8}}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={{flex: 1, color: palette.foreground, fontSize: 17, fontWeight: '800'}}>
-          {tab === 'followers' ? 'Followers' : 'Following'}
-        </Text>
-      </View>
-
+    <Screen title={tab === 'followers' ? 'Followers' : 'Following'}>
       {loading ? (
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <ActivityIndicator color={palette.primary} size="large" />
@@ -127,6 +114,7 @@ export function FollowersFollowingScreen() {
                 <RelationButton
                   row={item}
                   mode={tab}
+                  followSource={{kind: 'profile', refId: userId}}
                   onChange={(changedUserId, next) => {
                     setUsers(prev => prev.map(u => u._id === changedUserId ? {
                       ...u,
@@ -140,6 +128,6 @@ export function FollowersFollowingScreen() {
           }}
         />
       )}
-    </ThemedSafeScreen>
+    </Screen>
   );
 }

@@ -3,7 +3,7 @@ import {Pressable, Text, type GestureResponderEvent} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useTheme} from '../../context/ThemeContext';
-import {followUser, type SuggestedUser} from '../../api/followApi';
+import {followUser, type FollowAttribution, type SuggestedUser} from '../../api/followApi';
 import {useMessaging} from '../../messaging/MessagingContext';
 import {parentNavigate} from '../../navigation/parentNavigate';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
@@ -16,9 +16,11 @@ type Props = {
   row: SuggestedUser;
   mode: Mode;
   onChange?: (userId: string, next: FollowStatus) => void;
+  /** Optional analytics source (API stores on Follow row). */
+  followSource?: FollowAttribution;
 };
 
-export function RelationButton({row, mode, onChange}: Props) {
+export function RelationButton({row, mode, onChange, followSource}: Props) {
   const navigation = useNavigation<Nav>();
   const {palette, guidelines} = useTheme();
   const {openThreadForUser} = useMessaging();
@@ -55,7 +57,7 @@ export function RelationButton({row, mode, onChange}: Props) {
         return;
       }
       if (status === 'requested') return;
-      const res = await followUser(row._id);
+      const res = await followUser(row._id, followSource);
       onChange?.(row._id, res.status === 'pending' ? 'requested' : 'following');
     } catch {
       // keep row state unchanged

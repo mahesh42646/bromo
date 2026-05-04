@@ -4,22 +4,17 @@ import {
   Alert,
   FlatList,
   Pressable,
-  RefreshControl,
-  ScrollView,
   Text,
   View,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
-import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {
   ArrowDownLeft,
   ArrowUpRight,
   Coins,
-  ChevronLeft,
   Zap,
 } from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
-import type {AppStackParamList} from '../navigation/appStackParamList';
+import {Screen} from '../components/ui/Screen';
 import {
   getWallet,
   buyCoins,
@@ -28,8 +23,6 @@ import {
   type CoinPackage,
 } from '../api/walletApi';
 import {EconomyConfig} from '../config/economy';
-
-type Nav = NativeStackNavigationProp<AppStackParamList>;
 
 function fmtCoins(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -50,17 +43,19 @@ function reasonLabel(reason: LedgerEntry['reason']): string {
     topup: 'Coins purchased',
     promotion_spend: 'Campaign spend',
     promotion_refund: 'Campaign refund',
+    promotion_reserve: 'Campaign reserve held',
+    promotion_release: 'Campaign reserve released',
     admin_credit: 'Admin credit',
     admin_debit: 'Admin debit',
     referral_reward: 'Referral reward',
     reward: 'Reward earned',
+    reel_view: 'Reel watch reward',
     store_redemption: 'Store redemption',
   };
   return map[reason] ?? reason;
 }
 
 export function WalletScreen() {
-  const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
   const [balance, setBalance] = useState(0);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
@@ -111,25 +106,12 @@ export function WalletScreen() {
   }
 
   return (
-    <View style={{flex: 1, backgroundColor: palette.background}}>
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
-        borderBottomWidth: 1, borderBottomColor: palette.border,
-      }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{marginRight: 12}}>
-          <ChevronLeft size={24} color={palette.foreground} />
-        </Pressable>
-        <Text style={{flex: 1, color: palette.foreground, fontSize: 20, fontWeight: '900'}}>
-          Bromo Wallet
-        </Text>
-        <Coins size={22} color={palette.primary} />
-      </View>
-
-      <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} />}
-        showsVerticalScrollIndicator={false}>
+    <Screen
+      title="Bromo Wallet"
+      scroll
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      right={<Coins size={22} color={palette.primary} />}>
 
         {/* Balance card */}
         <View style={{
@@ -313,7 +295,6 @@ export function WalletScreen() {
         )}
 
         <View style={{height: 48}} />
-      </ScrollView>
-    </View>
+    </Screen>
   );
 }

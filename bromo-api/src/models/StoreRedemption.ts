@@ -10,6 +10,8 @@ export interface StoreRedemptionDoc extends Document {
   payableInr: number;
   status: "pending" | "redeemed" | "cancelled";
   qrToken: string;
+  otp: string;
+  ownerConfirmedAt?: Date;
   redeemedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -26,6 +28,11 @@ const storeRedemptionSchema = new Schema<StoreRedemptionDoc>(
     payableInr: { type: Number, required: true, min: 0 },
     status: { type: String, enum: ["pending", "redeemed", "cancelled"], default: "pending", index: true },
     qrToken: { type: String, required: true, unique: true },
+    otp: {
+      type: String,
+      default: () => String(100000 + Math.floor(Math.random() * 900000)),
+    },
+    ownerConfirmedAt: { type: Date },
     redeemedAt: { type: Date },
   },
   { timestamps: true },

@@ -52,9 +52,12 @@ import { promotionsRouter } from "./routes/promotions.js";
 import { affiliateAdminRouter, affiliatePublicRouter } from "./routes/affiliateProducts.js";
 import { draftsRouter } from "./routes/drafts.js";
 import { placesRouter } from "./routes/places.js";
+import { musicRouter } from "./routes/music.js";
+import { collabsRouter } from "./routes/collabs.js";
 import { storeRouter } from "./routes/storeRoutes.js";
 import { dashboardOverviewRouter } from "./routes/dashboardOverview.js";
 import { callsRouter } from "./routes/calls.js";
+import { contentRouter } from "./routes/content.js";
 import { startPromotionBillingWorker } from "./workers/promotionBillingWorker.js";
 import { startScheduledPostWorker } from "./workers/scheduledPostWorker.js";
 import { initFirebase } from "./config/firebase.js";
@@ -163,9 +166,12 @@ export function createApp() {
   app.use("/products", affiliatePublicRouter);
   app.use("/drafts", draftsRouter);
   app.use("/places", placesRouter);
+  app.use("/music", musicRouter);
+  app.use("/collabs", collabsRouter);
   app.use("/stores", storeRouter);
   app.use("/dashboard", dashboardOverviewRouter);
   app.use("/calls", callsRouter);
+  app.use("/content", contentRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });

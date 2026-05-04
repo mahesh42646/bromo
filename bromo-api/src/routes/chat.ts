@@ -160,6 +160,7 @@ chatRouter.get(
       const messages = await Message.find({
         conversationId: req.params.id,
         isUnsent: {$ne: true},
+        deletedForEveryone: {$ne: true},
         type: {$in: ["image", "video"]},
       })
         .sort({createdAt: -1})
@@ -309,6 +310,7 @@ chatRouter.put(
         return res.status(403).json({ message: "Not authorized" });
       }
       message.isUnsent = true;
+      message.deletedForEveryone = true;
       message.text = "";
       message.mediaUrl = "";
       await message.save();
