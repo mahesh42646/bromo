@@ -8,7 +8,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   Share,
   StatusBar,
   StyleSheet,
@@ -21,7 +20,6 @@ import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {
-	  ChevronLeft,
 	  Check,
 	  Heart,
   MapPin,
@@ -38,7 +36,7 @@ import {
   Send,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {RefreshableScrollView, Screen, SegmentedTabs} from '../../components/ui';
 import {
   calculateStoreRedemption,
   createB2BLead,
@@ -89,21 +87,23 @@ export function StorePublicProfileScreen() {
     balance: number;
   } | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [s, p] = await Promise.all([getStore(storeId), listProducts(storeId)]);
-        setStore(s);
-        setProducts(p);
-        setFavorited(s.isFavorited ?? false);
-      } catch {
-        Alert.alert('Error', 'Failed to load store');
-        navigation.goBack();
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const loadStore = useCallback(async () => {
+    try {
+      const [s, p] = await Promise.all([getStore(storeId), listProducts(storeId)]);
+      setStore(s);
+      setProducts(p);
+      setFavorited(s.isFavorited ?? false);
+    } catch {
+      Alert.alert('Error', 'Failed to load store');
+      navigation.goBack();
+    } finally {
+      setLoading(false);
+    }
   }, [storeId, navigation]);
+
+  useEffect(() => {
+    void loadStore();
+  }, [loadStore]);
 
   const toggleFavorite = useCallback(async () => {
     if (!store) return;
@@ -210,7 +210,7 @@ export function StorePublicProfileScreen() {
     } finally {
       setActionLoading(false);
     }
-  }, [store, billAmount]);
+  }, [store, billAmount, redeemPreview?.payableInr]);
 
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = activeCategory === 'All' ? products : products.filter(p => p.category === activeCategory);
@@ -226,16 +226,16 @@ export function StorePublicProfileScreen() {
 
   if (loading) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="Store">
         <ActivityIndicator color={palette.primary} style={{flex: 1}} />
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   if (!store) return null;
 
   return (
-    <ThemedSafeScreen>
+    <Screen title={store.name} scroll={false}>
       <StatusBar barStyle="light-content" />
 
       <Modal visible={Boolean(redeemSheet)} transparent animationType="fade" onRequestClose={() => setRedeemSheet(null)}>
@@ -281,7 +281,7 @@ export function StorePublicProfileScreen() {
         </Pressable>
       </Modal>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <RefreshableScrollView onRefresh={loadStore} showsVerticalScrollIndicator={false}>
         {/* Banner */}
         <View style={s.bannerWrapper}>
           {store.bannerImage ? (
@@ -292,14 +292,6 @@ export function StorePublicProfileScreen() {
 
           {/* Overlay gradient */}
           <View style={[s.bannerOverlay, {backgroundColor: 'rgba(0,0,0,0.35)'}]} />
-
-          {/* Back btn */}
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={[s.backBtn, {backgroundColor: 'rgba(0,0,0,0.5)'}]}
-            hitSlop={12}>
-            <ChevronLeft size={22} color="#fff" />
-          </Pressable>
 
           {/* Favorite btn */}
           <Pressable
@@ -501,30 +493,13 @@ export function StorePublicProfileScreen() {
 
         {/* Category filter */}
         {categories.length > 1 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.catScrollContent}>
-            {categories.map(cat => {
-              const active = activeCategory === cat;
-              return (
-                <Pressable
-                  key={cat}
-                  onPress={() => setActiveCategory(cat)}
-                  style={[
-                    s.catPill,
-                    {
-                      backgroundColor: active ? palette.primary : palette.glassFaint,
-                      borderColor: active ? palette.primary : palette.border,
-                    },
-                  ]}>
-                  <Text style={{color: active ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
-                    {cat}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <SegmentedTabs
+            items={categories.map(cat => ({label: cat, value: cat}))}
+            value={activeCategory}
+            onChange={setActiveCategory}
+            variant="pill"
+            style={{marginTop: 14}}
+          />
         )}
 
         {/* Products */}
@@ -549,8 +524,8 @@ export function StorePublicProfileScreen() {
         </View>
 
         <View style={{height: 40}} />
-      </ScrollView>
-    </ThemedSafeScreen>
+      </RefreshableScrollView>
+    </Screen>
   );
 }
 
@@ -609,16 +584,6 @@ const s = StyleSheet.create({
   bannerImg: {width: '100%', height: '100%'},
   bannerPlaceholder: {flex: 1},
   bannerOverlay: {position: 'absolute', inset: 0},
-  backBtn: {
-    position: 'absolute',
-    top: 52,
-    left: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   favBtn: {
     position: 'absolute',
     top: 52,
@@ -683,8 +648,6 @@ const s = StyleSheet.create({
     borderRadius: 10,
   },
   ctaBtnText: {fontSize: 13, fontWeight: '700'},
-  catScrollContent: {paddingHorizontal: 16, paddingVertical: 12, gap: 8},
-  catPill: {paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1},
   actionPanel: {marginHorizontal: 16, marginTop: 14, padding: 14, borderRadius: 16, borderWidth: 1, gap: 10},
   actionTitle: {fontSize: 16, fontWeight: '900'},
   actionInput: {borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14},

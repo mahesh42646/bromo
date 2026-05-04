@@ -2,7 +2,6 @@ import React, {useCallback, useMemo, useState} from 'react';
 import {
   Alert,
   ActivityIndicator,
-  FlatList,
   Image,
   Pressable,
   Share,
@@ -15,7 +14,7 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {BadgeCheck, MessageSquarePlus, Search} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {ActionSheet} from '../../components/ui/ActionSheet';
-import {Screen} from '../../components/ui/Screen';
+import {RefreshableFlatList, Screen} from '../../components/ui';
 import {SearchBar} from '../../components/ui/SearchBar';
 import {useMessaging} from '../../messaging/MessagingContext';
 import {formatThreadRowTime} from '../../messaging/formatTime';
@@ -28,7 +27,7 @@ type Nav = NativeStackNavigationProp<MessagesStackParamList, 'ChatList'>;
 export function ChatListScreen() {
   const navigation = useNavigation<Nav>();
   const {palette, isDark} = useTheme();
-  const {filterThreads, searchDirectory, ensureThread, openThreadForUser, loadingConversations} = useMessaging();
+  const {filterThreads, searchDirectory, ensureThread, openThreadForUser, loadingConversations, refreshConversations} = useMessaging();
   const [search, setSearch] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<{_id: string; displayName: string; username: string; profilePicture: string}[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
@@ -219,9 +218,11 @@ export function ChatListScreen() {
         </View>
       )}
 
-      <FlatList
+      <RefreshableFlatList
         data={rows}
         keyExtractor={r => r.peer.id}
+        refreshing={loadingConversations}
+        onRefresh={refreshConversations}
         contentContainerStyle={{paddingBottom: 24}}
         ListEmptyComponent={
           <Text style={{textAlign: 'center', color: palette.mutedForeground, marginTop: 40, paddingHorizontal: 24}}>

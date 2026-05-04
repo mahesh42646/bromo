@@ -2,6 +2,7 @@ import "../config/ffmpegInit.js";
 import ffmpeg from "fluent-ffmpeg";
 import path from "node:path";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import { uploadsRoot } from "../utils/uploadFiles.js";
 
 const UPLOAD_DIR = uploadsRoot();
@@ -179,4 +180,63 @@ export async function getVideoDuration(videoFilename: string): Promise<number> {
       resolve(metadata.format.duration ?? 0);
     });
   });
+}
+
+/**
+ * Replace video's audio with a segment of a licensed track (copy video, AAC audio).
+ * Paths are POSIX under `uploads/` (no leading slash).
+ * Trims both inputs to the same output duration.
+ */
+export function remuxVideoWithLicensedAudio(args: {
+  videoRel: string;
+  audioRel: string;
+  outRel: string;
+  videoStartSec: number;
+  segmentDurationSec: number;
+  /** Start offset into the licensed audio file. */
+  audioStartSec: number;
+}): void {
+  const videoAbs = path.join(UPLOAD_DIR, ...args.videoRel.split("/"));
+  const audioAbs = path.join(UPLOAD_DIR, ...args.audioRel.split("/"));
+  const outAbs = path.join(UPLOAD_DIR, ...args.outRel.split("/"));
+  fs.mkdirSync(path.dirname(outAbs), { recursive: true });
+  const d = String(args.segmentDurationSec);
+  const v0 = String(args.videoStartSec);
+  const a0 = String(args.audioStartSec);
+  const r = spawnSync(
+    "ffmpeg",
+    [
+      "-y",
+      "-ss",
+      v0,
+      "-t",
+      d,
+      "-i",
+      videoAbs,
+      "-ss",
+      a0,
+      "-t",
+      d,
+      "-i",
+      audioAbs,
+      "-map",
+      "0:v:0",
+      "-map",
+      "1:a:0",
+      "-c:v",
+      "copy",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-movflags",
+      "+faststart",
+      outAbs,
+    ],
+    { maxBuffer: 8 * 1024 * 1024, encoding: "utf8" },
+  );
+  if (r.error) throw r.error;
+  if (r.status !== 0) {
+    throw new Error((r.stderr as string) || "ffmpeg remux failed");
+  }
 }

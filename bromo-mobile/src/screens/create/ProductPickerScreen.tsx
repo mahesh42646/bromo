@@ -9,10 +9,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {Check, ChevronLeft, Search, ShoppingBag, X} from 'lucide-react-native';
+import {Check, Search, ShoppingBag, X} from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {Screen} from '../../components/ui';
 import {useTheme} from '../../context/ThemeContext';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import {listProducts, type AffiliateProduct} from '../../api/productsApi';
@@ -68,18 +68,14 @@ export function ProductPickerScreen() {
   );
 
   return (
-    <ThemedSafeScreen style={{flex: 1, backgroundColor: palette.background}}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={10}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={[styles.title, {color: palette.foreground}]}>
-          Products ({draft.products.length}/{MAX_PICK})
-        </Text>
+    <Screen
+      title={`Products (${draft.products.length}/${MAX_PICK})`}
+      scroll={false}
+      right={
         <Pressable onPress={() => navigation.goBack()} hitSlop={10}>
           <Text style={[styles.doneBtn, {color: palette.accent}]}>Done</Text>
         </Pressable>
-      </View>
+      }>
 
       <View style={[styles.searchBox, {backgroundColor: palette.card, borderColor: palette.border}]}>
         <Search size={18} color={palette.foregroundMuted} />
@@ -150,7 +146,7 @@ export function ProductPickerScreen() {
           }}
         />
       )}
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

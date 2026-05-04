@@ -303,6 +303,10 @@ mediaRouter.post(
       body.remixOfPostId && mongooseRef.Types.ObjectId.isValid(body.remixOfPostId)
         ? new mongooseRef.Types.ObjectId(body.remixOfPostId)
         : undefined;
+    const musicTrackId =
+      body.musicTrackId && mongooseRef.Types.ObjectId.isValid(body.musicTrackId)
+        ? new mongooseRef.Types.ObjectId(body.musicTrackId)
+        : undefined;
 
     const draftPost = await Post.create({
       authorId: dbUser._id,
@@ -320,6 +324,7 @@ mediaRouter.post(
       ...(safeCollaboratorIds.length ? { collaboratorIds: safeCollaboratorIds } : {}),
       ...(originalAudioId ? { originalAudioId } : {}),
       ...(remixOfPostId ? { remixOfPostId } : {}),
+      ...(musicTrackId ? { musicTrackId } : {}),
       ...(settings ? { settings } : {}),
       ...(typeof durationMs === "number" ? { durationMs } : {}),
       ...(clientEditMeta ? { clientEditMeta } : {}),

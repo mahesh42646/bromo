@@ -18,10 +18,10 @@ import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {launchImageLibrary} from 'react-native-image-picker';
-import {ChevronLeft, Plus, X, Check, Package} from 'lucide-react-native';
+import {Plus, X, Check, Package} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
-import {createProduct, STORE_CATEGORIES} from '../../api/storeApi';
+import {Screen} from '../../components/ui';
+import {createProduct} from '../../api/storeApi';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
@@ -97,17 +97,8 @@ export function AddProductScreen() {
   }, [name, description, price, originalPrice, category, inStock, tags, photoUris, videoUrl, storeId, navigation]);
 
   return (
-    <ThemedSafeScreen>
+    <Screen title="Add Product" scroll={false}>
       <StatusBar barStyle="light-content" />
-
-      {/* Header */}
-      <View style={[s.header, {borderBottomColor: palette.glassFaint}]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <ChevronLeft size={22} color={palette.foreground} />
-        </Pressable>
-        <Text style={[s.headerTitle, {color: palette.foreground}]}>Add Product</Text>
-        <View style={{width: 22}} />
-      </View>
 
       <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={s.scroll}>
@@ -262,7 +253,7 @@ export function AddProductScreen() {
           )}
         </Pressable>
       </View>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 
@@ -273,15 +264,6 @@ function FieldLabel({label, palette}: {label: string; palette: ReturnType<typeof
 }
 
 const s = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  headerTitle: {fontSize: 17, fontWeight: '700'},
   scroll: {paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32},
   fieldLabel: {fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6, marginTop: 16},
   input: {borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15},

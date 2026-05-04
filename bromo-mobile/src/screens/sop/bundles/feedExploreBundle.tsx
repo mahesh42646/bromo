@@ -12,7 +12,8 @@ import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {followUser, getFollowing, getNearbyUsers, updateMyLocation, type SuggestedUser} from '../../../api/followApi';
-import {getHashtagPosts, searchOriginalAudios, useOriginalAudio, type OriginalAudio, type Post} from '../../../api/postsApi';
+import {getHashtagPosts, useOriginalAudio, type Post} from '../../../api/postsApi';
+import {useAudioPickerTracks} from '../../../create/useAudioPickerTracks';
 import {parentNavigate} from '../../../navigation/parentNavigate';
 import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
 
@@ -336,19 +337,7 @@ export function MusicPickerScreen() {
   const navigation = useNavigation();
   const {palette} = useTheme();
   const [query, setQuery] = useState('');
-  const [audios, setAudios] = useState<OriginalAudio[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    const timer = setTimeout(() => {
-      searchOriginalAudios(query)
-        .then(res => setAudios(res.audios))
-        .catch(() => setAudios([]))
-        .finally(() => setLoading(false));
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const {tracks, loading} = useAudioPickerTracks(true, query);
 
   return (
     <SopChrome title="Music / audio">
@@ -370,18 +359,31 @@ export function MusicPickerScreen() {
         }}
       />
       {loading ? <ActivityIndicator color={palette.primary} /> : null}
-      {audios.map(audio => (
+      {tracks.map(track => (
         <SopRow
-          key={audio._id}
-          title={audio.title}
-          sub={`${audio.useCount} uses`}
+          key={`${track.id}-${track.originalAudioId ?? track.musicTrackId ?? ''}`}
+          title={track.title}
+          sub={
+            track.originalAudioId
+              ? `Original · ${track.artist}`
+              : track.musicTrackId
+              ? `Licensed · ${track.artist}`
+              : track.artist
+          }
           onPress={() => {
-            useOriginalAudio(audio._id).catch(() => null);
-            parentNavigate(navigation, 'CreateFlow', {
-              mode: 'reel',
-              bootstrapTs: Date.now(),
-              remixSourcePostId: audio.sourcePostId ?? audio._id,
-            });
+            if (track.originalAudioId) {
+              useOriginalAudio(track.originalAudioId).catch(() => null);
+              parentNavigate(navigation, 'CreateFlow', {
+                mode: 'reel',
+                bootstrapTs: Date.now(),
+                remixSourcePostId: track.sourcePostId ?? track.originalAudioId,
+              });
+            } else {
+              parentNavigate(navigation, 'CreateFlow', {
+                mode: mode === 'story' ? 'story' : 'reel',
+                bootstrapTs: Date.now(),
+              });
+            }
           }}
         />
       ))}

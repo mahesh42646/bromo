@@ -12,10 +12,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {ChevronLeft, MapPin, Search, X} from 'lucide-react-native';
+import {MapPin, Search, X} from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {Screen} from '../../components/ui';
 import {useTheme} from '../../context/ThemeContext';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
@@ -114,20 +114,18 @@ export function LocationPickerScreen() {
   }, [navigation, setLocation]);
 
   return (
-    <ThemedSafeScreen style={{flex: 1, backgroundColor: palette.background}}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={10}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={[styles.title, {color: palette.foreground}]}>Add location</Text>
-        {draft.location ? (
+    <Screen
+      title="Add location"
+      scroll={false}
+      right={
+        draft.location ? (
           <Pressable onPress={clear} hitSlop={10}>
             <Text style={[styles.clear, {color: palette.accent}]}>Remove</Text>
           </Pressable>
         ) : (
           <View style={{width: 60}} />
-        )}
-      </View>
+        )
+      }>
 
       <View style={[styles.searchBox, {backgroundColor: palette.card, borderColor: palette.border}]}>
         <Search size={18} color={palette.foregroundMuted} />
@@ -194,7 +192,7 @@ export function LocationPickerScreen() {
           )}
         />
       )}
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

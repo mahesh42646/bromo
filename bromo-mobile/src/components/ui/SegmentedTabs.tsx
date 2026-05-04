@@ -1,33 +1,35 @@
 import React from 'react';
-import {Pressable, ScrollView, Text, View, type ViewStyle} from 'react-native';
+import {Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle} from 'react-native';
 import {useTheme} from '../../context/ThemeContext';
 
-export type SegmentedTabItem<T extends string> = {
+export type SegmentedTabItem<T extends string | number> = {
   value: T;
   label: string;
   icon?: React.ReactNode;
 };
 
-export type SegmentedTabsProps<T extends string> = {
+export type SegmentedTabsProps<T extends string | number> = {
   items: SegmentedTabItem<T>[];
   value: T;
   onChange: (value: T) => void;
   variant?: 'pill' | 'underline';
+  tone?: 'default' | 'onDark';
   /** Max height of the row (chips row cap). */
   rowMaxHeight?: number;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 };
 
-export function SegmentedTabs<T extends string>({
+export function SegmentedTabs<T extends string | number>({
   items,
   value,
   onChange,
   variant = 'pill',
+  tone = 'default',
   rowMaxHeight = 54,
   style,
 }: SegmentedTabsProps<T>) {
-  const {palette, guidelines} = useTheme();
-  const chipRadius = guidelines.borderRadiusScale === 'bold' ? 14 : 10;
+  const {palette} = useTheme();
+  const onDark = tone === 'onDark';
 
   if (variant === 'underline') {
     return (
@@ -45,8 +47,10 @@ export function SegmentedTabs<T extends string>({
                   style={{
                     fontSize: 16,
                     fontWeight: active ? '800' : '500',
-                    color: active ? palette.foreground : palette.foregroundMuted,
-                    opacity: active ? 1 : 0.55,
+                    color: onDark
+                      ? active ? '#fff' : 'rgba(255,255,255,0.62)'
+                      : active ? palette.foreground : palette.foregroundMuted,
+                    opacity: 1,
                   }}>
                   {item.label}
                 </Text>
@@ -58,7 +62,7 @@ export function SegmentedTabs<T extends string>({
                     right: 0,
                     height: 2,
                     borderRadius: 1,
-                    backgroundColor: active ? palette.primary : 'transparent',
+                    backgroundColor: active ? (onDark ? palette.accent : palette.primary) : 'transparent',
                   }}
                 />
               </Pressable>

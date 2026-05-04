@@ -2,16 +2,15 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Pressable,
-  RefreshControl,
   Text,
   View,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {ChevronLeft, Pause, Play, BarChart2, Zap, Coins} from 'lucide-react-native';
+import {Pause, Play, BarChart2, Zap, Coins} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
+import {RefreshableFlatList, Screen} from '../../components/ui';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 import {parentNavigate} from '../../navigation/parentNavigate';
 import {
@@ -108,9 +107,9 @@ export function MyCampaignsScreen() {
 
   if (loading) {
     return (
-      <View style={{flex: 1, backgroundColor: palette.background, alignItems: 'center', justifyContent: 'center'}}>
+      <Screen title="My Campaigns" right={<Zap size={20} color={palette.primary} />}>
         <ActivityIndicator color={palette.primary} size="large" />
-      </View>
+      </Screen>
     );
   }
 
@@ -145,6 +144,16 @@ export function MyCampaignsScreen() {
       <Text style={{color: palette.foregroundMuted, fontSize: 12, marginBottom: 12}}>
         {(c.audience.placements ?? []).join(' · ') || 'All placements'}
       </Text>
+      {(c.contentType === 'reel' || c.contentType === 'post') &&
+      (c.contentAudioRemuxStatus === 'pending' ||
+        c.contentAudioRemuxStatus === 'processing' ||
+        c.contentAudioRemuxStatus === 'failed') ? (
+        <Text style={{color: palette.warning ?? palette.primary, fontSize: 11, fontWeight: '800', marginBottom: 10}}>
+          {c.contentAudioRemuxStatus === 'failed'
+            ? 'Audio mixing failed on promoted content.'
+            : 'Audio mixing in progress for promoted content.'}
+        </Text>
+      ) : null}
 
       {/* Budget progress */}
       <View style={{marginBottom: 12}}>
@@ -224,25 +233,13 @@ export function MyCampaignsScreen() {
   );
 
   return (
-    <View style={{flex: 1, backgroundColor: palette.background}}>
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
-        borderBottomWidth: 1, borderBottomColor: palette.border,
-      }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{marginRight: 12}}>
-          <ChevronLeft size={24} color={palette.foreground} />
-        </Pressable>
-        <Text style={{flex: 1, color: palette.foreground, fontSize: 20, fontWeight: '900'}}>My Campaigns</Text>
-        <Zap size={20} color={palette.primary} />
-      </View>
-
-      <FlatList
+    <Screen title="My Campaigns" scroll={false} right={<Zap size={20} color={palette.primary} />}>
+      <RefreshableFlatList
         data={campaigns}
         keyExtractor={c => c._id}
         renderItem={renderItem}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} />}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         contentContainerStyle={{paddingVertical: 10, paddingBottom: 32}}
         ListEmptyComponent={
           <View style={{alignItems: 'center', paddingTop: 56, gap: 14, paddingHorizontal: 24}}>
@@ -274,6 +271,6 @@ export function MyCampaignsScreen() {
           </View>
         }
       />
-    </View>
+    </Screen>
   );
 }

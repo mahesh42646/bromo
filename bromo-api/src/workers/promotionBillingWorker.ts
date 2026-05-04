@@ -13,7 +13,8 @@
 import mongoose from "mongoose";
 import { ContentDeliveryLog } from "../models/ContentDeliveryLog.js";
 import { PromotionCampaign } from "../models/PromotionCampaign.js";
-import { debitWallet } from "../routes/wallet.js";
+import { WalletLedger } from "../models/WalletLedger.js";
+import { creditWallet, debitWallet } from "../routes/wallet.js";
 
 // ─── Rate card (coins per event type) ────────────────────────────────────────
 const RATE_CARD = {
@@ -25,6 +26,7 @@ const RATE_CARD = {
 
 const BATCH_SIZE = 200;
 const RUN_INTERVAL_MS = process.env.NODE_ENV === "production" ? 2 * 60 * 1000 : 5 * 60 * 1000;
+const ACTIVATION_RESERVE_COINS = 50;
 
 let running = false;
 
@@ -84,6 +86,7 @@ async function runBillingCycle(): Promise<void> {
           { _id: campaignId, status: "active" },
           { $set: { status: "completed" } },
         );
+        await releasePromotionReserve(campaign._id as mongoose.Types.ObjectId, campaign.ownerUserId as mongoose.Types.ObjectId);
         continue;
       }
 
@@ -118,6 +121,9 @@ async function runBillingCycle(): Promise<void> {
           ...(budgetExhausted ? { $set: { status: "completed" } } : {}),
         },
       );
+      if (budgetExhausted) {
+        await releasePromotionReserve(campaign._id as mongoose.Types.ObjectId, campaign.ownerUserId as mongoose.Types.ObjectId);
+      }
 
       // Split charge across logs by weight (impression vs CTA click)
       let remaining = actualCharge;
@@ -144,15 +150,46 @@ async function runBillingCycle(): Promise<void> {
 
 async function pauseExhaustedCampaigns(): Promise<void> {
   const now = new Date();
-  // Pause campaigns past their endAt date
+  const completed = await PromotionCampaign.find({
+    status: "active",
+    $or: [
+      { endAt: { $lte: now } },
+      { $expr: { $gte: ["$spentCoins", "$budgetCoins"] } },
+    ],
+  })
+    .select("_id ownerUserId")
+    .lean();
+
+  if (completed.length === 0) return;
+
   await PromotionCampaign.updateMany(
-    { status: "active", endAt: { $lte: now } },
+    { _id: { $in: completed.map(c => c._id) }, status: "active" },
     { $set: { status: "completed" } },
   );
-  // Pause campaigns that spent >= budget (belt-and-suspenders)
-  await PromotionCampaign.updateMany(
-    { status: "active", $expr: { $gte: ["$spentCoins", "$budgetCoins"] } },
-    { $set: { status: "completed" } },
+
+  for (const campaign of completed) {
+    await releasePromotionReserve(campaign._id as mongoose.Types.ObjectId, campaign.ownerUserId as mongoose.Types.ObjectId);
+  }
+}
+
+async function releasePromotionReserve(
+  campaignId: mongoose.Types.ObjectId,
+  ownerUserId: mongoose.Types.ObjectId,
+): Promise<void> {
+  const reserveExists = await WalletLedger.exists({
+    refId: campaignId,
+    reason: "promotion_reserve",
+  });
+  if (!reserveExists) return;
+
+  await creditWallet(
+    ownerUserId,
+    ACTIVATION_RESERVE_COINS,
+    "promotion_release",
+    "Promotion",
+    campaignId,
+    { phase: "complete" },
+    `promotion_release:${String(campaignId)}`,
   );
 }
 

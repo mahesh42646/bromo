@@ -10,10 +10,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {Check, ChevronLeft, Search, X} from 'lucide-react-native';
+import {Check, Search, X} from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {Screen} from '../../components/ui';
 import {useTheme} from '../../context/ThemeContext';
 import {useCreateDraft} from '../../create/CreateDraftContext';
 import {useAuth} from '../../context/AuthContext';
@@ -121,16 +121,14 @@ export function TagPeoplePickerScreen() {
   };
 
   return (
-    <ThemedSafeScreen style={{flex: 1, backgroundColor: palette.background}}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={10}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={[styles.title, {color: palette.foreground}]}>Tag people</Text>
+    <Screen
+      title="Tag people"
+      scroll={false}
+      right={
         <Pressable onPress={done} hitSlop={10}>
           <Text style={[styles.doneBtn, {color: palette.accent}]}>Done</Text>
         </Pressable>
-      </View>
+      }>
 
       <View style={[styles.searchBox, {backgroundColor: palette.card, borderColor: palette.border}]}>
         <Search size={20} color={palette.foregroundMuted} />
@@ -205,7 +203,7 @@ export function TagPeoplePickerScreen() {
           )}
         </>
       )}
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
   useWindowDimensions,
+  type ListRenderItemInfo,
 } from 'react-native';
 import { ThemedSafeScreen } from '../../components/ui/ThemedSafeScreen';
 import { useNavigation } from '@react-navigation/native';
@@ -459,7 +460,7 @@ export function MediaEditorScreen() {
   const navigation = useNavigation<Nav>();
   const { width: viewportW, height: viewportH } = useWindowDimensions();
   const { palette } = useTheme();
-  const styles = makeStyles(palette);
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const {
     draft,
     reorderAssets,
@@ -693,7 +694,7 @@ export function MediaEditorScreen() {
     );
   }
 
-  const renderPreviewCanvas = (
+  const renderPreviewCanvas = useCallback((
     item: typeof cur,
     isActive: boolean,
     extras: {
@@ -795,6 +796,68 @@ export function MediaEditorScreen() {
         </Pressable>
       ) : null}
     </View>
+  ), [
+    previewW,
+    previewHeight,
+    palette,
+    draft.playbackSpeed,
+    draft.textOverlays,
+    draft.stickers,
+    previewPaused,
+    previewMuted,
+    previewResize,
+    setVideoDurationSec,
+    setPreviewTimeSec,
+    markPreviewGateDone,
+    updateTextOverlay,
+    removeTextOverlay,
+    styles,
+  ]);
+
+  const renderCarouselItem = useCallback(
+    ({item, index}: ListRenderItemInfo<(typeof assets)[0]>) => {
+      const f = (draft.filterByAsset[index] ?? 'normal') as FilterId;
+      const r = draft.rotationByAsset[index] ?? 0;
+      const adj = draft.adjustByAsset[index] ?? {
+        ...DEFAULT_ADJUSTMENTS,
+      };
+      const ts = draft.trimStartByAsset[index] ?? 0;
+      const te = draft.trimEndByAsset[index] ?? 1;
+      const ao = adjustOverlayStyle(adj);
+      const wO = warmthOverlayStyle(adj);
+      const sO = saturationOverlayStyle(adj);
+      const vO = vignetteOverlayStyle(adj);
+      return (
+        <View
+          style={[
+            {alignItems: 'center', justifyContent: 'center'},
+            {width: viewportW, height: previewHeight},
+          ]}>
+          {renderPreviewCanvas(item, index === i, {
+            f,
+            r,
+            adjOverlay: ao,
+            wOv: wO,
+            sOv: sO,
+            vOv: vO,
+            ts,
+            te,
+          })}
+        </View>
+      );
+    },
+    [
+      assets,
+      draft.filterByAsset,
+      draft.rotationByAsset,
+      draft.adjustByAsset,
+      draft.trimStartByAsset,
+      draft.trimEndByAsset,
+      i,
+      viewportW,
+      previewHeight,
+      renderPreviewCanvas,
+    ],
   );
 
   return (
@@ -837,37 +900,7 @@ export function MediaEditorScreen() {
                 );
                 setActiveAssetIndex(idx);
               }}
-              renderItem={({ item, index }) => {
-                const f = (draft.filterByAsset[index] ?? 'normal') as FilterId;
-                const r = draft.rotationByAsset[index] ?? 0;
-                const adj = draft.adjustByAsset[index] ?? {
-                  ...DEFAULT_ADJUSTMENTS,
-                };
-                const ts = draft.trimStartByAsset[index] ?? 0;
-                const te = draft.trimEndByAsset[index] ?? 1;
-                const ao = adjustOverlayStyle(adj);
-                const wO = warmthOverlayStyle(adj);
-                const sO = saturationOverlayStyle(adj);
-                const vO = vignetteOverlayStyle(adj);
-                return (
-                  <View
-                    style={[
-                      styles.carouselPage,
-                      { width: viewportW, height: previewHeight },
-                    ]}>
-                    {renderPreviewCanvas(item, index === i, {
-                      f,
-                      r,
-                      adjOverlay: ao,
-                      wOv: wO,
-                      sOv: sO,
-                      vOv: vO,
-                      ts,
-                      te,
-                    })}
-                  </View>
-                );
-              }}
+              renderItem={renderCarouselItem}
             />
             <View style={styles.dots}>
               {assets.map((_, idx) => (

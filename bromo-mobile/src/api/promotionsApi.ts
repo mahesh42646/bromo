@@ -32,6 +32,8 @@ export type PromotionCampaign = {
   ownerUserId: string;
   contentType: PromotionContentType;
   contentId: string;
+  /** Present when promoted post has licensed-audio server pipeline state. */
+  contentAudioRemuxStatus?: 'none' | 'pending' | 'processing' | 'ready' | 'failed';
   status: PromotionStatus;
   budgetCoins: number;
   spentCoins: number;

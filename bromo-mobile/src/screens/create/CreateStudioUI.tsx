@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -9,6 +8,7 @@ import {
 } from 'react-native';
 import type { ThemePalette } from '../../theme/tokens';
 import type { CreateMode } from '../../create/createTypes';
+import {SegmentedTabs, Stepper} from '../../components/ui';
 
 const MODE_OPTIONS: Array<{ id: CreateMode; label: string }> = [
   { id: 'story', label: 'Story' },
@@ -26,52 +26,18 @@ type ModeSegmentProps = {
 };
 
 export function CreateModeSegment({
-  palette,
   mode,
   onChange,
   style,
 }: ModeSegmentProps) {
   return (
-    <View
-      style={[
-        ui.modeWrap,
-        {
-          backgroundColor: palette.surface,
-          borderColor: palette.border,
-        },
-        style,
-      ]}
-    >
-      {MODE_OPTIONS.map(option => {
-        const active = mode === option.id;
-        return (
-          <Pressable
-            key={option.id}
-            onPress={() => onChange(option.id)}
-            style={[
-              ui.modeChip,
-              {
-                backgroundColor: active ? palette.accent : 'transparent',
-              },
-            ]}
-          >
-            <Text
-              numberOfLines={1}
-              style={[
-                ui.modeText,
-                {
-                  color: active
-                    ? palette.accentForeground
-                    : palette.foregroundMuted,
-                },
-              ]}
-            >
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <SegmentedTabs
+      items={MODE_OPTIONS.map(option => ({label: option.label, value: option.id}))}
+      value={mode}
+      onChange={onChange}
+      variant="pill"
+      style={style}
+    />
   );
 }
 
@@ -82,54 +48,12 @@ type StudioProgressProps = {
 };
 
 export function StudioProgress({
-  palette,
   activeIndex,
   style,
 }: StudioProgressProps) {
   return (
-    <View style={[ui.progressWrap, style]}>
-      {FLOW_STEPS.map((step, index) => {
-        const active = index === activeIndex;
-        const complete = index < activeIndex;
-        return (
-          <View key={step} style={ui.progressItem}>
-            <View
-              style={[
-                ui.progressDot,
-                {
-                  backgroundColor:
-                    active || complete ? palette.accent : palette.surfaceHigh,
-                  borderColor: active ? palette.accent : palette.border,
-                },
-              ]}
-            />
-            <Text
-              numberOfLines={1}
-              style={[
-                ui.progressText,
-                {
-                  color: active ? palette.foreground : palette.foregroundSubtle,
-                },
-              ]}
-            >
-              {step}
-            </Text>
-            {index < FLOW_STEPS.length - 1 ? (
-              <View
-                style={[
-                  ui.progressLine,
-                  {
-                    backgroundColor:
-                      index < activeIndex
-                        ? palette.accent
-                        : palette.borderFaint,
-                  },
-                ]}
-              />
-            ) : null}
-          </View>
-        );
-      })}
+    <View style={style}>
+      <Stepper currentStep={activeIndex + 1} total={FLOW_STEPS.length} labels={FLOW_STEPS} variant="bars" />
     </View>
   );
 }

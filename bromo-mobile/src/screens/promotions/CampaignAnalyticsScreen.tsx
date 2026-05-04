@@ -1,14 +1,13 @@
-import React, {useEffect, useState} from 'react';
-import {ActivityIndicator, Pressable, ScrollView, Text, View} from 'react-native';
-import {useNavigation, useRoute} from '@react-navigation/native';
-import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import React, {useCallback, useEffect, useState} from 'react';
+import {ActivityIndicator, Text, View} from 'react-native';
+import {useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
-import {BarChart2, ChevronLeft, Eye, Heart, MousePointer, TrendingUp, Users} from 'lucide-react-native';
+import {BarChart2, Eye, Heart, MousePointer, TrendingUp, Users} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 import {getCampaignAnalytics, type CampaignAnalytics, type PromotionCampaign} from '../../api/promotionsApi';
+import {Screen} from '../../components/ui';
 
-type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'CampaignAnalytics'>;
 
 function StatCard({icon, label, value, color}: {
@@ -31,7 +30,6 @@ function StatCard({icon, label, value, color}: {
 }
 
 export function CampaignAnalyticsScreen() {
-  const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const {campaignId} = route.params;
   const {palette} = useTheme();
@@ -39,8 +37,8 @@ export function CampaignAnalyticsScreen() {
   const [campaign, setCampaign] = useState<PromotionCampaign | null>(null);
   const [analytics, setAnalytics] = useState<CampaignAnalytics | null>(null);
 
-  useEffect(() => {
-    getCampaignAnalytics(campaignId)
+  const loadAnalytics = useCallback(async () => {
+    await getCampaignAnalytics(campaignId)
       .then(data => {
         setCampaign(data.campaign);
         setAnalytics(data.analytics);
@@ -49,11 +47,15 @@ export function CampaignAnalyticsScreen() {
       .finally(() => setLoading(false));
   }, [campaignId]);
 
+  useEffect(() => {
+    void loadAnalytics();
+  }, [loadAnalytics]);
+
   if (loading) {
     return (
-      <View style={{flex: 1, backgroundColor: palette.background, alignItems: 'center', justifyContent: 'center'}}>
+      <Screen title="Campaign Analytics" right={<BarChart2 size={20} color={palette.primary} />}>
         <ActivityIndicator color={palette.primary} size="large" />
-      </View>
+      </Screen>
     );
   }
 
@@ -62,20 +64,12 @@ export function CampaignAnalyticsScreen() {
     : 0;
 
   return (
-    <View style={{flex: 1, backgroundColor: palette.background}}>
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
-        borderBottomWidth: 1, borderBottomColor: palette.border,
-      }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{marginRight: 12}}>
-          <ChevronLeft size={24} color={palette.foreground} />
-        </Pressable>
-        <Text style={{flex: 1, color: palette.foreground, fontSize: 18, fontWeight: '900'}}>Campaign Analytics</Text>
-        <BarChart2 size={20} color={palette.primary} />
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{padding: 16, gap: 16}}>
+    <Screen
+      title="Campaign Analytics"
+      right={<BarChart2 size={20} color={palette.primary} />}
+      scroll
+      onRefresh={loadAnalytics}
+      contentContainerStyle={{padding: 16, gap: 16}}>
         {/* Budget overview */}
         {analytics && campaign && (
           <View style={{
@@ -170,7 +164,6 @@ export function CampaignAnalyticsScreen() {
         )}
 
         <View style={{height: 32}} />
-      </ScrollView>
-    </View>
+    </Screen>
   );
 }

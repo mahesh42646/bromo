@@ -8,6 +8,11 @@ type Props = {
   message: string;
   confirmLabel?: string;
   onConfirm: () => void;
+  /** When set, shows a secondary cancel control (two-step confirms). */
+  cancelLabel?: string;
+  onCancel?: () => void;
+  /** Primary button uses destructive styling (e.g. Discard). */
+  destructiveConfirm?: boolean;
 };
 
 export function ThemedConfirmModal({
@@ -16,15 +21,19 @@ export function ThemedConfirmModal({
   message,
   confirmLabel = 'OK',
   onConfirm,
+  cancelLabel = 'Cancel',
+  onCancel,
+  destructiveConfirm,
 }: Props) {
   const {palette} = useTheme();
+  const twoStep = Boolean(onCancel);
 
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onConfirm}>
+      onRequestClose={twoStep ? () => onCancel?.() : onConfirm}>
       <View
         style={{
           flex: 1,
@@ -59,22 +68,53 @@ export function ThemedConfirmModal({
             }}>
             {message}
           </Text>
-          <Pressable
-            onPress={onConfirm}
+          <View
             style={{
               marginTop: 6,
-              alignSelf: 'flex-end',
-              minWidth: 96,
-              alignItems: 'center',
-              borderRadius: 10,
-              backgroundColor: palette.primary,
-              paddingHorizontal: 16,
-              paddingVertical: 10,
+              flexDirection: 'row',
+              justifyContent: twoStep ? 'space-between' : 'flex-end',
+              gap: 10,
             }}>
-            <Text style={{color: palette.primaryForeground, fontWeight: '800'}}>
-              {confirmLabel}
-            </Text>
-          </Pressable>
+            {twoStep ? (
+              <Pressable
+                onPress={onCancel}
+                style={{
+                  minWidth: 96,
+                  alignItems: 'center',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                }}>
+                <Text style={{color: palette.foreground, fontWeight: '800'}}>
+                  {cancelLabel}
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={onConfirm}
+              style={{
+                minWidth: 96,
+                alignItems: 'center',
+                borderRadius: 10,
+                backgroundColor: destructiveConfirm
+                  ? palette.destructive
+                  : palette.primary,
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+              }}>
+              <Text
+                style={{
+                  color: destructiveConfirm
+                    ? palette.destructiveForeground ?? '#fff'
+                    : palette.primaryForeground,
+                  fontWeight: '800',
+                }}>
+                {confirmLabel}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </Modal>

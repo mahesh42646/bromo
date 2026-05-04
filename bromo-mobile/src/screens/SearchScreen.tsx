@@ -21,6 +21,7 @@ import {Badge} from '../components/ui/Badge';
 import {RefreshableScrollView, Screen, SegmentedTabs} from '../components/ui';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {searchUsers, getUserSuggestions, getNearbyUsers, updateMyLocation, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
+import {followSourceForContext} from '../lib/followSource';
 import {getExplore, type Post} from '../api/postsApi';
 import {authedFetch} from '../api/authApi';
 import {fetchAds, prefetchAdMedia, type Ad} from '../api/adsApi';
@@ -86,7 +87,7 @@ function PersonRow({
         await unfollowUser(user._id);
         setFollowStatus('none');
       } else {
-        const res = await followUser(user._id, {kind: 'search'});
+        const res = await followUser(user._id, followSourceForContext({surface: 'search'}));
         setFollowStatus(res.status === 'pending' ? 'requested' : 'following');
       }
     } catch {}

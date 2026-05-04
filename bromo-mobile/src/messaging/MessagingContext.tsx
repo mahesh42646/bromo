@@ -125,6 +125,7 @@ type MessagingContextValue = {
   lastReadAt: Record<string, number>;
   myDbUserId: string | null;
   loadingConversations: boolean;
+  refreshConversations: () => Promise<void>;
   ensureThread: (peerId: string) => void;
   openThreadForUser: (userId: string, userDisplayName: string, userAvatar: string, userUsername: string) => Promise<string>;
   setPeerLabel: (peerId: string, label: UserLabelId) => void;
@@ -158,40 +159,46 @@ export function MessagingProvider({children, myDbUserId}: Props) {
   const [loadingConversations, setLoadingConversations] = useState(false);
   const loadedThreads = useRef<Set<string>>(new Set());
 
-  // Load real conversations when user is logged in
-  useEffect(() => {
+  const refreshConversations = useCallback(async () => {
     if (!myDbUserId) return;
 
     setLoadingConversations(true);
-    getConversations()
-      .then(({conversations}) => {
-        const newPeers: Record<string, ChatPeer> = {};
-        const newOrder: string[] = [];
-        const newMessages: Record<string, ChatMessage[]> = {};
-        const newLastRead: Record<string, number> = {};
-        const newLastTouched: Record<string, number> = {};
+    try {
+      const {conversations} = await getConversations();
+      const newPeers: Record<string, ChatPeer> = {};
+      const newOrder: string[] = [];
+      const newMessages: Record<string, ChatMessage[]> = {};
+      const newLastRead: Record<string, number> = {};
+      const newLastTouched: Record<string, number> = {};
 
-        for (const conv of conversations) {
-          const peer = apiConvToPeer(conv, myDbUserId);
-          newPeers[conv._id] = peer;
-          newOrder.push(conv._id);
-          newMessages[conv._id] = [];
-          newLastRead[conv._id] = Date.now() - (conv.unreadCount > 0 ? 999999 : 0);
-          newLastTouched[conv._id] = new Date(conv.lastMessageAt).getTime();
-        }
+      for (const conv of conversations) {
+        const peer = apiConvToPeer(conv, myDbUserId);
+        newPeers[conv._id] = peer;
+        newOrder.push(conv._id);
+        newMessages[conv._id] = [];
+        newLastRead[conv._id] = Date.now() - (conv.unreadCount > 0 ? 999999 : 0);
+        newLastTouched[conv._id] = new Date(conv.lastMessageAt).getTime();
+      }
 
-        setPeers(prev => ({...prev, ...newPeers}));
-        setThreadOrder(prev => {
-          const existing = prev.filter(id => !newPeers[id]);
-          return [...newOrder, ...existing];
-        });
-        setMessagesByPeer(prev => ({...newMessages, ...prev}));
-        setLastReadAt(prev => ({...newLastRead, ...prev}));
-        setLastTouched(prev => ({...newLastTouched, ...prev}));
-      })
-      .catch(() => {})
-      .finally(() => setLoadingConversations(false));
+      setPeers(prev => ({...prev, ...newPeers}));
+      setThreadOrder(prev => {
+        const existing = prev.filter(id => !newPeers[id]);
+        return [...newOrder, ...existing];
+      });
+      setMessagesByPeer(prev => ({...newMessages, ...prev}));
+      setLastReadAt(prev => ({...newLastRead, ...prev}));
+      setLastTouched(prev => ({...newLastTouched, ...prev}));
+    } catch {
+      // Keep local/mock conversations available if the API is unreachable.
+    } finally {
+      setLoadingConversations(false);
+    }
   }, [myDbUserId]);
+
+  // Load real conversations when user is logged in
+  useEffect(() => {
+    void refreshConversations();
+  }, [refreshConversations]);
 
   const ensureThread = useCallback(
     (peerId: string) => {
@@ -429,13 +436,13 @@ export function MessagingProvider({children, myDbUserId}: Props) {
 
   const value = useMemo(
     () => ({
-      peers, threadOrder, messagesByPeer, lastReadAt, myDbUserId, loadingConversations,
+      peers, threadOrder, messagesByPeer, lastReadAt, myDbUserId, loadingConversations, refreshConversations,
       ensureThread, openThreadForUser, setPeerLabel, markRead, sendMessage, finalizeOutgoing,
       setDelivery, editTextMessage, unsendMessage, toggleReaction, forwardMessage,
       unreadForPeer, searchDirectory, filterThreads,
     }),
     [
-      peers, threadOrder, messagesByPeer, lastReadAt, myDbUserId, loadingConversations,
+      peers, threadOrder, messagesByPeer, lastReadAt, myDbUserId, loadingConversations, refreshConversations,
       ensureThread, openThreadForUser, setPeerLabel, markRead, sendMessage, finalizeOutgoing,
       setDelivery, editTextMessage, unsendMessage, toggleReaction, forwardMessage,
       unreadForPeer, searchDirectory, filterThreads,

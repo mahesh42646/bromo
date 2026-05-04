@@ -3,20 +3,25 @@ import {
   requireFirebaseToken,
   type FirebaseAuthedRequest,
 } from "../middleware/firebaseAuth.js";
+import { MusicTrack } from "../models/MusicTrack.js";
 
 export const musicRouter = Router();
 
-type CatalogRow = { id: string; title: string; artist: string; durationSec: number; license: string };
-
-/** Keep in sync with `src/data/musicCatalog.json` (seed / docs). */
-const BUILTIN_CATALOG: CatalogRow[] = [
-  { id: "cat_1", title: "Studio Pulse", artist: "Bromo Sound", durationSec: 180, license: "catalog" },
-  { id: "cat_2", title: "Night Drive", artist: "Bromo Sound", durationSec: 210, license: "catalog" },
-  { id: "cat_3", title: "Morning Lift", artist: "Bromo Sound", durationSec: 195, license: "catalog" },
-];
-
-function loadCatalog(): CatalogRow[] {
-  return BUILTIN_CATALOG;
+function mapTrack(row: {
+  _id: unknown;
+  title: string;
+  artist: string;
+  durationSec: number;
+  license: string;
+}) {
+  return {
+    id: String(row._id),
+    title: row.title,
+    artist: row.artist,
+    durationSec: row.durationSec ?? 0,
+    license: row.license === "original" ? "original" : "catalog",
+    source: "catalog",
+  };
 }
 
 /** GET /music/search?q= */
@@ -24,22 +29,19 @@ musicRouter.get(
   "/search",
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
-    const q = String(req.query.q ?? "").trim().toLowerCase();
-    const rows = loadCatalog().filter(
-      (r) =>
-        !q ||
-        r.title.toLowerCase().includes(q) ||
-        r.artist.toLowerCase().includes(q),
-    );
+    const q = String(req.query.q ?? "").trim();
+    const rx = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
+    const filter = rx
+      ? {
+          active: true,
+          $or: [{ title: rx }, { artist: rx }],
+        }
+      : { active: true };
+
+    const rows = await MusicTrack.find(filter).sort({ title: 1 }).limit(80).lean();
+
     res.json({
-      tracks: rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        artist: r.artist,
-        durationSec: r.durationSec,
-        license: r.license,
-        source: "catalog",
-      })),
+      tracks: rows.map(mapTrack),
     });
   },
 );
@@ -49,16 +51,9 @@ musicRouter.get(
   "/trending",
   requireFirebaseToken,
   async (_req: FirebaseAuthedRequest, res: Response) => {
-    const rows = loadCatalog().slice(0, 10);
+    const rows = await MusicTrack.find({ active: true }).sort({ createdAt: -1 }).limit(10).lean();
     res.json({
-      tracks: rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        artist: r.artist,
-        durationSec: r.durationSec,
-        license: r.license,
-        source: "catalog",
-      })),
+      tracks: rows.map(mapTrack),
     });
   },
 );

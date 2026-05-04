@@ -19,6 +19,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
+import {followSourceForContext} from '../lib/followSource';
 import { EditMetaLayers } from '../components/media/EditMetaLayers';
 import { PostVideoWithClientMeta } from '../components/media/PostVideoWithClientMeta';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -264,7 +265,10 @@ const PostCard = React.memo(function PostCard({
         await unfollowUser(post.author._id);
         setFollowing(false);
       } else {
-        await followUser(post.author._id, {kind: 'post', refId: post._id});
+        await followUser(
+          post.author._id,
+          followSourceForContext({surface: 'home_feed', postId: post._id}),
+        );
         setFollowing(true);
       }
     } catch { }
@@ -1014,7 +1018,7 @@ function SuggestionCard({ user, onFollowToggle, navigation, palette, borderRadiu
         await unfollowUser(user._id);
         setFollowing(false);
       } else {
-        await followUser(user._id, {kind: 'discover'});
+        await followUser(user._id, followSourceForContext({surface: 'profile_suggestions'}));
         setFollowing(true);
       }
       onFollowToggle(user._id, !following);

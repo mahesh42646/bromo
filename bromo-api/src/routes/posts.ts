@@ -36,6 +36,7 @@ import {
 } from "../utils/uploadFiles.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
 import { ensureOriginalAudioForPost } from "../services/originalAudio.js";
+import { enqueueLicensedAudioRemuxForPost } from "../services/audioRemuxEnqueue.js";
 import { enqueueMediaJob } from "../workers/mediaWorker.js";
 import { authorPostsCountWasBumped } from "../utils/authorPostsCount.js";
 import { normalizeFeedCategory } from "../utils/feedCategory.js";
@@ -2707,6 +2708,7 @@ postsRouter.post(
         carouselItems: carouselItemsRaw,
         originalAudioId: originalAudioIdRaw,
         remixOfPostId: remixOfPostIdRaw,
+        musicTrackId: musicTrackIdRaw,
         poll: pollRaw,
         feedCategory: feedCategoryRaw,
         scheduledFor: scheduledForRaw,
@@ -2730,6 +2732,7 @@ postsRouter.post(
         carouselItems?: unknown[];
         originalAudioId?: string;
         remixOfPostId?: string;
+        musicTrackId?: string;
         poll?: { question?: string; options?: string[] };
         feedCategory?: string;
         scheduledFor?: string;
@@ -2814,6 +2817,7 @@ postsRouter.post(
         .filter((id) => String(id) !== String(user._id));
       const originalAudioId = objectIdOrNull(originalAudioIdRaw);
       const remixOfPostId = objectIdOrNull(remixOfPostIdRaw);
+      const musicTrackId = objectIdOrNull(musicTrackIdRaw);
       let remixCredit: Record<string, unknown> | undefined;
       if (remixOfPostId) {
         const original = await Post.findOne({_id: remixOfPostId, type: "reel", ...VISIBLE_POST})
@@ -2848,6 +2852,7 @@ postsRouter.post(
         ...(clientEditMeta ? { clientEditMeta } : {}),
         ...(originalAudioId ? { originalAudioId } : {}),
         ...(remixOfPostId ? { remixOfPostId } : {}),
+        ...(musicTrackId ? { musicTrackId } : {}),
         ...(remixCredit ? { remixCredit } : {}),
         expiresAt,
         isDeleted: false,
@@ -2919,6 +2924,12 @@ postsRouter.post(
             ownerId: user._id,
             sourceRelPath: rel,
           });
+          if (musicTrackId) {
+            void enqueueLicensedAudioRemuxForPost(
+              post._id as mongoose.Types.ObjectId,
+              rel,
+            ).catch(() => null);
+          }
         }
       }
 

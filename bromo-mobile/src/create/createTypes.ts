@@ -44,7 +44,10 @@ export type AudioTrack = {
   title: string;
   artist: string;
   url?: string;
+  /** Community original sound (Mongo id). */
   originalAudioId?: string;
+  /** Licensed catalog track (Mongo id) — server may remux into final video. */
+  musicTrackId?: string;
   sourcePostId?: string;
 };
 

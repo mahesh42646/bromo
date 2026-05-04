@@ -7,7 +7,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -36,10 +35,11 @@ import {
   X,
   ShieldCheck,
   QrCode,
+  Bell,
 } from 'lucide-react-native';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {useTheme} from '../../context/ThemeContext';
-import {Screen} from '../../components/ui/Screen';
+import {Chip, RefreshableScrollView, Screen, SegmentedTabs} from '../../components/ui';
 import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
 import {
   STORE_CATEGORIES,
@@ -48,6 +48,7 @@ import {
   getStoreDashboard,
   getStoreLeads,
   listProducts,
+  sendStorePush,
   updateProduct,
   updateStore,
   type Store,
@@ -150,6 +151,10 @@ export function MyStoreDashboardScreen() {
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
   const [productDraft, setProductDraft] = useState<ProductDraft>(DEFAULT_PRODUCT_DRAFT);
   const [savingProduct, setSavingProduct] = useState(false);
+  const [pushModalOpen, setPushModalOpen] = useState(false);
+  const [pushTitle, setPushTitle] = useState('');
+  const [pushBody, setPushBody] = useState('');
+  const [pushSending, setPushSending] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -176,6 +181,36 @@ export function MyStoreDashboardScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  const submitStorePush = useCallback(async () => {
+    if (!store) return;
+    const body = pushBody.trim();
+    if (!body) {
+      Alert.alert('Required', 'Message is required');
+      return;
+    }
+    setPushSending(true);
+    try {
+      const out = await sendStorePush(store._id, {
+        title: pushTitle.trim() || store.name,
+        body,
+      });
+      Alert.alert(
+        'Notification sent',
+        `Delivered to ${out.sentTo} users.${
+          out.remaining != null ? ` Remaining this month: ${out.remaining}.` : ''
+        }`,
+      );
+      setPushModalOpen(false);
+      setPushTitle('');
+      setPushBody('');
+      void loadData();
+    } catch (e) {
+      Alert.alert('Push failed', e instanceof Error ? e.message : 'Try again');
+    } finally {
+      setPushSending(false);
+    }
+  }, [loadData, pushBody, pushTitle, store]);
 
   useFocusEffect(useCallback(() => { void loadData(); }, [loadData]));
 
@@ -374,6 +409,17 @@ export function MyStoreDashboardScreen() {
   }
 
   const storeLocked = store.approvalStatus !== 'approved' || !store.isActive;
+  const planId = store.subscription.planId;
+  const monthKeyNow = new Date().toISOString().slice(0, 7);
+  const pushNu = store.notificationUsage;
+  const pushSentThisMonth = pushNu?.monthKey === monthKeyNow ? pushNu.sentCount : 0;
+  const pushLimit =
+    planId === 'basic' ? 5 : planId === 'premium' ? 50 : planId === 'gold' ? null : 0;
+  const canUseStorePush =
+    !storeLocked &&
+    store.subscription.status === 'active' &&
+    (planId === 'basic' || planId === 'premium' || planId === 'gold');
+
   const openProductCreate = () => {
     if (storeLocked) {
       navigation.navigate('CreateStore');
@@ -399,9 +445,13 @@ export function MyStoreDashboardScreen() {
       }>
       <StatusBar barStyle="light-content" />
 
-      <ScrollView
+      <RefreshableScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadData(); }} tintColor={palette.primary} />}>
+        refreshing={refreshing}
+        onRefresh={() => {
+          setRefreshing(true);
+          void loadData();
+        }}>
 
         {/* Store Profile Card */}
         <View>
@@ -507,6 +557,47 @@ export function MyStoreDashboardScreen() {
           ) : null}
         </View>
 
+        {canUseStorePush ? (
+          <View
+            style={{
+              marginHorizontal: 16,
+              marginBottom: 14,
+              padding: 14,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: palette.border,
+              backgroundColor: palette.glassFaint,
+              gap: 8,
+            }}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+              <Bell size={18} color={palette.primary} />
+              <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '900'}}>
+                Customer notifications
+              </Text>
+            </View>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 12, lineHeight: 18}}>
+              Send a push to people who favorited your store.{' '}
+              {pushLimit != null
+                ? `Quota: ${pushSentThisMonth} / ${pushLimit} this month.`
+                : 'Unlimited sends on Gold.'}
+            </Text>
+            <Pressable
+              onPress={() => setPushModalOpen(true)}
+              style={{
+                alignSelf: 'flex-start',
+                marginTop: 4,
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                borderRadius: 12,
+                backgroundColor: palette.primary,
+              }}>
+              <Text style={{color: palette.primaryForeground, fontWeight: '800', fontSize: 13}}>
+                Compose push
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {/* Analytics row */}
         <View style={[s.analyticsRow, {borderColor: palette.glassMid}]}>
           {[
@@ -573,30 +664,13 @@ export function MyStoreDashboardScreen() {
         ) : (
           <>
             {/* Category filter */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.catScrollContent}>
-              {categories.map(cat => {
-                const active = activeCategory === cat;
-                return (
-                  <Pressable
-                    key={cat}
-                    onPress={() => setActiveCategory(cat)}
-                    style={[
-                      s.catPill,
-                      {
-                        backgroundColor: active ? palette.primary : palette.glassFaint,
-                        borderColor: active ? palette.primary : palette.border,
-                      },
-                    ]}>
-                    <Text style={{color: active ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
-                      {cat}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            <SegmentedTabs
+              items={categories.map(cat => ({label: cat, value: cat}))}
+              value={activeCategory}
+              onChange={setActiveCategory}
+              variant="pill"
+              style={{marginTop: 8}}
+            />
 
             {/* Products grid */}
             <View style={s.productsSection}>
@@ -641,7 +715,93 @@ export function MyStoreDashboardScreen() {
         )}
 
         <View style={{height: 32}} />
-      </ScrollView>
+      </RefreshableScrollView>
+
+      <Modal
+        visible={pushModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !pushSending && setPushModalOpen(false)}>
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: palette.overlay,
+            justifyContent: 'center',
+            paddingHorizontal: 20,
+          }}
+          onPress={() => !pushSending && setPushModalOpen(false)}>
+          <Pressable
+            onPress={e => e.stopPropagation()}
+            style={{
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: palette.border,
+              backgroundColor: palette.card,
+              padding: 16,
+              gap: 12,
+            }}>
+            <Text style={{color: palette.foreground, fontSize: 17, fontWeight: '900'}}>
+              Compose push
+            </Text>
+            <Text style={{color: palette.foregroundSubtle, fontSize: 12}}>
+              Sent to users who favorited your store (plan quota applies).
+            </Text>
+            <TextInput
+              value={pushTitle}
+              onChangeText={setPushTitle}
+              placeholder="Title (optional)"
+              placeholderTextColor={palette.placeholder}
+              style={{
+                borderWidth: 1,
+                borderColor: palette.border,
+                borderRadius: 10,
+                padding: 12,
+                color: palette.foreground,
+                backgroundColor: palette.input,
+              }}
+            />
+            <TextInput
+              value={pushBody}
+              onChangeText={setPushBody}
+              placeholder="Message"
+              placeholderTextColor={palette.placeholder}
+              multiline
+              style={{
+                borderWidth: 1,
+                borderColor: palette.border,
+                borderRadius: 10,
+                padding: 12,
+                minHeight: 100,
+                color: palette.foreground,
+                backgroundColor: palette.input,
+                textAlignVertical: 'top',
+              }}
+            />
+            <View style={{flexDirection: 'row', justifyContent: 'flex-end', gap: 10}}>
+              <Pressable
+                disabled={pushSending}
+                onPress={() => setPushModalOpen(false)}
+                style={{paddingHorizontal: 14, paddingVertical: 10}}>
+                <Text style={{color: palette.foreground, fontWeight: '700'}}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                disabled={pushSending}
+                onPress={() => void submitStorePush()}
+                style={{
+                  paddingHorizontal: 18,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  backgroundColor: palette.primary,
+                  opacity: pushSending ? 0.6 : 1,
+                }}>
+                <Text style={{color: palette.primaryForeground, fontWeight: '800'}}>
+                  {pushSending ? 'Sending…' : 'Send'}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <StoreEditModal
         visible={storeEditorVisible}
@@ -870,25 +1030,15 @@ function StoreEditModal({
 
             <Text style={[s.editorLabel, {color: palette.foregroundSubtle}]}>Category</Text>
             <View style={s.editorChipGrid}>
-              {STORE_CATEGORIES.map(cat => {
-                const selected = draft.category === cat;
-                return (
-                  <Pressable
-                    key={cat}
-                    onPress={() => onChange(prev => ({...prev, category: cat}))}
-                    style={[
-                      s.editorChip,
-                      {
-                        backgroundColor: selected ? palette.primary : palette.glassFaint,
-                        borderColor: selected ? palette.primary : palette.border,
-                      },
-                    ]}>
-                    <Text style={{color: selected ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
-                      {cat}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              {STORE_CATEGORIES.map(cat => (
+                <Chip
+                  key={cat}
+                  label={cat}
+                  compact
+                  selected={draft.category === cat}
+                  onPress={() => onChange(prev => ({...prev, category: cat}))}
+                />
+              ))}
             </View>
 
             <View style={[s.editorToggle, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
@@ -976,25 +1126,15 @@ function ProductEditModal({
 
             <Text style={[s.editorLabel, {color: palette.foregroundSubtle}]}>Category</Text>
             <View style={s.editorChipGrid}>
-              {PRODUCT_CATEGORIES.map(cat => {
-                const selected = draft.category === cat;
-                return (
-                  <Pressable
-                    key={cat}
-                    onPress={() => onChange(prev => ({...prev, category: cat}))}
-                    style={[
-                      s.editorChip,
-                      {
-                        backgroundColor: selected ? palette.primary : palette.glassFaint,
-                        borderColor: selected ? palette.primary : palette.border,
-                      },
-                    ]}>
-                    <Text style={{color: selected ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
-                      {cat}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              {PRODUCT_CATEGORIES.map(cat => (
+                <Chip
+                  key={cat}
+                  label={cat}
+                  compact
+                  selected={draft.category === cat}
+                  onPress={() => onChange(prev => ({...prev, category: cat}))}
+                />
+              ))}
             </View>
 
             <EditorField label="Tags" value={draft.tags} palette={palette} onChangeText={tags => onChange(prev => ({...prev, tags}))} />
@@ -1341,12 +1481,6 @@ const s = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 14,
-  },
-  editorChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
   },
   editorToggle: {
     borderWidth: 1,

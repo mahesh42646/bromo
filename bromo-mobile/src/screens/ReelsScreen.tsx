@@ -54,10 +54,13 @@ import type {MainTabParamList} from '../navigation/appStackParamList';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {CoinEarnToast} from '../components/ui/CoinEarnToast';
-import {Screen} from '../components/ui';
+import {Screen, SegmentedTabs} from '../components/ui';
+import {ActionSheet} from '../components/ui/ActionSheet';
+import {ThemedConfirmModal} from '../components/ui/ThemedConfirmModal';
 import {addViewCoinListener} from '../lib/viewRewardEvents';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {blockUser, followUser, unfollowUser} from '../api/followApi';
+import {followSourceForContext} from '../lib/followSource';
 import {
   getPost,
   getReels,
@@ -156,13 +159,40 @@ function ReelMoreSheet({
   onReelDeleted?: (postId: string) => void;
   isOwnReel: boolean;
 }) {
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+  const [infoModal, setInfoModal] = useState<{title: string; message: string} | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+
   const groupStyle = {
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden' as const,
   };
 
+  const submitReport = useCallback(
+    (reason: Parameters<typeof reportPostStrict>[1]) => {
+      if (!reel) return;
+      reportPostStrict(reel._id, reason)
+        .then(() => {
+          setReportOpen(false);
+          setInfoModal({
+            title: 'Reported',
+            message: 'Thanks — our team will review it.',
+          });
+        })
+        .catch(e =>
+          setInfoModal({
+            title: 'Report',
+            message: e instanceof Error ? e.message : 'Try again.',
+          }),
+        );
+    },
+    [reel],
+  );
+
   return (
+    <>
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end'}} onPress={onClose}>
         <Pressable
@@ -193,9 +223,19 @@ function ReelMoreSheet({
                 toggleSavePost(reel._id)
                   .then(({saved}) => {
                     onClose();
-                    Alert.alert(saved ? 'Saved' : 'Removed', saved ? 'Added to your saved posts.' : 'Removed from saved.');
+                    setInfoModal({
+                      title: saved ? 'Saved' : 'Removed',
+                      message: saved
+                        ? 'Added to your saved posts.'
+                        : 'Removed from saved.',
+                    });
                   })
-                  .catch(e => Alert.alert('Save', e instanceof Error ? e.message : 'Try again.'));
+                  .catch(e =>
+                    setInfoModal({
+                      title: 'Save',
+                      message: e instanceof Error ? e.message : 'Try again.',
+                    }),
+                  );
               }}>
               <Bookmark size={22} color={palette.foreground} />
               <Text style={{color: palette.foregroundMuted, fontSize: 11, marginTop: 4}}>Save</Text>
@@ -297,24 +337,7 @@ function ReelMoreSheet({
                   }}
                   onPress={() => {
                     onClose();
-                    Alert.alert(
-                      'Delete?',
-                      "Are you sure you want to delete? This can't be undone.",
-                      [
-                        {text: 'Cancel', style: 'cancel'},
-                        {
-                          text: 'Delete',
-                          style: 'destructive',
-                          onPress: () => {
-                            deletePost(reel._id)
-                              .then(() => {
-                                onReelDeleted?.(reel._id);
-                              })
-                              .catch(e => Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'));
-                          },
-                        },
-                      ],
-                    );
+                    setDeleteConfirmOpen(true);
                   }}>
                   <Trash2 size={20} color={palette.destructive} />
                   <Text style={{color: palette.destructive, fontSize: 15, fontWeight: '600', marginLeft: 8}}>Delete reel</Text>
@@ -372,9 +395,17 @@ function ReelMoreSheet({
                   sendReelFeedback(reel._id, 'interested')
                     .then(() => {
                       onClose();
-                      Alert.alert('Thanks', "We'll show you more reels like this.");
+                      setInfoModal({
+                        title: 'Thanks',
+                        message: "We'll show you more reels like this.",
+                      });
                     })
-                    .catch(e => Alert.alert('Feedback', e instanceof Error ? e.message : 'Try again.'));
+                    .catch(e =>
+                      setInfoModal({
+                        title: 'Feedback',
+                        message: e instanceof Error ? e.message : 'Try again.',
+                      }),
+                    );
                 }}>
                 <CheckCircle2 size={20} color={palette.foreground} />
                 <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Interested</Text>
@@ -394,9 +425,17 @@ function ReelMoreSheet({
                     .then(() => {
                       onRemoveFromFeed(reel._id);
                       onClose();
-                      Alert.alert('Updated', "We won't push similar reels as hard in your feed.");
+                      setInfoModal({
+                        title: 'Updated',
+                        message: "We won't push similar reels as hard in your feed.",
+                      });
                     })
-                    .catch(e => Alert.alert('Feedback', e instanceof Error ? e.message : 'Try again.'));
+                    .catch(e =>
+                      setInfoModal({
+                        title: 'Feedback',
+                        message: e instanceof Error ? e.message : 'Try again.',
+                      }),
+                    );
                 }}>
                 <XCircle size={20} color={palette.foreground} />
                 <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Not interested</Text>
@@ -412,69 +451,8 @@ function ReelMoreSheet({
                 }}
                 onPress={() => {
                   if (!reel) return;
-                  Alert.alert('Report', 'What is wrong with this reel?', [
-                    {text: 'Cancel', style: 'cancel'},
-                    {
-                      text: 'Spam',
-                      onPress: () =>
-                        reportPostStrict(reel._id, 'spam')
-                          .then(() => {
-                            onClose();
-                            Alert.alert('Reported', 'Thanks — our team will review it.');
-                          })
-                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
-                    },
-                    {
-                      text: 'Harassment',
-                      onPress: () =>
-                        reportPostStrict(reel._id, 'harassment')
-                          .then(() => {
-                            onClose();
-                            Alert.alert('Reported', 'Thanks — our team will review it.');
-                          })
-                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
-                    },
-                    {
-                      text: 'Nudity / sexual',
-                      onPress: () =>
-                        reportPostStrict(reel._id, 'nudity')
-                          .then(() => {
-                            onClose();
-                            Alert.alert('Reported', 'Thanks — our team will review it.');
-                          })
-                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
-                    },
-                    {
-                      text: 'Copied/Stolen song',
-                      onPress: () =>
-                        reportPostStrict(reel._id, 'copied_stolen_song')
-                          .then(() => {
-                            onClose();
-                            Alert.alert('Reported', 'Thanks — our team will review it.');
-                          })
-                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
-                    },
-                    {
-                      text: 'Irrelevant/Spam content',
-                      onPress: () =>
-                        reportPostStrict(reel._id, 'irrelevant_spam_content')
-                          .then(() => {
-                            onClose();
-                            Alert.alert('Reported', 'Thanks — our team will review it.');
-                          })
-                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
-                    },
-                    {
-                      text: 'Other',
-                      onPress: () =>
-                        reportPostStrict(reel._id, 'other')
-                          .then(() => {
-                            onClose();
-                            Alert.alert('Reported', 'Thanks — our team will review it.');
-                          })
-                          .catch(e => Alert.alert('Report', e instanceof Error ? e.message : 'Try again.')),
-                    },
-                  ]);
+                  onClose();
+                  setReportOpen(true);
                 }}>
                 <Flag size={20} color={palette.destructive} />
                 <Text style={{color: palette.destructive, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Report</Text>
@@ -491,21 +469,8 @@ function ReelMoreSheet({
                   }}
                   onPress={() => {
                     if (!reel) return;
-                    Alert.alert('Block account?', `Hide all reels from @${reel.author.username}?`, [
-                      {text: 'Cancel', style: 'cancel'},
-                      {
-                        text: 'Block',
-                        style: 'destructive',
-                        onPress: () => {
-                          blockUser(reel.author._id)
-                            .then(() => {
-                              onClose();
-                              onRemoveFromFeed(reel._id);
-                            })
-                            .catch(e => Alert.alert('Block failed', e instanceof Error ? e.message : 'Try again.'));
-                        },
-                      },
-                    ]);
+                    onClose();
+                    setBlockConfirmOpen(true);
                   }}>
                   <X size={20} color={palette.destructive} />
                   <Text style={{color: palette.destructive, fontSize: 15, fontWeight: '500', marginLeft: 8}}>Block account</Text>
@@ -540,9 +505,17 @@ function ReelMoreSheet({
                   if (!reel) return;
                   fetchPostWhy(reel._id)
                     .then(why => {
-                      Alert.alert("Why you're seeing this", why.lines.join('\n\n'));
+                      setInfoModal({
+                        title: "Why you're seeing this",
+                        message: why.lines.join('\n\n'),
+                      });
                     })
-                    .catch(e => Alert.alert('Why this reel', e instanceof Error ? e.message : 'Try again.'));
+                    .catch(e =>
+                      setInfoModal({
+                        title: 'Why this reel',
+                        message: e instanceof Error ? e.message : 'Try again.',
+                      }),
+                    );
                 }}>
                 <Info size={20} color={palette.foreground} />
                 <Text style={{color: palette.foreground, fontSize: 15, fontWeight: '500', marginLeft: 8}}>
@@ -555,6 +528,78 @@ function ReelMoreSheet({
         </Pressable>
       </Pressable>
     </Modal>
+
+    <ThemedConfirmModal
+      visible={deleteConfirmOpen}
+      title="Delete?"
+      message={"Are you sure you want to delete? This can't be undone."}
+      cancelLabel="Cancel"
+      onCancel={() => setDeleteConfirmOpen(false)}
+      confirmLabel="Delete"
+      destructiveConfirm
+      onConfirm={() => {
+        if (!reel) return;
+        setDeleteConfirmOpen(false);
+        deletePost(reel._id)
+          .then(() => {
+            onReelDeleted?.(reel._id);
+          })
+          .catch(e =>
+            setInfoModal({
+              title: 'Delete failed',
+              message: e instanceof Error ? e.message : 'Try again.',
+            }),
+          );
+      }}
+    />
+    <ThemedConfirmModal
+      visible={blockConfirmOpen}
+      title="Block account?"
+      message={
+        reel?.author.username
+          ? `Hide all reels from @${reel.author.username}?`
+          : 'Hide all reels from this account?'
+      }
+      cancelLabel="Cancel"
+      onCancel={() => setBlockConfirmOpen(false)}
+      confirmLabel="Block"
+      destructiveConfirm
+      onConfirm={() => {
+        if (!reel) return;
+        setBlockConfirmOpen(false);
+        blockUser(reel.author._id)
+          .then(() => {
+            onRemoveFromFeed(reel._id);
+          })
+          .catch(e =>
+            setInfoModal({
+              title: 'Block failed',
+              message: e instanceof Error ? e.message : 'Try again.',
+            }),
+          );
+      }}
+    />
+    <ThemedConfirmModal
+      visible={infoModal != null}
+      title={infoModal?.title ?? ''}
+      message={infoModal?.message ?? ''}
+      onConfirm={() => setInfoModal(null)}
+    />
+    <ActionSheet
+      visible={reportOpen}
+      title="Report"
+      message="What is wrong with this reel?"
+      onCancel={() => setReportOpen(false)}
+      options={[
+        {label: 'Spam', onPress: () => submitReport('spam')},
+        {label: 'Harassment', onPress: () => submitReport('harassment')},
+        {label: 'Nudity / sexual', onPress: () => submitReport('nudity')},
+        {label: 'Copied/Stolen song', onPress: () => submitReport('copied_stolen_song')},
+        {label: 'Irrelevant/Spam content', onPress: () => submitReport('irrelevant_spam_content')},
+        {label: 'Other', onPress: () => submitReport('other')},
+      ]}
+    />
+    </>
   );
 }
 
@@ -684,7 +729,10 @@ const ReelItem = React.memo(function ReelItem({
         await unfollowUser(item.author._id);
         setFollowing(false);
       } else {
-        await followUser(item.author._id, {kind: 'reel', refId: item._id});
+        await followUser(
+          item.author._id,
+          followSourceForContext({surface: 'reels', postId: item._id}),
+        );
         setFollowing(true);
       }
     } catch {}
@@ -867,7 +915,10 @@ const ReelItem = React.memo(function ReelItem({
           <Pressable
             onPress={() => {
               void recordStoreClick(item._id);
-              const url = item.author.connectedStore?.website;
+              const url =
+                item.storeEntryUrl?.trim() ||
+                item.author.connectedStore?.productCatalogUrl?.trim() ||
+                item.author.connectedStore?.website?.trim();
               if (url) void openExternalUrl(url);
             }}
             style={{alignItems: 'center', gap: 4}}>
@@ -1415,7 +1466,6 @@ export function ReelsScreen() {
     <Screen bare edges={['top', 'left', 'right']} safeAreaStyle={{backgroundColor: '#000'}}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Reels / Friends (Instagram-style) */}
       <View
         style={{
           position: 'absolute',
@@ -1426,41 +1476,19 @@ export function ReelsScreen() {
           flexDirection: 'row',
           justifyContent: 'center',
           alignItems: 'center',
-          gap: 28,
         }}
         pointerEvents="box-none">
-        <Pressable onPress={() => setFeedTab('forYou')} hitSlop={10}>
-          <Text
-            style={{
-              color: '#fff',
-              fontSize: 16,
-              fontWeight: feedTab === 'forYou' ? '800' : '500',
-              opacity: feedTab === 'forYou' ? 1 : 0.55,
-            }}>
-            Reels
-          </Text>
-          {feedTab === 'forYou' ? (
-            <View style={{height: 2, marginTop: 4, borderRadius: 1, backgroundColor: palette.accent}} />
-          ) : (
-            <View style={{height: 2, marginTop: 4}} />
-          )}
-        </Pressable>
-        <Pressable onPress={() => setFeedTab('friends')} hitSlop={10}>
-          <Text
-            style={{
-              color: '#fff',
-              fontSize: 16,
-              fontWeight: feedTab === 'friends' ? '800' : '500',
-              opacity: feedTab === 'friends' ? 1 : 0.55,
-            }}>
-            Friends
-          </Text>
-          {feedTab === 'friends' ? (
-            <View style={{height: 2, marginTop: 4, borderRadius: 1, backgroundColor: palette.accent}} />
-          ) : (
-            <View style={{height: 2, marginTop: 4}} />
-          )}
-        </Pressable>
+        <SegmentedTabs
+          items={[
+            {label: 'Reels', value: 'forYou'},
+            {label: 'Friends', value: 'friends'},
+          ]}
+          value={feedTab}
+          onChange={setFeedTab}
+          variant="underline"
+          tone="onDark"
+          rowMaxHeight={42}
+        />
       </View>
 
       <FlatList

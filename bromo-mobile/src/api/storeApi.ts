@@ -82,6 +82,8 @@ export type Store = {
     addressProofUrl?: string;
   };
   coinDiscountRule?: {coinsRequired: number; discountPercent: number; minOrderInr: number; active: boolean};
+  /** Monthly push quota tracking (owner dashboard). */
+  notificationUsage?: {monthKey: string; sentCount: number};
   isActive: boolean;
   totalProducts: number;
   totalViews: number;
@@ -216,6 +218,30 @@ export async function getStoreLeads(storeId: string): Promise<StoreLeadRow[]> {
   if (!res.ok) throw new Error('Failed to load leads');
   const data = (await res.json()) as {leads?: StoreLeadRow[]};
   return data.leads ?? [];
+}
+
+/** POST /stores/:id/push — notify users who favorited the store (plan-limited). */
+export async function sendStorePush(
+  storeId: string,
+  payload: {title?: string; body: string},
+): Promise<{ok: boolean; sentTo: number; remaining: number | null}> {
+  const res = await authorizedFetch(`${apiBase()}/stores/${storeId}/push`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    sentTo?: number;
+    remaining?: number | null;
+    message?: string;
+  };
+  if (!res.ok) throw new Error(data.message ?? 'Push failed');
+  return {
+    ok: Boolean(data.ok),
+    sentTo: data.sentTo ?? 0,
+    remaining: data.remaining ?? null,
+  };
 }
 
 export type StoresFilter = {

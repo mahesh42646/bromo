@@ -60,6 +60,7 @@ import { callsRouter } from "./routes/calls.js";
 import { contentRouter } from "./routes/content.js";
 import { startPromotionBillingWorker } from "./workers/promotionBillingWorker.js";
 import { startScheduledPostWorker } from "./workers/scheduledPostWorker.js";
+import { startAudioRemuxWorker } from "./workers/audioRemuxWorker.js";
 import { initFirebase } from "./config/firebase.js";
 
 export function createApp() {
@@ -180,6 +181,7 @@ export function createApp() {
   // Start background workers
   startPromotionBillingWorker();
   startScheduledPostWorker();
+  startAudioRemuxWorker();
 
   return app;
 }

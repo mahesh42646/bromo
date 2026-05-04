@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Switch, Text, TextInput, View} from 'react-native';
+import {launchImageLibrary} from 'react-native-image-picker';
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
@@ -10,13 +11,14 @@ import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {getNotifications, markAllRead, markRead, type AppNotification} from '../../../api/notificationsApi';
-import {getPost, getPostAnalytics, getSavedPosts, getUserPosts, type Post, type PostAnalytics} from '../../../api/postsApi';
+import {getPost, getPostAnalytics, getSavedPosts, getUserPosts, uploadMedia, type Post, type PostAnalytics} from '../../../api/postsApi';
 import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
 import {useAuth} from '../../../context/AuthContext';
 import {connectMyStore, submitCreatorForm} from '../../../api/authApi';
 import {getMyFollowAttribution} from '../../../api/followApi';
 import {parentNavigate} from '../../../navigation/parentNavigate';
 import {WebRtcCallShell} from '../../../webrtc/WebRtcCallShell';
+import {resolveMediaUrl} from '../../../lib/resolveMediaUrl';
 
 export {EditProfileScreen} from '../../EditProfileScreen';
 export {OtherUserProfileScreen} from '../../OtherUserProfileScreen';
@@ -316,7 +318,9 @@ export function CreatorDashboardScreen() {
   const [category, setCategory] = useState('');
   const [bio, setBio] = useState(dbUser?.bio ?? '');
   const [website, setWebsite] = useState(dbUser?.website ?? '');
-  const [documents, setDocuments] = useState('');
+  const [creatorIdImage, setCreatorIdImage] = useState('');
+  const [creatorSelfie, setCreatorSelfie] = useState('');
+  const [creatorDocUploading, setCreatorDocUploading] = useState<'id' | 'selfie' | null>(null);
   const [storeWebsite, setStoreWebsite] = useState(dbUser?.connectedStore?.website ?? dbUser?.website ?? '');
   const [followAttrByKind, setFollowAttrByKind] = useState<{kind: string; count: number}[]>([]);
 
@@ -397,9 +401,34 @@ export function CreatorDashboardScreen() {
     {views: 0, clicks: 0, engagement: 0, storeClicks: 0, earnings: 0},
   );
 
+  const pickCreatorDocument = useCallback((kind: 'id' | 'selfie') => {
+    launchImageLibrary({mediaType: 'photo', quality: 1, selectionLimit: 1}, async res => {
+      const asset = res.assets?.find(a => Boolean(a.uri));
+      if (!asset?.uri) return;
+      setCreatorDocUploading(kind);
+      try {
+        const uploaded = await uploadMedia(asset.uri, {
+          type: 'image',
+          fileName: asset.fileName,
+          category: 'public',
+        });
+        if (kind === 'id') setCreatorIdImage(uploaded.url);
+        else setCreatorSelfie(uploaded.url);
+      } catch (err) {
+        Alert.alert('Upload failed', err instanceof Error ? err.message : 'Could not upload this image');
+      } finally {
+        setCreatorDocUploading(null);
+      }
+    });
+  }, []);
+
   const submitCreator = useCallback(async () => {
     if (!fullName.trim() || !category.trim() || !bio.trim()) {
       Alert.alert('Required', 'Full name, category, and bio are required.');
+      return;
+    }
+    if (!creatorIdImage || !creatorSelfie) {
+      Alert.alert('Required', 'Upload one ID image and one selfie before submitting.');
       return;
     }
     setSubmitting(true);
@@ -409,7 +438,7 @@ export function CreatorDashboardScreen() {
         category: category.trim(),
         bio: bio.trim(),
         website: website.trim(),
-        documents: documents.split(',').map(v => v.trim()).filter(Boolean),
+        documents: [creatorIdImage, creatorSelfie],
       });
       await refreshDbUser();
       Alert.alert('Submitted', 'Creator Form submitted. Creator badge appears after admin approval.');
@@ -418,7 +447,7 @@ export function CreatorDashboardScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [fullName, category, bio, website, documents, refreshDbUser]);
+  }, [fullName, category, bio, website, creatorIdImage, creatorSelfie, refreshDbUser]);
 
   const connectStore = useCallback(async () => {
     if (!storeWebsite.trim()) {
@@ -472,7 +501,20 @@ export function CreatorDashboardScreen() {
             <CreatorInput label="Creator category" value={category} onChangeText={setCategory} palette={palette} placeholder="Fashion, tech, food, fitness..." />
             <CreatorInput label="Bio" value={bio} onChangeText={setBio} palette={palette} multiline />
             <CreatorInput label="Website" value={website} onChangeText={setWebsite} palette={palette} placeholder="https://..." />
-            <CreatorInput label="Document links" value={documents} onChangeText={setDocuments} palette={palette} placeholder="Comma-separated KYC or portfolio URLs" />
+            <CreatorUploadRow
+              label="ID image"
+              value={creatorIdImage}
+              uploading={creatorDocUploading === 'id'}
+              palette={palette}
+              onPress={() => pickCreatorDocument('id')}
+            />
+            <CreatorUploadRow
+              label="Selfie"
+              value={creatorSelfie}
+              uploading={creatorDocUploading === 'selfie'}
+              palette={palette}
+              onPress={() => pickCreatorDocument('selfie')}
+            />
             <Pressable disabled={submitting} onPress={submitCreator} style={{backgroundColor: palette.primary, borderRadius: 14, padding: 13, alignItems: 'center'}}>
               <Text style={{color: palette.primaryForeground, fontWeight: '900'}}>{submitting ? 'Submitting…' : 'Submit Creator Form'}</Text>
             </Pressable>
@@ -609,6 +651,58 @@ function CreatorInput({
           textAlignVertical: multiline ? 'top' : 'center',
         }}
       />
+    </View>
+  );
+}
+
+function CreatorUploadRow({
+  label,
+  value,
+  uploading,
+  palette,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  uploading: boolean;
+  palette: ReturnType<typeof useTheme>['palette'];
+  onPress: () => void;
+}) {
+  const imageUri = value ? resolveMediaUrl(value) ?? value : '';
+  return (
+    <View style={{marginBottom: 12}}>
+      <Text style={{color: palette.foregroundMuted, fontSize: 12, fontWeight: '800', marginBottom: 6}}>{label}</Text>
+      <Pressable
+        disabled={uploading}
+        onPress={onPress}
+        style={{
+          minHeight: 72,
+          borderWidth: 1,
+          borderColor: value ? palette.success : palette.border,
+          borderRadius: 13,
+          padding: 10,
+          backgroundColor: palette.input,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          opacity: uploading ? 0.7 : 1,
+        }}>
+        {imageUri ? (
+          <Image source={{uri: imageUri}} style={{width: 52, height: 52, borderRadius: 10, backgroundColor: palette.surface}} />
+        ) : (
+          <View style={{width: 52, height: 52, borderRadius: 10, backgroundColor: palette.surface, alignItems: 'center', justifyContent: 'center'}}>
+            <Text style={{color: palette.foregroundMuted, fontSize: 11, fontWeight: '900'}}>IMG</Text>
+          </View>
+        )}
+        <View style={{flex: 1}}>
+          <Text style={{color: palette.foreground, fontWeight: '900'}}>
+            {uploading ? 'Uploading...' : value ? 'Uploaded' : 'Upload image'}
+          </Text>
+          <Text style={{color: palette.foregroundMuted, fontSize: 12, marginTop: 2}}>
+            {value ? 'Tap to replace' : 'Required for creator verification'}
+          </Text>
+        </View>
+      </Pressable>
     </View>
   );
 }

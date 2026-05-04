@@ -13,6 +13,7 @@ export {ThemedText} from './ThemedText';
 export {ThemedView} from './ThemedView';
 export {PrimaryButton} from './PrimaryButton';
 export {SearchBar} from './SearchBar';
+export {Chip, type ChipProps} from './Chip';
 export {Avatar} from './Avatar';
 export {Badge} from './Badge';
 export {Card} from './Card';

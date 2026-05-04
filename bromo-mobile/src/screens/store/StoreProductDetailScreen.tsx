@@ -1,20 +1,17 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {ActivityIndicator, Dimensions, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
-import {useNavigation, useRoute} from '@react-navigation/native';
-import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import {useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
-import {ChevronLeft, ExternalLink, Package} from 'lucide-react-native';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {ExternalLink, Package} from 'lucide-react-native';
+import {Screen} from '../../components/ui';
 import {useTheme} from '../../context/ThemeContext';
 import {getStore, listProducts, type Store, type StoreProduct} from '../../api/storeApi';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 
-type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'StoreProductDetail'>;
 
 export function StoreProductDetailScreen() {
   const width = Dimensions.get('window').width;
-  const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const {palette} = useTheme();
   const {storeId, productId} = route.params;
@@ -46,35 +43,25 @@ export function StoreProductDetailScreen() {
 
   if (loading) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="Product details">
         <ActivityIndicator color={palette.primary} style={{flex: 1}} />
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   if (!product) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="Product details">
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10}}>
           <Package size={40} color={palette.foregroundSubtle} />
           <Text style={{color: palette.foreground, fontWeight: '700'}}>Product not found</Text>
         </View>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   return (
-    <ThemedSafeScreen>
-      <View style={[s.header, {borderBottomColor: palette.border}]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <ChevronLeft size={22} color={palette.foreground} />
-        </Pressable>
-        <Text style={[s.headerTitle, {color: palette.foreground}]} numberOfLines={1}>
-          Product details
-        </Text>
-        <View style={{width: 22}} />
-      </View>
-
+    <Screen title="Product details" scroll={false}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 32}}>
         <View style={[s.heroWrap, {backgroundColor: palette.glassFaint}]}>
           {selectedPhoto ? (
@@ -163,20 +150,11 @@ export function StoreProductDetailScreen() {
           ) : null}
         </View>
       </ScrollView>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 
 const s = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  headerTitle: {fontSize: 17, fontWeight: '700'},
   heroWrap: {position: 'relative'},
   hero: {height: 360},
   heroFallback: {alignItems: 'center', justifyContent: 'center'},

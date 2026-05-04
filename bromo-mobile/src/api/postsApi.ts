@@ -173,6 +173,11 @@ export type Post = {
   remixOfPostId?: string;
   remixCredit?: {postId?: string; creatorId?: string; username?: string};
   scheduledFor?: string;
+  /** Licensed catalog track used for server-side audio remux (Mongo id). */
+  musicTrackId?: string;
+  /** Server pipeline for replacing reel audio with licensed mix. */
+  audioRemuxStatus?: 'none' | 'pending' | 'processing' | 'ready' | 'failed';
+  audioRemuxError?: string;
   /** Story-only: overlays and background color */
   storyMeta?: StoryMeta;
   poll?: PostPoll;
@@ -419,6 +424,7 @@ export async function createPost(data: {
   location?: string;
   locationMeta?: PostLocationMeta;
   music?: string;
+  musicTrackId?: string;
   tags?: string[];
   taggedUserIds?: string[];
   productIds?: string[];
@@ -809,6 +815,8 @@ export type UploadMediaAsyncMeta = {
   caption?: string;
   location?: string;
   music?: string;
+  /** Licensed catalog track Mongo id — enables server remux after transcode. */
+  musicTrackId?: string;
   tags?: string[];
   feedCategory?: string;
   taggedUserIds?: string[];
@@ -835,6 +843,7 @@ function appendAsyncMeta(form: FormData, meta: UploadMediaAsyncMeta): void {
   if (meta.caption) form.append('caption', clipField(meta.caption, MAX_ASYNC_FIELD_CHARS));
   if (meta.location) form.append('location', clipField(meta.location, 500));
   if (meta.music) form.append('music', clipField(meta.music, 500));
+  if (meta.musicTrackId?.trim()) form.append('musicTrackId', meta.musicTrackId.trim());
   if (meta.tags?.length) form.append('tags', meta.tags.join(','));
   if (meta.feedCategory && meta.feedCategory !== 'general') form.append('feedCategory', meta.feedCategory);
   if (meta.taggedUserIds?.length) form.append('taggedUserIds', meta.taggedUserIds.join(','));

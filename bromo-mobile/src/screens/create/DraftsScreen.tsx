@@ -2,14 +2,13 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import {Screen} from '../../components/ui/Screen';
+import {RefreshableFlatList, Screen} from '../../components/ui';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {Trash2, Clock, FileText} from 'lucide-react-native';
@@ -217,9 +216,10 @@ export function DraftsScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
+        <RefreshableFlatList
           data={drafts}
           keyExtractor={item => item._id}
+          onRefresh={loadDrafts}
           contentContainerStyle={{paddingHorizontal: 14, paddingTop: 8}}
           renderItem={({item}) => {
             const thumb = item.thumbnailUri || item.localUri;

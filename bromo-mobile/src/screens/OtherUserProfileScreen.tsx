@@ -5,8 +5,6 @@ import {
   Image,
   Modal,
   Pressable,
-  RefreshControl,
-  ScrollView,
   Share,
   StatusBar,
   Text,
@@ -15,10 +13,10 @@ import {
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BadgeCheck, Ban, ChevronLeft, Clapperboard, Flag, Grid3x3, MessageCircle, MoreHorizontal, Play, Share2, UserMinus} from 'lucide-react-native';
+import {BadgeCheck, Ban, Clapperboard, Flag, Grid3x3, MessageCircle, MoreHorizontal, Play, Share2, UserMinus} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {RefreshableScrollView, Screen, SegmentedTabs} from '../components/ui';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {
   blockUser,
@@ -314,32 +312,22 @@ export function OtherUserProfileScreen() {
 
   if (loading) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="Profile">
         <StatusBar barStyle="light-content" />
-        <View style={{flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8}}>
-          <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 8}}>
-            <ChevronLeft size={26} color={palette.foreground} />
-          </Pressable>
-        </View>
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <ActivityIndicator color={palette.primary} size="large" />
         </View>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   if (!profile) {
     return (
-      <ThemedSafeScreen>
-        <View style={{flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8}}>
-          <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 8}}>
-            <ChevronLeft size={26} color={palette.foreground} />
-          </Pressable>
-        </View>
+      <Screen title="Profile">
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <Text style={{color: palette.mutedForeground}}>User not found</Text>
         </View>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
@@ -349,30 +337,20 @@ export function OtherUserProfileScreen() {
   const colWidth = `${100 / numCols}%` as const;
 
   return (
-    <ThemedSafeScreen>
-      <StatusBar barStyle="light-content" />
-
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 8, paddingVertical: 8,
-        borderBottomWidth: 1, borderBottomColor: palette.border,
-        gap: 4,
-      }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 8}}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={{flex: 1, color: palette.foreground, fontSize: 17, fontWeight: '800'}}>
-          {profile.username}
-        </Text>
+    <Screen
+      title={profile.username}
+      scroll={false}
+      right={
         <Pressable onPress={() => setMoreOpen(true)} hitSlop={12} style={{padding: 8}}>
           <MoreHorizontal size={22} color={palette.foreground} />
         </Pressable>
-      </View>
+      }>
+      <StatusBar barStyle="light-content" />
 
-      <ScrollView
+      <RefreshableScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} />}>
+        refreshing={refreshing}
+        onRefresh={onRefresh}>
 
         {/* Profile info */}
         <View style={{padding: 16}}>
@@ -487,29 +465,16 @@ export function OtherUserProfileScreen() {
         </View>
 
         {/* Tab indicator */}
-        <View style={{flexDirection: 'row', borderTopWidth: 1, borderTopColor: palette.border}}>
-          {[
-            {id: 'posts' as const, icon: Grid3x3},
-            {id: 'reels' as const, icon: Clapperboard},
-          ].map(tab => {
-            const Icon = tab.icon;
-            const active = gridTab === tab.id;
-            return (
-              <Pressable
-                key={tab.id}
-                onPress={() => setGridTab(tab.id)}
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  paddingVertical: 10,
-                  borderTopWidth: 2,
-                  borderTopColor: active ? palette.primary : 'transparent',
-                }}>
-                <Icon size={20} color={active ? palette.primary : palette.mutedForeground} />
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentedTabs
+          items={[
+            {label: 'Posts', value: 'posts' as const, icon: <Grid3x3 size={18} color={gridTab === 'posts' ? palette.primary : palette.mutedForeground} />},
+            {label: 'Reels', value: 'reels' as const, icon: <Clapperboard size={18} color={gridTab === 'reels' ? palette.primary : palette.mutedForeground} />},
+          ]}
+          value={gridTab}
+          onChange={setGridTab}
+          variant="underline"
+          style={{borderTopWidth: 1, borderTopColor: palette.border}}
+        />
 
         {/* Posts grid */}
         {loadingPosts ? (
@@ -539,7 +504,7 @@ export function OtherUserProfileScreen() {
         )}
 
         <View style={{height: 40}} />
-      </ScrollView>
+      </RefreshableScrollView>
 
       <Modal visible={moreOpen} transparent animationType="fade" onRequestClose={() => setMoreOpen(false)}>
         <Pressable
@@ -573,7 +538,7 @@ export function OtherUserProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

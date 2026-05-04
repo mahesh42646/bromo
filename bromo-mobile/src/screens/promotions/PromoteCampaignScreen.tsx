@@ -2,7 +2,7 @@
  * PromoteCampaignScreen — 4-step campaign creation wizard:
  * Step 1: Objective  →  Step 2: Audience  →  Step 3: Budget  →  Step 4: Review & Launch
  */
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,8 +18,10 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {ChevronRight, Check, Target, Users, Wallet, Zap} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
+import {Chip} from '../../components/ui/Chip';
 import {Screen} from '../../components/ui/Screen';
 import {Stepper} from '../../components/ui/Stepper';
+import {ThemedConfirmModal} from '../../components/ui/ThemedConfirmModal';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 import {getWallet} from '../../api/walletApi';
 import {
@@ -70,6 +72,13 @@ export function PromoteCampaignScreen() {
   const [ctaUrl, setCtaUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [launchSuccessOpen, setLaunchSuccessOpen] = useState(false);
+
+  useEffect(() => {
+    void getWallet()
+      .then(w => setWalletBalance(w.balance))
+      .catch(() => null);
+  }, []);
 
   // Fetch wallet balance before step 3
   const goToStep3 = useCallback(async () => {
@@ -119,11 +128,7 @@ export function PromoteCampaignScreen() {
         /* ignore */
       }
 
-      Alert.alert(
-        'Campaign Launched!',
-        `Your ${contentType} is now being promoted with ${finalBudget} coins budget.`,
-        [{text: 'View Campaigns', onPress: () => navigation.replace('MyCampaigns')}],
-      );
+      setLaunchSuccessOpen(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Launch failed';
       if (msg.toLowerCase().includes('balance') || msg.toLowerCase().includes('coin')) {
@@ -149,6 +154,16 @@ export function PromoteCampaignScreen() {
       right={<Text style={{color: palette.foregroundSubtle, fontSize: 12, fontWeight: '700'}}>{step}/4</Text>}
       scroll={false}
       style={{flex: 1}}>
+      <ThemedConfirmModal
+        visible={launchSuccessOpen}
+        title="Campaign Launched!"
+        message={`Your ${contentType} is now being promoted with ${finalBudget} coins budget.`}
+        confirmLabel="View Campaigns"
+        onConfirm={() => {
+          setLaunchSuccessOpen(false);
+          navigation.replace('MyCampaigns');
+        }}
+      />
       <View style={{flex: 1, backgroundColor: palette.background}}>
       <View style={{paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4}}>
         <Stepper currentStep={step} total={4} labels={stepTitles} variant="bars" />
@@ -210,22 +225,12 @@ export function PromoteCampaignScreen() {
               {PLACEMENTS.map(p => {
                 const active = (audience.placements ?? []).includes(p.id);
                 return (
-                  <Pressable
+                  <Chip
                     key={p.id}
+                    label={p.label}
+                    selected={active}
                     onPress={() => togglePlacement(p.id)}
-                    style={{
-                      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                      backgroundColor: active ? palette.primary : palette.input,
-                      borderWidth: 1,
-                      borderColor: active ? palette.primary : palette.border,
-                    }}>
-                    <Text style={{
-                      color: active ? palette.primaryForeground : palette.foreground,
-                      fontWeight: '700', fontSize: 13,
-                    }}>
-                      {p.label}
-                    </Text>
-                  </Pressable>
+                  />
                 );
               })}
             </View>
@@ -300,22 +305,16 @@ export function PromoteCampaignScreen() {
             </Text>
             <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16}}>
               {BUDGET_PRESETS.map(p => (
-                <Pressable
+                <Chip
                   key={p}
-                  onPress={() => {setBudget(p); setCustomBudget('');}}
-                  style={{
-                    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10,
-                    backgroundColor: budget === p && !customBudget ? palette.primary : palette.input,
-                    borderWidth: 1,
-                    borderColor: budget === p && !customBudget ? palette.primary : palette.border,
-                  }}>
-                  <Text style={{
-                    color: budget === p && !customBudget ? palette.primaryForeground : palette.foreground,
-                    fontWeight: '800', fontSize: 14,
-                  }}>
-                    {p.toLocaleString()}
-                  </Text>
-                </Pressable>
+                  label={p.toLocaleString()}
+                  variant="rect"
+                  selected={budget === p && !customBudget}
+                  onPress={() => {
+                    setBudget(p);
+                    setCustomBudget('');
+                  }}
+                />
               ))}
             </View>
 

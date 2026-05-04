@@ -23,6 +23,7 @@ import { postForSocketBroadcast } from "../utils/postSocketPayload.js";
 import { publicUrlForUploadRelative } from "../utils/uploadFiles.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
 import { mirrorUploadRelative, mirrorUploadTreeRelative } from "../services/s3Mirror.js";
+import { enqueueLicensedAudioRemuxForPost } from "../services/audioRemuxEnqueue.js";
 
 const UPLOAD_DIR = uploadsRoot();
 
@@ -191,6 +192,10 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
       ownerId: job.userId,
       sourceRelPath: mezzanineRel,
     });
+
+    void enqueueLicensedAudioRemuxForPost(job.postDraftId, mezzanineRel).catch((e) =>
+      console.warn("[mediaWorker] licensed audio remux enqueue:", e),
+    );
 
     if (activateNow) {
       await broadcastActivatedPost(String(job.postDraftId));

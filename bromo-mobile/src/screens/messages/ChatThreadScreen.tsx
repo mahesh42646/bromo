@@ -21,7 +21,6 @@ import {
   Camera,
   Check,
   CheckCheck,
-  ChevronLeft,
   ImageIcon,
   MapPin,
   Mic,
@@ -39,7 +38,7 @@ import Geolocation from '@react-native-community/geolocation';
 import {NetworkVideo} from '../../components/media/NetworkVideo';
 import {resolveMediaUrl} from '../../lib/resolveMediaUrl';
 import {useTheme} from '../../context/ThemeContext';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {RefreshableFlatList, Screen} from '../../components/ui';
 import type {ChatMessage, TextMessage} from '../../messaging/messageTypes';
 import {USER_LABEL_OPTIONS} from '../../messaging/messageTypes';
 import {MOCK_GIF_CATALOG, MOCK_STICKERS} from '../../messaging/mockMessaging';
@@ -379,9 +378,9 @@ export function ChatThreadScreen() {
 
   if (!peer) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="Chat">
         <Text style={{color: palette.foreground}}>User not found</Text>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
@@ -607,84 +606,88 @@ export function ChatThreadScreen() {
   };
 
   return (
-    <ThemedSafeScreen style={{backgroundColor: palette.background}}>
+    <Screen
+      title={peer.displayName}
+      scroll={false}
+      right={
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 2}}>
+          <Pressable
+            onPress={() => {
+              if (!peer.userId || peer.isGroup) {
+                Alert.alert('Calls unavailable', 'Voice calls work only in direct messages.');
+                return;
+              }
+              parentNavigate(navigation, 'VoiceCall', {
+                peerId,
+                remoteUserId: peer.userId,
+                peerName: peer.displayName,
+                direction: 'outgoing',
+              });
+            }}
+            style={{padding: 6}}>
+            <Phone size={20} color={palette.foreground} />
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              if (!peer.userId || peer.isGroup) {
+                Alert.alert('Calls unavailable', 'Video calls work only in direct messages.');
+                return;
+              }
+              parentNavigate(navigation, 'VideoCall', {
+                peerId,
+                remoteUserId: peer.userId,
+                peerName: peer.displayName,
+                direction: 'outgoing',
+              });
+            }}
+            style={{padding: 6}}>
+            <VideoCallIcon size={20} color={palette.foreground} />
+          </Pressable>
+          <Pressable onPress={() => setPicker('label')} style={{padding: 6}}>
+            <Tag size={20} color={palette.foreground} />
+          </Pressable>
+        </View>
+      }>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      <View
+      <Pressable
+        onPress={() => navigation.navigate('ChatDetail', {peerId})}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 6,
+          gap: 10,
+          paddingHorizontal: 12,
           paddingVertical: 8,
           borderBottomWidth: 1,
           borderBottomColor: palette.border,
-          gap: 4,
         }}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 6}}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Pressable
-          onPress={() => navigation.navigate('ChatDetail', {peerId})}
-          style={{flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1}}>
-          <Image source={{uri: peer.avatar}} style={{width: 40, height: 40, borderRadius: 20}} />
-          <View style={{flex: 1, minWidth: 0}}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
-              <Text numberOfLines={1} style={{color: palette.foreground, fontWeight: '800', fontSize: 16}}>
-                {peer.displayName}
-              </Text>
-              {peer.verified ? <BadgeCheck size={16} color={palette.primary} /> : null}
-            </View>
-            <Text numberOfLines={1} style={{color: palette.mutedForeground, fontSize: 13}}>
-              Active Now · @{peer.username}
-              {peer.label ? ` · ${peer.label}` : ''}
+        <Image source={{uri: peer.avatar}} style={{width: 36, height: 36, borderRadius: 18}} />
+        <View style={{flex: 1, minWidth: 0}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+            <Text numberOfLines={1} style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>
+              {peer.displayName}
             </Text>
+            {peer.verified ? <BadgeCheck size={15} color={palette.primary} /> : null}
           </View>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            if (!peer?.userId || peer.isGroup) {
-              Alert.alert('Calls unavailable', 'Voice calls work only in direct messages.');
-              return;
-            }
-            parentNavigate(navigation, 'VoiceCall', {
-              peerId,
-              remoteUserId: peer.userId,
-              peerName: peer.displayName,
-              direction: 'outgoing',
-            });
-          }}
-          style={{padding: 8}}>
-          <Phone size={22} color={palette.foreground} />
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            if (!peer?.userId || peer.isGroup) {
-              Alert.alert('Calls unavailable', 'Video calls work only in direct messages.');
-              return;
-            }
-            parentNavigate(navigation, 'VideoCall', {
-              peerId,
-              remoteUserId: peer.userId,
-              peerName: peer.displayName,
-              direction: 'outgoing',
-            });
-          }}
-          style={{padding: 8}}>
-          <VideoCallIcon size={22} color={palette.foreground} />
-        </Pressable>
-        <Pressable onPress={() => setPicker('label')} style={{padding: 8}}>
-          <Tag size={22} color={palette.foreground} />
-        </Pressable>
-      </View>
+          <Text numberOfLines={1} style={{color: palette.mutedForeground, fontSize: 12}}>
+            Active Now · @{peer.username}
+            {peer.label ? ` · ${peer.label}` : ''}
+          </Text>
+        </View>
+      </Pressable>
 
       <KeyboardAvoidingView
         style={{flex: 1}}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}>
-        <FlatList
+        <RefreshableFlatList<RowItem>
           ref={listRef}
           data={rows}
           keyExtractor={item => item.key}
+          onRefresh={() => {
+            ensureThread(peerId);
+            markRead(peerId);
+          }}
           contentContainerStyle={{paddingHorizontal: 12, paddingVertical: 16, paddingBottom: 8}}
           onContentSizeChange={() => listRef.current?.scrollToEnd({animated: true})}
           renderItem={({item}) =>
@@ -866,6 +869,6 @@ export function ChatThreadScreen() {
           </View>
         </Pressable>
       </Modal>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }

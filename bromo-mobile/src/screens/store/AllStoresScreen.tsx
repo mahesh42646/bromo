@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -14,7 +13,6 @@ import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import Geolocation from '@react-native-community/geolocation';
 import {
-  ChevronLeft,
   Search,
   MapPin,
   Truck,
@@ -24,7 +22,7 @@ import {
   X,
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
-import {Screen} from '../../components/ui/Screen';
+import {RefreshableScrollView, Screen, SegmentedTabs} from '../../components/ui';
 import {listStores, STORE_CATEGORIES, type Store} from '../../api/storeApi';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 
@@ -46,7 +44,7 @@ function fmtDistance(meters: number): string {
 
 export function AllStoresScreen() {
   const navigation = useNavigation<Nav>();
-  const {palette, isDark} = useTheme();
+  const {palette} = useTheme();
 
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(false);
@@ -102,14 +100,10 @@ export function AllStoresScreen() {
   const hasActiveFilter = distFilter !== 'all' || deliveryOnly || !!activeCategory;
 
   return (
-    <Screen bare scroll={false}>
+    <Screen title="Stores" scroll={false}>
       <StatusBar barStyle="light-content" />
 
-      {/* Header */}
       <View style={[s.header, {borderBottomColor: palette.glassFaint, backgroundColor: palette.background}]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <ChevronLeft size={22} color={palette.foreground} />
-        </Pressable>
         <View style={[s.searchBox, {backgroundColor: palette.glassFaint, borderColor: palette.border}]}>
           <Search size={15} color={palette.placeholder} />
           <TextInput
@@ -141,24 +135,12 @@ export function AllStoresScreen() {
         <View style={[s.filterPanel, {backgroundColor: palette.surface, borderBottomColor: palette.glassFaint}]}>
           {/* Distance */}
           <Text style={[s.filterGroupLabel, {color: palette.foregroundSubtle}]}>Distance</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillRow}>
-            {DIST_OPTIONS.map(opt => {
-              const active = distFilter === opt.value;
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => setDistFilter(opt.value)}
-                  style={[s.pill, {
-                    backgroundColor: active ? palette.primary : palette.glassFaint,
-                    borderColor: active ? palette.primary : palette.border,
-                  }]}>
-                  <Text style={{color: active ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <SegmentedTabs
+            items={DIST_OPTIONS.map(opt => ({label: opt.label, value: opt.value}))}
+            value={distFilter}
+            onChange={setDistFilter}
+            variant="pill"
+          />
 
           {/* Delivery toggle */}
           <Pressable
@@ -181,34 +163,12 @@ export function AllStoresScreen() {
 
           {/* Category */}
           <Text style={[s.filterGroupLabel, {color: palette.foregroundSubtle, marginTop: 10}]}>Category</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillRow}>
-            <Pressable
-              onPress={() => setActiveCategory('')}
-              style={[s.pill, {
-                backgroundColor: !activeCategory ? palette.primary : palette.glassFaint,
-                borderColor: !activeCategory ? palette.primary : palette.border,
-              }]}>
-              <Text style={{color: !activeCategory ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
-                All
-              </Text>
-            </Pressable>
-            {STORE_CATEGORIES.map(cat => {
-              const active = activeCategory === cat;
-              return (
-                <Pressable
-                  key={cat}
-                  onPress={() => setActiveCategory(active ? '' : cat)}
-                  style={[s.pill, {
-                    backgroundColor: active ? palette.primary : palette.glassFaint,
-                    borderColor: active ? palette.primary : palette.border,
-                  }]}>
-                  <Text style={{color: active ? palette.primaryForeground : palette.foreground, fontSize: 12, fontWeight: '700'}}>
-                    {cat}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <SegmentedTabs
+            items={[{label: 'All', value: ''}, ...STORE_CATEGORIES.map(cat => ({label: cat, value: cat}))]}
+            value={activeCategory}
+            onChange={setActiveCategory}
+            variant="pill"
+          />
         </View>
       )}
 
@@ -227,7 +187,10 @@ export function AllStoresScreen() {
         </Text>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.listContent}>
+      <RefreshableScrollView
+        onRefresh={fetchStores}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={s.listContent}>
         {loading ? (
           <ActivityIndicator color={palette.primary} style={{marginTop: 40}} />
         ) : stores.length === 0 ? (
@@ -247,7 +210,7 @@ export function AllStoresScreen() {
           ))
         )}
         <View style={{height: 32}} />
-      </ScrollView>
+      </RefreshableScrollView>
     </Screen>
   );
 }

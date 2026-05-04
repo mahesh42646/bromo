@@ -1,4 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Gesture, GestureDetector} from 'react-native-gesture-handler';
+import Reanimated, {useAnimatedStyle, useSharedValue, withTiming} from 'react-native-reanimated';
 import {
   ActivityIndicator,
   Alert,
@@ -45,6 +47,7 @@ import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {parentNavigate} from '../navigation/parentNavigate';
 import type {OnLoadData, OnProgressData} from 'react-native-video';
+import {ThemedConfirmModal} from '../components/ui/ThemedConfirmModal';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'StoryView'>;
@@ -117,6 +120,7 @@ export function StoryViewScreen() {
   const [replyText, setReplyText] = useState('');
   const [showReply, setShowReply] = useState(false);
   const [ownMenuOpen, setOwnMenuOpen] = useState(false);
+  const [deleteStoryId, setDeleteStoryId] = useState<string | null>(null);
   const [mentionsOpen, setMentionsOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [storyViewers, setStoryViewers] = useState<
@@ -448,6 +452,56 @@ export function StoryViewScreen() {
   const mentionOverlays = overlays.filter(o => o.type === 'mention');
   const isColorBg = Boolean(bgColor) && (!mediaUri || mediaUri === 'color-bg');
 
+  const mediaScale = useSharedValue(1);
+  const mediaTx = useSharedValue(0);
+  const mediaTy = useSharedValue(0);
+  const pinchBase = useSharedValue(1);
+  const panOriginX = useSharedValue(0);
+  const panOriginY = useSharedValue(0);
+
+  useEffect(() => {
+    mediaScale.value = 1;
+    mediaTx.value = 0;
+    mediaTy.value = 0;
+    pinchBase.value = 1;
+  }, [current._id]);
+
+  const pinchGesture = Gesture.Pinch()
+    .onBegin(() => {
+      pinchBase.value = mediaScale.value;
+    })
+    .onUpdate(e => {
+      mediaScale.value = Math.min(4, Math.max(1, pinchBase.value * e.scale));
+    })
+    .onEnd(() => {
+      if (mediaScale.value < 1.02) {
+        mediaScale.value = withTiming(1);
+        mediaTx.value = withTiming(0);
+        mediaTy.value = withTiming(0);
+      }
+      pinchBase.value = mediaScale.value;
+    });
+
+  const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      panOriginX.value = mediaTx.value;
+      panOriginY.value = mediaTy.value;
+    })
+    .onUpdate(e => {
+      if (mediaScale.value > 1.02) {
+        mediaTx.value = panOriginX.value + e.translationX;
+        mediaTy.value = panOriginY.value + e.translationY;
+      }
+    });
+
+  const storyZoomGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+
+  const storyZoomStyle = useAnimatedStyle(() => ({
+    width: W,
+    height: H,
+    transform: [{translateX: mediaTx.value}, {translateY: mediaTy.value}, {scale: mediaScale.value}],
+  }));
+
   const openOwnAnalytics = () => {
     if (!current?._id) return;
     setAnalyticsOpen(true);
@@ -462,6 +516,29 @@ export function StoryViewScreen() {
   return (
     <View style={{flex: 1, backgroundColor: '#000'}}>
       <StatusBar barStyle="light-content" hidden={false} backgroundColor="#000" />
+
+      <ThemedConfirmModal
+        visible={deleteStoryId != null}
+        title="Delete?"
+        message={"Are you sure you want to delete? This can't be undone."}
+        cancelLabel="Cancel"
+        onCancel={() => setDeleteStoryId(null)}
+        confirmLabel="Delete"
+        destructiveConfirm
+        onConfirm={() => {
+          const id = deleteStoryId;
+          setDeleteStoryId(null);
+          if (!id) return;
+          deletePost(id)
+            .then(() => {
+              DeviceEventEmitter.emit('bromo:storiesChanged');
+              navigation.goBack();
+            })
+            .catch(e =>
+              Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'),
+            );
+        }}
+      />
 
       <Modal visible={ownMenuOpen} transparent animationType="fade" onRequestClose={() => setOwnMenuOpen(false)}>
         <Pressable
@@ -490,25 +567,7 @@ export function StoryViewScreen() {
               style={{paddingVertical: 16, paddingHorizontal: 20, borderTopWidth: 1, borderTopColor: palette.border}}
               onPress={() => {
                 setOwnMenuOpen(false);
-                Alert.alert(
-                  'Delete?',
-                  "Are you sure you want to delete? This can't be undone.",
-                  [
-                    {text: 'Cancel', style: 'cancel'},
-                    {
-                      text: 'Delete',
-                      style: 'destructive',
-                      onPress: () => {
-                        deletePost(current._id)
-                          .then(() => {
-                            DeviceEventEmitter.emit('bromo:storiesChanged');
-                            navigation.goBack();
-                          })
-                          .catch(e => Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'));
-                      },
-                    },
-                  ],
-                );
+                setDeleteStoryId(current._id);
               }}>
               <Text style={{color: palette.destructive, fontSize: 16, fontWeight: '800'}}>Delete story</Text>
             </Pressable>
@@ -599,61 +658,67 @@ export function StoryViewScreen() {
       {/* ── Media / Background ──────────────────────────────────────────── */}
       {isColorBg ? (
         <View style={{width: W, height: H, backgroundColor: bgColor}} />
-      ) : current.mediaType === 'video' ? (
-        storyVideoPlayUri == null ? (
-          poster ? (
-            <Image
-              source={{uri: resolveMediaUrl(poster) ?? poster}}
-              style={{width: W, height: H}}
-              resizeMode="cover"
-              onLoadEnd={() => setMediaReady(true)}
-            />
-          ) : (
-            <View style={{width: W, height: H, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center'}}>
-              <ActivityIndicator color="#fff" />
-            </View>
-          )
-        ) : (
-          <NetworkVideo
-            key={`${current._id}-${storyVideoPlayUri.startsWith('file') ? 'local' : 'net'}`}
-            context={current.hlsMasterUrl ? 'story-hls' : 'story'}
-            uri={storyVideoPlayUri}
-            fallbackUri={
-              current.hlsMasterUrl ? resolveMediaUrl(current.mediaUrl) ?? undefined : undefined
-            }
-            posterUri={poster}
-            style={{width: W, height: H}}
-            repeat={false}
-            muted={false}
-            paused={paused || showReply}
-            resizeMode="cover"
-            maxBitRate={current.hlsMasterUrl ? maxBitRate : undefined}
-            posterOverlayUntilReady
-            onDecoderReady={() => setMediaReady(true)}
-            onLoad={(d: OnLoadData) => {
-              const sec = Number(d.duration);
-              if (Number.isFinite(sec) && sec > 0) {
-                const ms = Math.round(sec * 1000);
-                setStoryDurationMs(
-                  Math.min(STORY_DURATION_VIDEO_MAX_MS, Math.max(STORY_DURATION_VIDEO_MIN_MS, ms)),
-                );
-              } else {
-                setStoryDurationMs(STORY_DURATION_VIDEO_FALLBACK_MS);
-              }
-            }}
-            onProgress={onVideoProgress}
-            onEnd={onStoryVideoEnd}
-          />
-        )
       ) : (
-        <Image
-          source={{uri: mediaUri}}
-          style={{width: W, height: H}}
-          resizeMode="cover"
-          onLoadEnd={() => setMediaReady(true)}
-          progressiveRenderingEnabled
-          fadeDuration={80}
-        />
+        <GestureDetector gesture={storyZoomGesture}>
+          <Reanimated.View style={storyZoomStyle}>
+            {current.mediaType === 'video' ? (
+              storyVideoPlayUri == null ? (
+                poster ? (
+                  <Image
+                    source={{uri: resolveMediaUrl(poster) ?? poster}}
+                    style={{width: W, height: H}}
+                    resizeMode="cover"
+                    onLoadEnd={() => setMediaReady(true)}
+                  />
+                ) : (
+                  <View style={{width: W, height: H, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center'}}>
+                    <ActivityIndicator color="#fff" />
+                  </View>
+                )
+              ) : (
+                <NetworkVideo
+                  key={`${current._id}-${storyVideoPlayUri.startsWith('file') ? 'local' : 'net'}`}
+                  context={current.hlsMasterUrl ? 'story-hls' : 'story'}
+                  uri={storyVideoPlayUri}
+                  fallbackUri={
+                    current.hlsMasterUrl ? resolveMediaUrl(current.mediaUrl) ?? undefined : undefined
+                  }
+                  posterUri={poster}
+                  style={{width: W, height: H}}
+                  repeat={false}
+                  muted={false}
+                  paused={paused || showReply}
+                  resizeMode="cover"
+                  maxBitRate={current.hlsMasterUrl ? maxBitRate : undefined}
+                  posterOverlayUntilReady
+                  onDecoderReady={() => setMediaReady(true)}
+                  onLoad={(d: OnLoadData) => {
+                    const sec = Number(d.duration);
+                    if (Number.isFinite(sec) && sec > 0) {
+                      const ms = Math.round(sec * 1000);
+                      setStoryDurationMs(
+                        Math.min(STORY_DURATION_VIDEO_MAX_MS, Math.max(STORY_DURATION_VIDEO_MIN_MS, ms)),
+                      );
+                    } else {
+                      setStoryDurationMs(STORY_DURATION_VIDEO_FALLBACK_MS);
+                    }
+                  }}
+                  onProgress={onVideoProgress}
+                  onEnd={onStoryVideoEnd}
+                />
+              )
+            ) : (
+              <Image
+                source={{uri: mediaUri}}
+                style={{width: W, height: H}}
+                resizeMode="cover"
+                onLoadEnd={() => setMediaReady(true)}
+                progressiveRenderingEnabled
+                fadeDuration={80}
+              />
+            )}
+          </Reanimated.View>
+        </GestureDetector>
       )}
 
       {/* ── Color-bg overlay tint (when story has media + a bg tint) ─────── */}

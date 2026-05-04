@@ -108,6 +108,14 @@ export interface PostDoc extends Document {
   storyMeta?: StoryMeta;
   originalAudioId?: Types.ObjectId;
   originalAudioTitle?: string;
+  /** Licensed catalog track when replacing video audio (remux). */
+  musicTrackId?: Types.ObjectId;
+  /** Original user upload URL before server-side licensed-audio remux. */
+  originalVideoUrl?: string;
+  /** Server pipeline: replace embedded audio with licensed track. */
+  audioRemuxStatus?: "none" | "pending" | "processing" | "ready" | "failed";
+  audioRemuxAttempts?: number;
+  audioRemuxError?: string;
   remixOfPostId?: Types.ObjectId;
   remixCredit?: {
     postId?: Types.ObjectId;
@@ -190,6 +198,16 @@ const postSchema = new Schema<PostDoc>(
     storyMeta: { type: Schema.Types.Mixed, default: undefined },
     originalAudioId: { type: Schema.Types.ObjectId, ref: "OriginalAudio" },
     originalAudioTitle: { type: String, default: "" },
+    musicTrackId: { type: Schema.Types.ObjectId, ref: "MusicTrack" },
+    originalVideoUrl: { type: String, default: "" },
+    audioRemuxStatus: {
+      type: String,
+      enum: ["none", "pending", "processing", "ready", "failed"],
+      default: "none",
+      index: true,
+    },
+    audioRemuxAttempts: { type: Number, default: 0 },
+    audioRemuxError: { type: String },
     remixOfPostId: { type: Schema.Types.ObjectId, ref: "Post" },
     remixCredit: {
       postId: { type: Schema.Types.ObjectId, ref: "Post" },

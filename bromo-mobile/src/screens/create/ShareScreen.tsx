@@ -1,7 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Platform,
@@ -17,7 +16,7 @@ import {
 } from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import {CameraRoll} from '@react-native-camera-roll/camera-roll';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {Screen} from '../../components/ui/Screen';
 import {ThemedConfirmModal} from '../../components/ui/ThemedConfirmModal';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
@@ -27,7 +26,6 @@ import {
   Award,
   Calendar,
   Check,
-  ChevronLeft,
   ChevronRight,
   Download,
   EyeOff,
@@ -729,6 +727,12 @@ export function ShareScreen() {
     title: string;
     message: string;
   } | null>(null);
+  const [infoModal, setInfoModal] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+  const [discardModalOpen, setDiscardModalOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState(() =>
     toDateInputs(draft.advanced.scheduledAt),
@@ -762,9 +766,11 @@ export function ShareScreen() {
       } catch {
         if (!alive) return;
         setEditHydrating(false);
-        Alert.alert('Could not load post', 'Try again.', [
-          {text: 'OK', onPress: () => navigation.goBack()},
-        ]);
+        setInfoModal({
+          title: 'Could not load post',
+          message: 'Try again.',
+          onConfirm: () => navigation.goBack(),
+        });
       }
     })();
     return () => {
@@ -892,13 +898,32 @@ export function ShareScreen() {
   const previewBoxW = Math.min(viewportW * 0.75, 320);
   const previewBoxH = previewBoxW / aspect;
 
+  const headerTitle = useMemo(
+    () =>
+      editPostId
+        ? 'Edit'
+        : `New ${
+            draft.mode === 'story'
+              ? 'story'
+              : draft.mode === 'reel'
+              ? 'reel'
+              : 'post'
+          }`,
+    [editPostId, draft.mode],
+  );
+
+  const confirmDiscard = useCallback(() => {
+    setDiscardModalOpen(false);
+    closeAll();
+  }, [closeAll]);
+
   const saveDraftNow = useCallback(async () => {
     if (editPostId) {
-      Alert.alert('Drafts', 'Save as draft is only for new posts.');
+      toastOk('Save as draft is only for new posts.');
       return;
     }
     if (!asset) {
-      Alert.alert('No media', 'Add something to save.');
+      toastOk('Add something to save.');
       return;
     }
     setBusy('draft');
@@ -942,14 +967,17 @@ export function ShareScreen() {
         durationMs: effectiveTrimmedDurationMs(draft, asset),
       });
       toastOk('Draft saved');
-      Alert.alert('Saved', 'Your draft is ready whenever you come back.', [
-        {text: 'OK', onPress: closeAll},
-      ]);
+      setInfoModal({
+        title: 'Saved',
+        message: 'Your draft is ready whenever you come back.',
+        onConfirm: closeAll,
+      });
     } catch (e) {
-      Alert.alert(
-        'Could not save draft',
-        e instanceof Error ? e.message : 'Try again',
-      );
+      setInfoModal({
+        title: 'Could not save draft',
+        message: e instanceof Error ? e.message : 'Try again',
+        onConfirm: () => setInfoModal(null),
+      });
     } finally {
       setBusy(null);
     }
@@ -968,17 +996,18 @@ export function ShareScreen() {
       }
       toastOk('Saved to gallery');
     } catch (err) {
-      Alert.alert(
-        'Could not save',
-        err instanceof Error ? err.message : 'Try again',
-      );
+      setInfoModal({
+        title: 'Could not save',
+        message: err instanceof Error ? err.message : 'Try again',
+        onConfirm: () => setInfoModal(null),
+      });
     }
   }, [asset]);
 
   const publish = useCallback(
     async (scheduledAt?: string | null) => {
       if (!asset) {
-        Alert.alert('No media', 'Please add a photo or video first.');
+        toastOk('Please add a photo or video first.');
         return;
       }
       const isRemoteAsset =
@@ -986,28 +1015,26 @@ export function ShareScreen() {
       if (asset.type === 'video' && !isRemoteAsset) {
         const sz = await getLocalFileSizeBytes(asset.uri);
         if (sz != null && sz > MAX_UPLOAD_BYTES) {
-          Alert.alert(
-            'File too large',
-            `Videos can be up to ${Math.round(
+          setInfoModal({
+            title: 'File too large',
+            message: `Videos can be up to ${Math.round(
               MAX_UPLOAD_BYTES / (1024 * 1024),
             )} MB. Pick a shorter clip or lower resolution.`,
-          );
+            onConfirm: () => setInfoModal(null),
+          });
           return;
         }
       }
 
       const scheduleIso = scheduledAt ?? draft.advanced.scheduledAt;
       if (editPostId && scheduleIso) {
-        Alert.alert('Schedule', 'Editing does not support scheduling.');
+        toastOk('Editing does not support scheduling.');
         return;
       }
       if (scheduleIso) {
         const when = new Date(scheduleIso);
         if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
-          Alert.alert(
-            'Invalid schedule',
-            'Choose a future date and time for scheduled publishing.',
-          );
+          toastOk('Choose a future date and time for scheduled publishing.');
           return;
         }
       }
@@ -1088,9 +1115,11 @@ export function ShareScreen() {
               : {}),
           });
           toastOk('Saved');
-          Alert.alert('Saved', 'Your changes are live.', [
-            {text: 'OK', onPress: closeAll},
-          ]);
+          setInfoModal({
+            title: 'Saved',
+            message: 'Your changes are live.',
+            onConfirm: closeAll,
+          });
           return;
         }
         const uploadCategory: 'reels' | 'stories' | 'posts' =
@@ -1183,6 +1212,7 @@ export function ShareScreen() {
         const clientEditMeta = packEditMetaForUpload(draft);
         const originalAudioId = draft.selectedAudio?.originalAudioId;
         const remixOfPostId = draft.selectedAudio?.sourcePostId;
+        const musicTrackId = draft.selectedAudio?.musicTrackId?.trim();
         const carouselAssets =
           draft.mode === 'post'
             ? draft.assets.filter(item => item.type === 'image').slice(0, 10)
@@ -1229,6 +1259,7 @@ export function ShareScreen() {
             location: draft.location?.name,
             locationMeta: locationMeta ?? undefined,
             music: draft.selectedAudio?.title,
+            ...(musicTrackId ? {musicTrackId} : {}),
             tags: draft.tagged.map(t => t.username),
             taggedUserIds,
             collaboratorIds,
@@ -1249,6 +1280,7 @@ export function ShareScreen() {
               caption,
               location: draft.location?.name,
               music: draft.selectedAudio?.title,
+              ...(musicTrackId ? {musicTrackId} : {}),
               tags: draft.tagged.map(t => t.username),
               feedCategory,
               taggedUserIds,
@@ -1292,6 +1324,7 @@ export function ShareScreen() {
             location: draft.location?.name,
             locationMeta: locationMeta ?? undefined,
             music: draft.selectedAudio?.title,
+            ...(musicTrackId ? {musicTrackId} : {}),
             tags: draft.tagged.map(t => t.username),
             taggedUserIds,
             collaboratorIds,
@@ -1318,10 +1351,11 @@ export function ShareScreen() {
             : 'Your content is live.',
         });
       } catch (err) {
-        Alert.alert(
-          scheduleIso ? 'Failed to schedule' : 'Failed to post',
-          err instanceof Error ? err.message : 'Try again',
-        );
+        setInfoModal({
+          title: scheduleIso ? 'Failed to schedule' : 'Failed to post',
+          message: err instanceof Error ? err.message : 'Try again',
+          onConfirm: () => setInfoModal(null),
+        });
       } finally {
         setBusy(null);
       }
@@ -1356,11 +1390,8 @@ export function ShareScreen() {
   );
 
   const discard = useCallback(() => {
-    Alert.alert('Discard?', 'Your edits will be lost.', [
-      {text: 'Cancel', style: 'cancel'},
-      {text: 'Discard', style: 'destructive', onPress: closeAll},
-    ]);
-  }, [closeAll]);
+    setDiscardModalOpen(true);
+  }, []);
 
   const taggedSummary = useMemo(() => {
     if (!draft.tagged.length) return undefined;
@@ -1417,39 +1448,54 @@ export function ShareScreen() {
   if (!asset) {
     if (editPostId && editHydrating) {
       return (
-        <ThemedSafeScreen style={styles.root}>
-          <View style={[styles.header, {justifyContent: 'center'}]}>
-            <Text style={styles.headerTitle}>Loading…</Text>
-          </View>
+        <Screen
+          title="Loading…"
+          showBack
+          onBackPress={() => navigation.goBack()}
+          scroll={false}
+          style={{flex: 1}}
+          safeAreaStyle={styles.root}>
           <View
             style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
             <ActivityIndicator size="large" color={palette.accent} />
           </View>
-        </ThemedSafeScreen>
+        </Screen>
       );
     }
     return (
-      <ThemedSafeScreen style={styles.root}>
-        <View style={styles.header}>
-          <Pressable
-            style={styles.headerIconBtn}
-            onPress={() => navigation.goBack()}
-            hitSlop={12}>
-            <ChevronLeft size={26} color={palette.foreground} />
-          </Pressable>
-          <Text style={styles.headerTitle}>New post</Text>
-          <View style={{width: 38}} />
-        </View>
+      <Screen
+        title="New post"
+        showBack
+        onBackPress={() => navigation.goBack()}
+        scroll={false}
+        style={{flex: 1}}
+        safeAreaStyle={styles.root}>
         <View
           style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <Text style={{color: palette.foreground}}>No media selected.</Text>
         </View>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   return (
-    <ThemedSafeScreen style={styles.root}>
+    <Screen
+      title={headerTitle}
+      showBack
+      onBackPress={() => navigation.goBack()}
+      right={
+        <Pressable
+          style={styles.shareBtn}
+          onPress={() => publish(null)}
+          disabled={busy !== null}>
+          <Text style={styles.shareBtnText}>
+            {editPostId ? 'Save changes' : 'Share'}
+          </Text>
+        </Pressable>
+      }
+      scroll={false}
+      style={{flex: 1}}
+      safeAreaStyle={styles.root}>
       <ThemedConfirmModal
         visible={publishDone != null}
         title={publishDone?.title ?? 'Done'}
@@ -1459,34 +1505,26 @@ export function ShareScreen() {
           closeAll();
         }}
       />
-      <View style={styles.header}>
-        <Pressable
-          style={styles.headerIconBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={12}>
-          <ChevronLeft size={26} color={palette.foreground} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {editPostId
-            ? 'Edit'
-            : `New ${
-                draft.mode === 'story'
-                  ? 'story'
-                  : draft.mode === 'reel'
-                  ? 'reel'
-                  : 'post'
-              }`}
-        </Text>
-        <Pressable
-          style={styles.shareBtn}
-          onPress={() => publish(null)}
-          disabled={busy !== null}>
-          <Text style={styles.shareBtnText}>
-            {editPostId ? 'Save changes' : 'Share'}
-          </Text>
-        </Pressable>
-      </View>
-
+      <ThemedConfirmModal
+        visible={infoModal != null}
+        title={infoModal?.title ?? ''}
+        message={infoModal?.message ?? ''}
+        onConfirm={() => {
+          const fn = infoModal?.onConfirm;
+          setInfoModal(null);
+          fn?.();
+        }}
+      />
+      <ThemedConfirmModal
+        visible={discardModalOpen}
+        title="Discard?"
+        message="Your edits will be lost."
+        cancelLabel="Cancel"
+        onCancel={() => setDiscardModalOpen(false)}
+        confirmLabel="Discard"
+        destructiveConfirm
+        onConfirm={confirmDiscard}
+      />
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
@@ -2534,10 +2572,7 @@ export function ShareScreen() {
                     scheduleDraft.time,
                   );
                   if (!iso) {
-                    Alert.alert(
-                      'Invalid date or time',
-                      'Use YYYY-MM-DD and HH:mm format.',
-                    );
+                    toastOk('Use YYYY-MM-DD and HH:mm format.');
                     return;
                   }
                   setAdvanced({scheduledAt: iso});
@@ -2577,7 +2612,7 @@ export function ShareScreen() {
           </Text>
         </View>
       </Modal>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

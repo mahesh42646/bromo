@@ -35,7 +35,7 @@ import {
 import Geolocation from '@react-native-community/geolocation';
 import { StoreDiscoverCard } from '../components/store/StoreDiscoverCard';
 import { useTheme } from '../context/ThemeContext';
-import { RefreshableScrollView, Screen } from '../components/ui';
+import { RefreshableScrollView, Screen, SegmentedTabs } from '../components/ui';
 import { parentNavigate } from '../navigation/parentNavigate';
 import {
   createStoreSubscriptionCheckout,
@@ -627,81 +627,37 @@ export function StoreScreen() {
       {showFilters && (
         <View style={[s.filtersPanel, { backgroundColor: palette.surface, borderBottomColor: palette.border }]}>
           <Text style={[s.filterLabel, { color: palette.foregroundSubtle }]}>Sort</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillRow}>
-            {SORT_OPTIONS.map(option => {
-              const active = sortBy === option.id;
-              return (
-                <Pressable
-                  key={option.id}
-                  onPress={() => setSortBy(option.id)}
-                  style={[s.pill, { backgroundColor: active ? palette.primary : palette.input, borderColor: active ? palette.primary : palette.border }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? palette.primaryForeground : palette.foreground }}>{option.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <SegmentedTabs items={SORT_OPTIONS.map(option => ({label: option.label, value: option.id}))} value={sortBy} onChange={setSortBy} variant="pill" />
 
           <Text style={[s.filterLabel, { color: palette.foregroundSubtle }]}>Distance</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillRow}>
-            {DISTANCE_OPTIONS.map(option => {
-              const active = distanceFilter === option.id;
-              return (
-                <Pressable
-                  key={option.id}
-                  onPress={() => setDistanceFilter(option.id)}
-                  style={[s.pill, { backgroundColor: active ? palette.primary : palette.input, borderColor: active ? palette.primary : palette.border }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? palette.primaryForeground : palette.foreground }}>{option.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <SegmentedTabs items={DISTANCE_OPTIONS.map(option => ({label: option.label, value: option.id}))} value={distanceFilter} onChange={setDistanceFilter} variant="pill" />
 
-          <Text style={[s.filterLabel, { color: palette.foregroundSubtle }]}>Rating & Plan</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillRow}>
-            {RATING_FILTERS.map(option => {
-              const active = minRating === option.id;
-              return (
-                <Pressable
-                  key={option.label}
-                  onPress={() => setMinRating(option.id)}
-                  style={[s.pill, { backgroundColor: active ? palette.primary : palette.input, borderColor: active ? palette.primary : palette.border }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? palette.primaryForeground : palette.foreground }}>{option.label}</Text>
-                </Pressable>
-              );
-            })}
-            {(['all', 'basic', 'premium', 'gold'] as const).map(id => {
-              const active = planFilter === id;
-              const label = id === 'all' ? 'All Plans' : id[0].toUpperCase() + id.slice(1);
-              return (
-                <Pressable
-                  key={id}
-                  onPress={() => setPlanFilter(id)}
-                  style={[s.pill, { backgroundColor: active ? palette.primary : palette.input, borderColor: active ? palette.primary : palette.border }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? palette.primaryForeground : palette.foreground }}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <Text style={[s.filterLabel, { color: palette.foregroundSubtle }]}>Rating</Text>
+          <SegmentedTabs items={RATING_FILTERS.map(option => ({label: option.label, value: option.id}))} value={minRating} onChange={setMinRating} variant="pill" />
+
+          <Text style={[s.filterLabel, { color: palette.foregroundSubtle }]}>Plan</Text>
+          <SegmentedTabs
+            items={(['all', 'basic', 'premium', 'gold'] as const).map(id => ({
+              label: id === 'all' ? 'All Plans' : id[0].toUpperCase() + id.slice(1),
+              value: id,
+            }))}
+            value={planFilter}
+            onChange={setPlanFilter}
+            variant="pill"
+          />
 
           <Text style={[s.filterLabel, { color: palette.foregroundSubtle }]}>Store Type</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillRow}>
-            {([
+          <SegmentedTabs
+            items={([
               ['all', 'All Stores'],
               ['d2c', 'D2C Discounts'],
               ['b2b', 'B2B Bulk'],
               ['online', 'Online Selling'],
-            ] as const).map(([id, label]) => {
-              const active = storeTypeFilter === id;
-              return (
-                <Pressable
-                  key={id}
-                  onPress={() => setStoreTypeFilter(id)}
-                  style={[s.pill, { backgroundColor: active ? palette.primary : palette.input, borderColor: active ? palette.primary : palette.border }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? palette.primaryForeground : palette.foreground }}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+            ] as const).map(([value, label]) => ({label, value}))}
+            value={storeTypeFilter}
+            onChange={setStoreTypeFilter}
+            variant="pill"
+          />
 
           <Pressable
             onPress={() => setDeliveryOnly(v => !v)}
@@ -740,20 +696,13 @@ export function StoreScreen() {
           </Pressable>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
-          {categoryPills.map(cat => {
-            const active = activeCategory === cat;
-            const label = cat === '' ? 'All' : cat.replace(' & ', ' · ');
-            return (
-              <Pressable
-                key={cat || 'all'}
-                onPress={() => setActiveCategory(cat)}
-                style={[s.pill, { backgroundColor: active ? palette.primary : palette.input, borderColor: active ? palette.primary : palette.border }]}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: active ? palette.primaryForeground : palette.foreground }}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <SegmentedTabs
+          items={categoryPills.map(cat => ({label: cat === '' ? 'All' : cat.replace(' & ', ' · '), value: cat}))}
+          value={activeCategory}
+          onChange={setActiveCategory}
+          variant="pill"
+          style={{marginTop: 8}}
+        />
 
         <View style={[s.mapCard, { borderColor: palette.border, backgroundColor: palette.card }]}>
           <View style={s.sectionHeadRow}>

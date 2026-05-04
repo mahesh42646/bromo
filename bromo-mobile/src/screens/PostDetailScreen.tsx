@@ -6,7 +6,6 @@ import {
   Image,
   Modal,
   Pressable,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -20,8 +19,9 @@ import {BadgeCheck, Bookmark, Heart, MessageCircle, MoreHorizontal, Pencil, Send
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {Screen} from '../components/ui/Screen';
+import {RefreshableScrollView, Screen} from '../components/ui';
 import {ActionSheet} from '../components/ui/ActionSheet';
+import {ThemedConfirmModal} from '../components/ui/ThemedConfirmModal';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {
   deletePost,
@@ -80,9 +80,10 @@ export function PostDetailScreen() {
   const [pollBusy, setPollBusy] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [otherMenuOpen, setOtherMenuOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  useEffect(() => {
-    getPost(postId)
+  const loadPost = useCallback(async () => {
+    await getPost(postId)
       .then(res => {
         setPost(res.post);
         setBookmarked(Boolean(res.post.isSaved));
@@ -92,6 +93,10 @@ export function PostDetailScreen() {
       })
       .finally(() => setLoading(false));
   }, [postId]);
+
+  useEffect(() => {
+    void loadPost();
+  }, [loadPost]);
 
   const handleLike = useCallback(() => {
     if (!post) return;
@@ -145,22 +150,17 @@ export function PostDetailScreen() {
   const confirmDelete = useCallback(() => {
     if (!post) return;
     setMenuOpen(false);
-    Alert.alert(
-      'Delete?',
-      "Are you sure you want to delete? This can't be undone.",
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            deletePost(post._id)
-              .then(() => navigation.goBack())
-              .catch(e => Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'));
-          },
-        },
-      ],
-    );
+    setDeleteConfirmOpen(true);
+  }, [post]);
+
+  const runDeletePost = useCallback(() => {
+    if (!post) return;
+    setDeleteConfirmOpen(false);
+    deletePost(post._id)
+      .then(() => navigation.goBack())
+      .catch(e =>
+        Alert.alert('Delete failed', e instanceof Error ? e.message : 'Try again.'),
+      );
   }, [navigation, post]);
 
   if (loading) {
@@ -209,6 +209,16 @@ export function PostDetailScreen() {
           <MoreHorizontal size={22} color={palette.foreground} />
         </Pressable>
       }>
+      <ThemedConfirmModal
+        visible={deleteConfirmOpen}
+        title="Delete?"
+        message={"Are you sure you want to delete? This can't be undone."}
+        cancelLabel="Cancel"
+        onCancel={() => setDeleteConfirmOpen(false)}
+        confirmLabel="Delete"
+        destructiveConfirm
+        onConfirm={runDeletePost}
+      />
       <StatusBar barStyle="light-content" />
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
@@ -257,7 +267,7 @@ export function PostDetailScreen() {
         </Pressable>
       </Modal>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <RefreshableScrollView onRefresh={loadPost} showsVerticalScrollIndicator={false}>
         {/* Author row */}
         <Pressable
           onPress={() => navigation.navigate('OtherUserProfile', {userId: post.author._id})}
@@ -480,7 +490,7 @@ export function PostDetailScreen() {
             {post.commentsCount > 0 ? `View all ${formatCount(post.commentsCount)} comments` : 'Add a comment...'}
           </Text>
         </Pressable>
-      </ScrollView>
+      </RefreshableScrollView>
 
       <ActionSheet
         visible={otherMenuOpen}

@@ -38,7 +38,9 @@ mediaJobsRouter.get(
     let post: { _id: unknown; processingStatus?: string; hlsMasterUrl?: string } | null = null;
     if (job.postDraftId) {
       post = await Post.findById(job.postDraftId)
-        .select("_id processingStatus hlsMasterUrl mediaUrl thumbnailUrl type mediaType caption")
+        .select(
+          "_id processingStatus hlsMasterUrl mediaUrl thumbnailUrl type mediaType caption audioRemuxStatus musicTrackId",
+        )
         .lean();
     }
 

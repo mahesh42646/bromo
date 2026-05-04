@@ -1,12 +1,10 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Modal,
   Pressable,
-  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -22,7 +20,6 @@ import {
   Bookmark,
   Play,
   BadgeCheck,
-  ChevronLeft,
   AlignJustify,
   Coins,
   Camera,
@@ -51,11 +48,13 @@ import {
 } from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {RefreshableScrollView, Screen, SegmentedTabs} from '../components/ui';
+import {ThemedConfirmModal} from '../components/ui/ThemedConfirmModal';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {ProfileGridMedia} from '../components/profile/ProfileGridMedia';
 import {resetToAuth} from '../navigation/rootNavigation';
 import {getUserGridStats, getUserPosts, type Post, type UserGridStats} from '../api/postsApi';
+import {followSourceForContext} from '../lib/followSource';
 import {getWallet} from '../api/walletApi';
 import {followUser, getUserSuggestions, type SuggestedUser} from '../api/followApi';
 import {socketService} from '../services/socketService';
@@ -219,6 +218,8 @@ export function ProfileScreen() {
   const {dbUser, logout, refreshDbUser} = useAuth();
   const [gridTab, setGridTab] = useState('posts');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [addAccountConfirmOpen, setAddAccountConfirmOpen] = useState(false);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -352,40 +353,25 @@ export function ProfileScreen() {
 
   const handleLogout = () => {
     setMenuOpen(false);
-    Alert.alert(
-      'Log out',
-      `Log out of @${username || 'your account'}?`,
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            resetToAuth();
-          },
-        },
-      ],
-    );
+    setLogoutConfirmOpen(true);
   };
 
   const handleAddAccount = () => {
     setMenuOpen(false);
-    Alert.alert(
-      'Add another account',
-      'You will be logged out of the current account. Continue?',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Continue',
-          onPress: async () => {
-            await logout();
-            resetToAuth();
-          },
-        },
-      ],
-    );
+    setAddAccountConfirmOpen(true);
   };
+
+  const confirmLogout = useCallback(async () => {
+    setLogoutConfirmOpen(false);
+    await logout();
+    resetToAuth();
+  }, [logout]);
+
+  const confirmAddAccount = useCallback(async () => {
+    setAddAccountConfirmOpen(false);
+    await logout();
+    resetToAuth();
+  }, [logout]);
 
   const nav = (screen: string, params?: Record<string, unknown>) => {
     setMenuOpen(false);
@@ -508,7 +494,48 @@ export function ProfileScreen() {
   ];
 
   return (
-    <ThemedSafeScreen>
+    <Screen
+      title={username || displayName}
+      showBack={navigation.canGoBack()}
+      scroll={false}
+      right={
+        <View style={styles.headerRight}>
+          <Pressable
+            onPress={() => parentNavigate(navigation, 'PointsWallet')}
+            style={[styles.coinBadge, {borderColor: `${palette.primary}40`, backgroundColor: `${palette.primary}12`}]}>
+            <Coins size={11} color={palette.warning} />
+            <Text style={[styles.coinText, {color: palette.primary}]}>
+              {walletBalance != null ? fmtWalletCoins(walletBalance) : '-'}
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => setMenuOpen(true)} hitSlop={12}>
+            <AlignJustify size={22} color={palette.foreground} />
+          </Pressable>
+        </View>
+      }>
+      <ThemedConfirmModal
+        visible={logoutConfirmOpen}
+        title="Log out"
+        message={`Log out of @${username || 'your account'}?`}
+        cancelLabel="Cancel"
+        onCancel={() => setLogoutConfirmOpen(false)}
+        confirmLabel="Log out"
+        destructiveConfirm
+        onConfirm={() => {
+          void confirmLogout();
+        }}
+      />
+      <ThemedConfirmModal
+        visible={addAccountConfirmOpen}
+        title="Add another account"
+        message="You will be logged out of the current account. Continue?"
+        cancelLabel="Cancel"
+        onCancel={() => setAddAccountConfirmOpen(false)}
+        confirmLabel="Continue"
+        onConfirm={() => {
+          void confirmAddAccount();
+        }}
+      />
       <StatusBar barStyle="light-content" />
 
       <SettingsModal
@@ -521,36 +548,10 @@ export function ProfileScreen() {
         palette={palette}
       />
 
-      {/* ── Top header ── */}
-      <View style={[styles.header, {borderBottomColor: palette.glassFaint}]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
-          <ChevronLeft size={22} color={palette.foreground} />
-        </Pressable>
-
-        <Text style={[styles.headerUsername, {color: palette.foreground}]} numberOfLines={1}>
-          {username || displayName}
-        </Text>
-
-        <View style={styles.headerRight}>
-          <Pressable
-            onPress={() => parentNavigate(navigation, 'PointsWallet')}
-            style={[styles.coinBadge, {borderColor: `${palette.primary}40`, backgroundColor: `${palette.primary}12`}]}>
-            <Coins size={11} color={palette.warning} />
-            <Text style={[styles.coinText, {color: palette.primary}]}>
-              {walletBalance != null ? fmtWalletCoins(walletBalance) : '—'}
-            </Text>
-          </Pressable>
-          <Pressable onPress={() => setMenuOpen(true)} hitSlop={12}>
-            <AlignJustify size={22} color={palette.foreground} />
-          </Pressable>
-        </View>
-      </View>
-
-      <ScrollView
+      <RefreshableScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} colors={[palette.primary]} />
-        }>
+        refreshing={refreshing}
+        onRefresh={onRefresh}>
 
         {/* ── Profile section ── */}
         <View style={styles.profileSection}>
@@ -791,7 +792,10 @@ export function ProfileScreen() {
                     <Pressable
                       onPress={async () => {
                         try {
-                          await followUser(u._id, {kind: 'discover'});
+                          await followUser(
+                            u._id,
+                            followSourceForContext({surface: 'profile_suggestions'}),
+                          );
                           setDiscoverPeople(prev => prev.filter(x => x._id !== u._id));
                         } catch {
                           /* ignore */
@@ -813,20 +817,20 @@ export function ProfileScreen() {
         ) : null}
 
         {/* ── Tab bar ── */}
-        <View style={[styles.tabBar, {borderTopColor: palette.glassFaint}]}>
-          {GRID_TABS.map(tab => {
+        <SegmentedTabs
+          items={GRID_TABS.map(tab => {
             const Icon = tab.icon;
-            const active = gridTab === tab.id;
-            return (
-              <Pressable
-                key={tab.id}
-                onPress={() => setGridTab(tab.id)}
-                style={[styles.tabItem, active && [styles.tabItemActive, {borderBottomColor: palette.foreground}]]}>
-                <Icon size={22} color={active ? palette.foreground : palette.foregroundSubtle} />
-              </Pressable>
-            );
+            return {
+              label: tab.id === 'posts' ? 'Posts' : 'Reels',
+              value: tab.id,
+              icon: <Icon size={18} color={gridTab === tab.id ? palette.foreground : palette.foregroundSubtle} />,
+            };
           })}
-        </View>
+          value={gridTab}
+          onChange={setGridTab}
+          variant="underline"
+          style={[styles.tabBar, {borderTopColor: palette.glassFaint}]}
+        />
 
         {/* ── Content grid ── */}
         {postsLoading ? (
@@ -855,6 +859,25 @@ export function ProfileScreen() {
                       <Play size={12} color={palette.foreground} fill={palette.foreground} />
                     </View>
                   )}
+                  {(post.audioRemuxStatus === 'pending' ||
+                    post.audioRemuxStatus === 'processing' ||
+                    post.audioRemuxStatus === 'failed') && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        bottom: 4,
+                        left: 4,
+                        right: 4,
+                        paddingVertical: 3,
+                        borderRadius: 6,
+                        backgroundColor: 'rgba(0,0,0,0.65)',
+                        alignItems: 'center',
+                      }}>
+                      <Text style={{color: '#fff', fontSize: 9, fontWeight: '900'}}>
+                        {post.audioRemuxStatus === 'failed' ? 'Audio mix failed' : 'Audio mixing…'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </Pressable>
             ))}
@@ -870,10 +893,10 @@ export function ProfileScreen() {
         )}
 
         <View style={{height: 32}} />
-      </ScrollView>
+      </RefreshableScrollView>
 
    
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

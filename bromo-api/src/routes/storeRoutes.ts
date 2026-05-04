@@ -17,6 +17,7 @@ import { User } from "../models/User.js";
 import { uploadsRoot, publicUrlForUploadRelative } from "../utils/uploadFiles.js";
 import { mirrorUploadRelative } from "../services/s3Mirror.js";
 import { sendPushToUser } from "../services/pushService.js";
+import { assertTrustedCreatorMediaUrl } from "../utils/trustedCreatorMediaUrl.js";
 import { debitWallet } from "./wallet.js";
 
 export const storeRouter = express.Router();
@@ -101,6 +102,15 @@ function syncSubscriptionStatus(store: Pick<StoreDoc, "subscription">): void {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** KYC and store media URLs must be our uploads (or S3 mirror of the same). */
+function assertOwnedUploadUrls(urls: Array<string | undefined | null>): void {
+  for (const u of urls) {
+    const t = u?.trim();
+    if (!t) continue;
+    assertTrustedCreatorMediaUrl(t);
+  }
 }
 
 const PUBLIC_STORE_FILTER = { isActive: true, approvalStatus: "approved" } as const;
@@ -607,6 +617,20 @@ storeRouter.post(
       if (!panCardUrl || !aadhaarCardUrl || !addressProofUrl || storePhotoUrls.length === 0) {
         return res.status(400).json({message: "PAN Card, Aadhaar Card, store photos and address proof are required"});
       }
+      try {
+        assertOwnedUploadUrls([
+          profilePhoto,
+          bannerImage,
+          panCardUrl,
+          aadhaarCardUrl,
+          addressProofUrl,
+          ...storePhotoUrls,
+        ]);
+      } catch {
+        return res.status(400).json({
+          message: "Document URLs must be uploaded via this app (/uploads/…)",
+        });
+      }
       const acceptedAt = new Date();
       const termsPdfUrl = writeTermsAcceptancePdf({
         userId: String(req.dbUser!._id),
@@ -798,6 +822,22 @@ storeRouter.put(
         store.rejectionReason = "";
         store.set("approvedAt", undefined);
         store.set("approvedBy", undefined);
+      }
+
+      try {
+        const k = store.kyc;
+        assertOwnedUploadUrls([
+          store.profilePhoto,
+          store.bannerImage,
+          k?.panCardUrl,
+          k?.aadhaarCardUrl,
+          k?.addressProofUrl,
+          ...(k?.storePhotoUrls ?? []),
+        ]);
+      } catch {
+        return res.status(400).json({
+          message: "Document URLs must be uploaded via this app (/uploads/…)",
+        });
       }
 
       await store.save();

@@ -202,9 +202,26 @@ promotionsRouter.get("/mine", requireVerifiedUser, async (req: FirebaseAuthedReq
     .limit(limit)
     .lean();
 
+  const contentIds = campaigns
+    .map((c) => c.contentId)
+    .filter((id) => mongoose.Types.ObjectId.isValid(String(id)));
+  const postMeta =
+    contentIds.length > 0
+      ? await Post.find({ _id: { $in: contentIds } })
+          .select("audioRemuxStatus")
+          .lean()
+      : [];
+  const remuxByContent = new Map(
+    postMeta.map((p) => [String(p._id), p.audioRemuxStatus as string | undefined]),
+  );
+  const enriched = campaigns.map((c) => ({
+    ...c,
+    contentAudioRemuxStatus: remuxByContent.get(String(c.contentId)),
+  }));
+
   const total = await PromotionCampaign.countDocuments({ ownerUserId: req.dbUser!._id });
 
-  res.json({ campaigns, total, page, hasMore: page * limit < total });
+  res.json({ campaigns: enriched, total, page, hasMore: page * limit < total });
 });
 
 // ─── GET /promotions/:id ──────────────────────────────────────────────────────

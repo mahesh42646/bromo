@@ -14,11 +14,11 @@ type Props<T> = FlatListProps<T> & {
 /**
  * FlatList with themed RefreshControl.
  */
-export function RefreshableFlatList<T>({
+function RefreshableFlatListInner<T>({
   refreshing: refreshingProp,
   onRefresh,
   ...rest
-}: Props<T>) {
+}: Props<T>, ref: React.ForwardedRef<FlatList<T>>) {
   const {palette} = useTheme();
   const [internalRefreshing, setInternalRefreshing] = useState(false);
   const refreshing = refreshingProp ?? internalRefreshing;
@@ -35,6 +35,7 @@ export function RefreshableFlatList<T>({
 
   return (
     <FlatList
+      ref={ref}
       {...rest}
       refreshControl={
         onRefresh ? (
@@ -50,3 +51,7 @@ export function RefreshableFlatList<T>({
     />
   );
 }
+
+export const RefreshableFlatList = React.forwardRef(RefreshableFlatListInner) as <T>(
+  props: Props<T> & React.RefAttributes<FlatList<T>>,
+) => React.ReactElement;

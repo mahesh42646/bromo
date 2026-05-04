@@ -9,3 +9,6 @@ export function assertTrustedCreatorMediaUrl(url: string): void {
     throw new Error("Document URL must be an app upload (/uploads/…)");
   }
 }
+
+/** Alias for store KYC / owned-asset checks (same rules). */
+export const assertOwnedAssetUrl = assertTrustedCreatorMediaUrl;

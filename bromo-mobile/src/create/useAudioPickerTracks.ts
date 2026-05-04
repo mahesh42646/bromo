@@ -11,7 +11,7 @@ const FALLBACK_TRACKS: AudioTrack[] = [
 ];
 
 function mapLicensed(t: {id: string; title: string; artist: string}): AudioTrack {
-  return {id: t.id, title: t.title, artist: t.artist};
+  return {id: t.id, title: t.title, artist: t.artist, musicTrackId: t.id};
 }
 
 function mapOriginal(a: OriginalAudio): AudioTrack {
@@ -21,6 +21,7 @@ function mapOriginal(a: OriginalAudio): AudioTrack {
     artist: a.owner?.displayName ?? a.owner?.username ?? 'Original sound',
     url: a.audioUrl,
     originalAudioId: a._id,
+    sourcePostId: a.sourcePostId,
   };
 }
 

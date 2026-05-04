@@ -13,8 +13,8 @@ import {
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BadgeCheck, Ban, BellOff, ChevronLeft, EyeOff, UserRound, Video} from 'lucide-react-native';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {BadgeCheck, Ban, BellOff, EyeOff, UserRound, Video} from 'lucide-react-native';
+import {Screen} from '../../components/ui';
 import {useTheme} from '../../context/ThemeContext';
 import {useMessaging} from '../../messaging/MessagingContext';
 import type {MessagesStackParamList} from '../../navigation/MessagesStackNavigator';
@@ -83,21 +83,15 @@ export function ChatDetailScreen() {
 
   if (!peer) {
     return (
-      <ThemedSafeScreen>
+      <Screen title="Chat Details">
         <Text style={{color: palette.foreground}}>User not found</Text>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   return (
-    <ThemedSafeScreen style={{backgroundColor: palette.background}}>
+    <Screen title="Chat Details" scroll={false}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <View style={{flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: palette.border}}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{padding: 8}}>
-          <ChevronLeft size={24} color={palette.foreground} />
-        </Pressable>
-        <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900', flex: 1}}>Chat Details</Text>
-      </View>
 
       <View style={{alignItems: 'center', padding: 22, borderBottomWidth: 1, borderBottomColor: palette.border}}>
         <Image source={{uri: peer.avatar || `https://ui-avatars.com/api/?name=${peer.displayName}`}} style={{width: 86, height: 86, borderRadius: 43, marginBottom: 12}} />
@@ -168,7 +162,7 @@ export function ChatDetailScreen() {
           />
         )}
       </View>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 
