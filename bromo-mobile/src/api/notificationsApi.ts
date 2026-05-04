@@ -4,6 +4,7 @@ export type NotificationType =
   | 'like'
   | 'comment'
   | 'follow'
+  | 'follow_back'
   | 'follow_request'
   | 'follow_accept'
   | 'mention'

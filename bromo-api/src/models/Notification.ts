@@ -4,6 +4,7 @@ export type NotificationType =
   | "like"
   | "comment"
   | "follow"
+  | "follow_back"
   | "follow_request"
   | "follow_accept"
   | "mention"
@@ -29,7 +30,7 @@ const notificationSchema = new Schema<NotificationDoc>(
     actorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     type: {
       type: String,
-      enum: ["like", "comment", "follow", "follow_request", "follow_accept", "mention", "collaboration_invite", "new_post", "message", "milestone", "media_ready"],
+      enum: ["like", "comment", "follow", "follow_back", "follow_request", "follow_accept", "mention", "collaboration_invite", "new_post", "message", "milestone", "media_ready"],
       required: true,
     },
     postId: { type: Schema.Types.ObjectId, ref: "Post" },

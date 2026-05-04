@@ -2,6 +2,12 @@
   "name": "bromo-workspace",
   "private": true,
   "packageManager": "pnpm@10.30.3",
+  "pnpm": {
+    "overrides": {
+      "react": "19.2.3",
+      "react-test-renderer": "19.2.3"
+    }
+  },
   "scripts": {
     "install:all": "pnpm install -r",
     "lint": "pnpm -r lint",

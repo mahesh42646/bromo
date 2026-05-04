@@ -1,0 +1,331 @@
+diff --git a/node_modules/react-native-webview/apple/RNCWebView.mm b/node_modules/react-native-webview/apple/RNCWebView.mm
+index 1111111..2222222 100644
+--- a/node_modules/react-native-webview/apple/RNCWebView.mm
++++ b/node_modules/react-native-webview/apple/RNCWebView.mm
+@@ -10,33 +10,31 @@
+ 
+ #import <React/RCTFabricComponentsPlugins.h>
+ 
+-using namespace facebook::react;
+-
+ auto stringToOnShouldStartLoadWithRequestNavigationTypeEnum(std::string value) {
+-    if (value == "click") return RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Click;
+-    if (value == "formsubmit") return RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Formsubmit;
+-    if (value == "backforward") return RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Backforward;
+-    if (value == "reload") return RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Reload;
+-    if (value == "formresubmit") return RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Formresubmit;
+-    return RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Other;
++    if (value == "click") return facebook::react::RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Click;
++    if (value == "formsubmit") return facebook::react::RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Formsubmit;
++    if (value == "backforward") return facebook::react::RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Backforward;
++    if (value == "reload") return facebook::react::RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Reload;
++    if (value == "formresubmit") return facebook::react::RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Formresubmit;
++    return facebook::react::RNCWebViewEventEmitter::OnShouldStartLoadWithRequestNavigationType::Other;
+ }
+ 
+ auto stringToOnLoadingStartNavigationTypeEnum(std::string value) {
+-    if (value == "click") return RNCWebViewEventEmitter::OnLoadingStartNavigationType::Click;
+-    if (value == "formsubmit") return RNCWebViewEventEmitter::OnLoadingStartNavigationType::Formsubmit;
+-    if (value == "backforward") return RNCWebViewEventEmitter::OnLoadingStartNavigationType::Backforward;
+-    if (value == "reload") return RNCWebViewEventEmitter::OnLoadingStartNavigationType::Reload;
+-    if (value == "formresubmit") return RNCWebViewEventEmitter::OnLoadingStartNavigationType::Formresubmit;
+-    return RNCWebViewEventEmitter::OnLoadingStartNavigationType::Other;
++    if (value == "click") return facebook::react::RNCWebViewEventEmitter::OnLoadingStartNavigationType::Click;
++    if (value == "formsubmit") return facebook::react::RNCWebViewEventEmitter::OnLoadingStartNavigationType::Formsubmit;
++    if (value == "backforward") return facebook::react::RNCWebViewEventEmitter::OnLoadingStartNavigationType::Backforward;
++    if (value == "reload") return facebook::react::RNCWebViewEventEmitter::OnLoadingStartNavigationType::Reload;
++    if (value == "formresubmit") return facebook::react::RNCWebViewEventEmitter::OnLoadingStartNavigationType::Formresubmit;
++    return facebook::react::RNCWebViewEventEmitter::OnLoadingStartNavigationType::Other;
+ }
+ 
+ auto stringToOnLoadingFinishNavigationTypeEnum(std::string value) {
+-    if (value == "click") return RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Click;
+-    if (value == "formsubmit") return RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Formsubmit;
+-    if (value == "backforward") return RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Backforward;
+-    if (value == "reload") return RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Reload;
+-    if (value == "formresubmit") return RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Formresubmit;
+-    return RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Other;
++    if (value == "click") return facebook::react::RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Click;
++    if (value == "formsubmit") return facebook::react::RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Formsubmit;
++    if (value == "backforward") return facebook::react::RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Backforward;
++    if (value == "reload") return facebook::react::RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Reload;
++    if (value == "formresubmit") return facebook::react::RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Formresubmit;
++    return facebook::react::RNCWebViewEventEmitter::OnLoadingFinishNavigationType::Other;
+ }
+ 
+ static inline std::string nullSafeString(id value) {
+@@ -67,9 +65,9 @@
+     RNCWebViewImpl * _view;
+ }
+ 
+-+ (ComponentDescriptorProvider)componentDescriptorProvider
+++ (facebook::react::ComponentDescriptorProvider)componentDescriptorProvider
+ {
+-    return concreteComponentDescriptorProvider<RNCWebViewComponentDescriptor>();
++    return facebook::react::concreteComponentDescriptorProvider<facebook::react::RNCWebViewComponentDescriptor>();
+ }
+ 
+ #if !TARGET_OS_OSX
+@@ -89,14 +87,14 @@
+ - (instancetype)initWithFrame:(CGRect)frame
+ {
+     if (self = [super initWithFrame:frame]) {
+-        static const auto defaultProps = std::make_shared<const RNCWebViewProps>();
++        static const auto defaultProps = std::make_shared<const facebook::react::RNCWebViewProps>();
+         _props = defaultProps;
+ 
+         _view = [[RNCWebViewImpl alloc] init];
+ 
+         _view.onShouldStartLoadWithRequest = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnShouldStartLoadWithRequest data = {
+                     .url = nullSafeString([dictionary valueForKey:@"url"]),
+                     .lockIdentifier = [[dictionary valueForKey:@"lockIdentifier"] doubleValue],
+@@ -113,7 +111,7 @@
+         };
+         _view.onLoadingStart = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnLoadingStart data = {
+                     .url = nullSafeString([dictionary valueForKey:@"url"]),
+                     .lockIdentifier = [[dictionary valueForKey:@"lockIdentifier"] doubleValue],
+@@ -129,7 +127,7 @@
+         };
+         _view.onLoadingError = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnLoadingError data = {
+                     .url = nullSafeString([dictionary valueForKey:@"url"]),
+                     .lockIdentifier = [[dictionary valueForKey:@"lockIdentifier"] doubleValue],
+@@ -146,7 +144,7 @@
+         };
+         _view.onMessage = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnMessage data = {
+                     .url = nullSafeString([dictionary valueForKey:@"url"]),
+                     .lockIdentifier = [[dictionary valueForKey:@"lockIdentifier"] doubleValue],
+@@ -161,7 +159,7 @@
+         };
+         _view.onLoadingFinish = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnLoadingFinish data = {
+                     .url = nullSafeString([dictionary valueForKey:@"url"]),
+                     .lockIdentifier = [[dictionary valueForKey:@"lockIdentifier"] doubleValue],
+@@ -177,7 +175,7 @@
+         };
+         _view.onLoadingProgress = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnLoadingProgress data = {
+                     .url = nullSafeString([dictionary valueForKey:@"url"]),
+                     .lockIdentifier = [[dictionary valueForKey:@"lockIdentifier"] doubleValue],
+@@ -192,7 +190,7 @@
+         };
+         _view.onContentProcessDidTerminate = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnContentProcessDidTerminate data = {
+                     .url = nullSafeString([dictionary valueForKey:@"url"]),
+                     .lockIdentifier = [[dictionary valueForKey:@"lockIdentifier"] doubleValue],
+@@ -206,7 +204,7 @@
+         };
+         _view.onCustomMenuSelection = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnCustomMenuSelection data = {
+                     .selectedText = nullSafeString([dictionary valueForKey:@"selectedText"]),
+                     .key = nullSafeString([dictionary valueForKey:@"key"]),
+@@ -224,33 +222,34 @@
+                 NSDictionary* layoutMeasurement = [dictionary valueForKey:@"layoutMeasurement"];
+                 double zoomScale = [[dictionary valueForKey:@"zoomScale"] doubleValue];
+ 
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnScroll data = {
+                     .contentOffset = {
+-                        .x = [[contentOffset valueForKey:@"x"] doubleValue],
+-                        .y = [[contentOffset valueForKey:@"y"] doubleValue]
++                        .x = static_cast<float>([[contentOffset valueForKey:@"x"] doubleValue]),
++                        .y = static_cast<float>([[contentOffset valueForKey:@"y"] doubleValue])
+                     },
+                     .contentInset = {
+-                        .left = [[contentInset valueForKey:@"left"] doubleValue],
+-                        .right = [[contentInset valueForKey:@"right"] doubleValue],
+-                        .top = [[contentInset valueForKey:@"top"] doubleValue],
+-                        .bottom = [[contentInset valueForKey:@"bottom"] doubleValue]
++                        .left = static_cast<float>([[contentInset valueForKey:@"left"] doubleValue]),
++                        .right = static_cast<float>([[contentInset valueForKey:@"right"] doubleValue]),
++                        .top = static_cast<float>([[contentInset valueForKey:@"top"] doubleValue]),
++                        .bottom = static_cast<float>([[contentInset valueForKey:@"bottom"] doubleValue])
+                     },
+                     .contentSize = {
+-                        .width = [[contentSize valueForKey:@"width"] doubleValue],
+-                        .height = [[contentSize valueForKey:@"height"] doubleValue]
++                        .width = static_cast<float>([[contentSize valueForKey:@"width"] doubleValue]),
++                        .height = static_cast<float>([[contentSize valueForKey:@"height"] doubleValue])
+                     },
+                     .layoutMeasurement = {
+-                        .width = [[layoutMeasurement valueForKey:@"width"] doubleValue],
+-                        .height = [[layoutMeasurement valueForKey:@"height"] doubleValue]                    },
+-                    .zoomScale = zoomScale
++                        .width = static_cast<float>([[layoutMeasurement valueForKey:@"width"] doubleValue]),
++                        .height = static_cast<float>([[layoutMeasurement valueForKey:@"height"] doubleValue])
++                    },
++                    .zoomScale = static_cast<float>(zoomScale)
+                 };
+                 webViewEventEmitter->onScroll(data);
+             }
+         };
+         _view.onHttpError = [self](NSDictionary* dictionary) {
+             if (_eventEmitter) {
+-                auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                 facebook::react::RNCWebViewEventEmitter::OnHttpError data = {
+                     .url = nullSafeString([dictionary valueForKey:@"url"]),
+                     .lockIdentifier = [[dictionary valueForKey:@"lockIdentifier"] doubleValue],
+@@ -269,15 +268,15 @@
+     return self;
+ }
+ 
+-- (void)updateEventEmitter:(EventEmitter::Shared const &)eventEmitter
++- (void)updateEventEmitter:(facebook::react::EventEmitter::Shared const &)eventEmitter
+ {
+     [super updateEventEmitter:eventEmitter];
+ }
+ 
+-- (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps
++- (void)updateProps:(facebook::react::Props::Shared const &)props oldProps:(facebook::react::Props::Shared const &)oldProps
+ {
+-    const auto &oldViewProps = *std::static_pointer_cast<RNCWebViewProps const>(_props);
+-    const auto &newViewProps = *std::static_pointer_cast<RNCWebViewProps const>(props);
++    const auto &oldViewProps = *std::static_pointer_cast<facebook::react::RNCWebViewProps const>(_props);
++    const auto &newViewProps = *std::static_pointer_cast<facebook::react::RNCWebViewProps const>(props);
+ 
+ #define REMAP_WEBVIEW_PROP(name)                    \
+     if (oldViewProps.name != newViewProps.name) {   \
+@@ -346,23 +345,23 @@
+ #if !TARGET_OS_OSX
+     if (oldViewProps.dataDetectorTypes != newViewProps.dataDetectorTypes) {
+         WKDataDetectorTypes dataDetectorTypes = WKDataDetectorTypeNone;
+-            if (dataDetectorTypes & RNCWebViewDataDetectorTypes::Address) {
++            if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::Address) {
+                 dataDetectorTypes |= WKDataDetectorTypeAddress;
+-            } else if (dataDetectorTypes & RNCWebViewDataDetectorTypes::Link) {
++            } else if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::Link) {
+                 dataDetectorTypes |= WKDataDetectorTypeLink;
+-            } else if (dataDetectorTypes & RNCWebViewDataDetectorTypes::CalendarEvent) {
++            } else if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::CalendarEvent) {
+                 dataDetectorTypes |= WKDataDetectorTypeCalendarEvent;
+-            } else if (dataDetectorTypes & RNCWebViewDataDetectorTypes::TrackingNumber) {
++            } else if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::TrackingNumber) {
+                 dataDetectorTypes |= WKDataDetectorTypeTrackingNumber;
+-            } else if (dataDetectorTypes & RNCWebViewDataDetectorTypes::FlightNumber) {
++            } else if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::FlightNumber) {
+                 dataDetectorTypes |= WKDataDetectorTypeFlightNumber;
+-            } else if (dataDetectorTypes & RNCWebViewDataDetectorTypes::LookupSuggestion) {
++            } else if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::LookupSuggestion) {
+                 dataDetectorTypes |= WKDataDetectorTypeLookupSuggestion;
+-            } else if (dataDetectorTypes & RNCWebViewDataDetectorTypes::PhoneNumber) {
++            } else if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::PhoneNumber) {
+                 dataDetectorTypes |= WKDataDetectorTypePhoneNumber;
+-            } else if (dataDetectorTypes & RNCWebViewDataDetectorTypes::All) {
++            } else if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::All) {
+                 dataDetectorTypes |= WKDataDetectorTypeAll;
+-            } else if (dataDetectorTypes & RNCWebViewDataDetectorTypes::None) {
++            } else if (dataDetectorTypes & facebook::react::RNCWebViewDataDetectorTypes::None) {
+                 dataDetectorTypes = WKDataDetectorTypeNone;
+         }
+         [_view setDataDetectorTypes:dataDetectorTypes];
+@@ -388,13 +387,13 @@
+ 
+ #if !TARGET_OS_OSX
+     if (oldViewProps.contentInsetAdjustmentBehavior != newViewProps.contentInsetAdjustmentBehavior) {
+-        if (newViewProps.contentInsetAdjustmentBehavior == RNCWebViewContentInsetAdjustmentBehavior::Never) {
++        if (newViewProps.contentInsetAdjustmentBehavior == facebook::react::RNCWebViewContentInsetAdjustmentBehavior::Never) {
+             [_view setContentInsetAdjustmentBehavior: UIScrollViewContentInsetAdjustmentNever];
+-        } else if (newViewProps.contentInsetAdjustmentBehavior == RNCWebViewContentInsetAdjustmentBehavior::Automatic) {
++        } else if (newViewProps.contentInsetAdjustmentBehavior == facebook::react::RNCWebViewContentInsetAdjustmentBehavior::Automatic) {
+             [_view setContentInsetAdjustmentBehavior: UIScrollViewContentInsetAdjustmentAutomatic];
+-        } else if (newViewProps.contentInsetAdjustmentBehavior == RNCWebViewContentInsetAdjustmentBehavior::ScrollableAxes) {
++        } else if (newViewProps.contentInsetAdjustmentBehavior == facebook::react::RNCWebViewContentInsetAdjustmentBehavior::ScrollableAxes) {
+             [_view setContentInsetAdjustmentBehavior: UIScrollViewContentInsetAdjustmentScrollableAxes];
+-        } else if (newViewProps.contentInsetAdjustmentBehavior == RNCWebViewContentInsetAdjustmentBehavior::Always) {
++        } else if (newViewProps.contentInsetAdjustmentBehavior == facebook::react::RNCWebViewContentInsetAdjustmentBehavior::Always) {
+             [_view setContentInsetAdjustmentBehavior: UIScrollViewContentInsetAdjustmentAlways];
+         }
+     }
+@@ -425,7 +424,7 @@
+         if (newViewProps.hasOnFileDownload) {
+             _view.onFileDownload = [self](NSDictionary* dictionary) {
+                 if (_eventEmitter) {
+-                    auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                    auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                     facebook::react::RNCWebViewEventEmitter::OnFileDownload data = {
+                         .downloadUrl = nullSafeString([dictionary valueForKey:@"downloadUrl"])
+                     };
+@@ -440,7 +439,7 @@
+         if (newViewProps.hasOnOpenWindowEvent) {
+             _view.onOpenWindow = [self](NSDictionary* dictionary) {
+                 if (_eventEmitter) {
+-                    auto webViewEventEmitter = std::static_pointer_cast<RNCWebViewEventEmitter const>(_eventEmitter);
++                    auto webViewEventEmitter = std::static_pointer_cast<facebook::react::RNCWebViewEventEmitter const>(_eventEmitter);
+                     facebook::react::RNCWebViewEventEmitter::OnOpenWindow data = {
+                         .targetUrl = nullSafeString([dictionary valueForKey:@"targetUrl"])
+                     };
+@@ -454,11 +453,11 @@
+ //
+ #if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000 /* iOS 13 */
+     if (oldViewProps.contentMode != newViewProps.contentMode) {
+-        if (newViewProps.contentMode == RNCWebViewContentMode::Recommended) {
++        if (newViewProps.contentMode == facebook::react::RNCWebViewContentMode::Recommended) {
+             [_view setContentMode: WKContentModeRecommended];
+-        } else if (newViewProps.contentMode == RNCWebViewContentMode::Mobile) {
++        } else if (newViewProps.contentMode == facebook::react::RNCWebViewContentMode::Mobile) {
+             [_view setContentMode:WKContentModeMobile];
+-        } else if (newViewProps.contentMode == RNCWebViewContentMode::Desktop) {
++        } else if (newViewProps.contentMode == facebook::react::RNCWebViewContentMode::Desktop) {
+             [_view setContentMode:WKContentModeDesktop];
+         }
+     }
+@@ -466,23 +465,23 @@
+ 
+ #if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 150000 /* iOS 15 */
+     if (oldViewProps.mediaCapturePermissionGrantType != newViewProps.mediaCapturePermissionGrantType) {
+-        if (newViewProps.mediaCapturePermissionGrantType == RNCWebViewMediaCapturePermissionGrantType::Prompt) {
++        if (newViewProps.mediaCapturePermissionGrantType == facebook::react::RNCWebViewMediaCapturePermissionGrantType::Prompt) {
+             [_view setMediaCapturePermissionGrantType:RNCWebViewPermissionGrantType_Prompt];
+-        } else if (newViewProps.mediaCapturePermissionGrantType == RNCWebViewMediaCapturePermissionGrantType::Grant) {
++        } else if (newViewProps.mediaCapturePermissionGrantType == facebook::react::RNCWebViewMediaCapturePermissionGrantType::Grant) {
+             [_view setMediaCapturePermissionGrantType:RNCWebViewPermissionGrantType_Grant];
+-        } else if (newViewProps.mediaCapturePermissionGrantType == RNCWebViewMediaCapturePermissionGrantType::Deny) {
++        } else if (newViewProps.mediaCapturePermissionGrantType == facebook::react::RNCWebViewMediaCapturePermissionGrantType::Deny) {
+             [_view setMediaCapturePermissionGrantType:RNCWebViewPermissionGrantType_Deny];
+-        }else if (newViewProps.mediaCapturePermissionGrantType == RNCWebViewMediaCapturePermissionGrantType::GrantIfSameHostElsePrompt) {
++        }else if (newViewProps.mediaCapturePermissionGrantType == facebook::react::RNCWebViewMediaCapturePermissionGrantType::GrantIfSameHostElsePrompt) {
+             [_view setMediaCapturePermissionGrantType:RNCWebViewPermissionGrantType_GrantIfSameHost_ElsePrompt];
+-        }else if (newViewProps.mediaCapturePermissionGrantType == RNCWebViewMediaCapturePermissionGrantType::GrantIfSameHostElseDeny) {
++        }else if (newViewProps.mediaCapturePermissionGrantType == facebook::react::RNCWebViewMediaCapturePermissionGrantType::GrantIfSameHostElseDeny) {
+             [_view setMediaCapturePermissionGrantType:RNCWebViewPermissionGrantType_GrantIfSameHost_ElseDeny];
+         }
+     }
+ #endif
+     if (oldViewProps.indicatorStyle != newViewProps.indicatorStyle) {
+-        if (newViewProps.indicatorStyle == RNCWebViewIndicatorStyle::Black) {
++        if (newViewProps.indicatorStyle == facebook::react::RNCWebViewIndicatorStyle::Black) {
+             [_view setIndicatorStyle:@"black"];
+-        } else if (newViewProps.indicatorStyle == RNCWebViewIndicatorStyle::White) {
++        } else if (newViewProps.indicatorStyle == facebook::react::RNCWebViewIndicatorStyle::White) {
+             [_view setIndicatorStyle:@"white"];
+         } else {
+             [_view setIndicatorStyle:@"default"];

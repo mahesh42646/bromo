@@ -1,4 +1,6 @@
 # Resolve react_native_pods.rb with node to allow for hoisting
+require 'fileutils'
+require 'pathname'
 require Pod::Executable.execute_command('node', ['-p',
   'require.resolve(
     "react-native/scripts/react_native_pods.rb",
@@ -62,6 +64,18 @@ target 'BromoMobile' do
       :mac_catalyst_enabled => false,
     )
 
+    # With Xcode 16 explicit modules, RNFBApp's module map absorbs React's RCTBridgeModule.h,
+    # making RCTPromiseRejectBlock "owned" by RNFBApp.RNFBAppModule. Disable explicit modules
+    # for these pods so they use traditional implicit header resolution.
+    rnfb_targets = %w[RNFBApp RNFBAuth RNFBMessaging]
+    installer.pods_project.targets.each do |t|
+      next unless rnfb_targets.include?(t.name)
+      t.build_configurations.each do |c|
+        c.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+        c.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+      end
+    end
+
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |cfg|
         s = cfg.build_settings
@@ -74,6 +88,200 @@ target 'BromoMobile' do
           s['SWIFT_OPTIMIZATION_LEVEL'] = '-Onone'
           s['GCC_OPTIMIZATION_LEVEL'] = '0'
           s['DEBUG_INFORMATION_FORMAT'] = 'dwarf'
+        end
+
+        current = s['HEADER_SEARCH_PATHS']
+        existing = current.is_a?(Array) ? current : current.to_s.split(/\s+/)
+        react_extra = [
+          '"$(PODS_XCFRAMEWORKS_BUILD_DIR)/React-Core-prebuilt/React.framework/Headers"',
+          '"$(PODS_ROOT)/React-Core-prebuilt/React.xcframework/Headers"',
+          '"$(PODS_ROOT)/ReactNativeDependencies/Headers"',
+          '"$(PODS_ROOT)/../../node_modules/react-native/ReactCommon"',
+          '"$(PODS_ROOT)/../../node_modules/react-native/ReactCommon/jsiexecutor"',
+          '"$(PODS_ROOT)/../../node_modules/react-native/ReactCommon/react/renderer/components/view/platform/cxx"',
+          '"$(PODS_ROOT)/../../node_modules/react-native/ReactCommon/react/renderer/graphics/platform/cxx"',
+          '"$(PODS_ROOT)/../../node_modules/react-native/ReactCommon/react/renderer/graphics/platform/ios"',
+        ]
+        # Always keep $(inherited) first so xcconfig-provided paths (e.g. PODS_TARGET_SRCROOT)
+        # are not lost for pods like GoogleUtilities that rely on xcconfig for their own headers.
+        merged = (existing + react_extra).uniq
+        merged = ['$(inherited)'] + merged.reject { |p| p.strip == '$(inherited)' } unless merged.first&.strip == '$(inherited)'
+        s['HEADER_SEARCH_PATHS'] = merged
+
+        if target.name == 'RNWorklets'
+          current = s['HEADER_SEARCH_PATHS']
+          current = current.is_a?(Array) ? current : current.to_s.split(/\s+/)
+          s['HEADER_SEARCH_PATHS'] = (current + [
+            '"$(PODS_TARGET_SRCROOT)/Common/cpp"',
+            '"$(PODS_TARGET_SRCROOT)/apple"',
+          ]).uniq
+        end
+
+        if target.name == 'RNReanimated'
+          # Reanimated 4.x source uses #include <reanimated/CSS/...> and
+          # #include <worklets/...>. The headers live at Common/cpp/reanimated/...
+          # in the package, and worklets headers come from the RNWorklets pod.
+          # Without Common/cpp on the search path the RNReanimated target itself
+          # fails with: 'reanimated/CSS/common/transforms/vectors.h' file not found.
+          current = s['HEADER_SEARCH_PATHS']
+          current = current.is_a?(Array) ? current : current.to_s.split(/\s+/)
+          s['HEADER_SEARCH_PATHS'] = (current + [
+            '"$(PODS_TARGET_SRCROOT)/Common/cpp"',
+            '"$(PODS_TARGET_SRCROOT)/apple"',
+            '"$(PODS_TARGET_SRCROOT)/apple/reanimated"',
+            '"$(PODS_ROOT)/../../node_modules/react-native-worklets/Common/cpp"',
+          ]).uniq
+        end
+
+        if target.name == 'ReactCodegen'
+          current = s['HEADER_SEARCH_PATHS']
+          current = current.is_a?(Array) ? current : current.to_s.split(/\s+/)
+          s['HEADER_SEARCH_PATHS'] = (current + [
+            '"$(PODS_ROOT)/../../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"',
+          ]).uniq
+        end
+      end
+    end
+
+    public_headers_root = File.join(__dir__, 'Pods', 'Headers', 'Public')
+    react_prebuilt_headers = File.join(__dir__, 'Pods', 'React-Core-prebuilt', 'React.xcframework', 'Headers')
+    if File.directory?(react_prebuilt_headers)
+      FileUtils.mkdir_p(public_headers_root)
+      Dir.children(react_prebuilt_headers).each do |entry|
+        source = File.join(react_prebuilt_headers, entry)
+        next unless File.directory?(source)
+        next if entry == 'ReactCommon'
+
+        target = File.join(public_headers_root, entry)
+        FileUtils.rm_rf(target)
+        FileUtils.ln_s(Pathname.new(source).relative_path_from(Pathname.new(public_headers_root)).to_s, target)
+      end
+    end
+
+    react_headers = File.join(public_headers_root, 'React')
+    react_core_headers = File.join(react_prebuilt_headers, 'React_Core')
+    if File.directory?(react_core_headers)
+      FileUtils.rm_rf(react_headers)
+      FileUtils.ln_s(Pathname.new(react_core_headers).relative_path_from(Pathname.new(File.dirname(react_headers))).to_s, react_headers)
+    end
+
+    react_framework_header_roots = Dir.glob(File.join(__dir__, 'Pods', 'React-Core-prebuilt', 'React.xcframework', '*', 'React.framework', 'Headers'))
+    react_framework_header_roots << react_prebuilt_headers
+    react_framework_header_roots.each do |headers_root|
+      react_core_root = File.join(headers_root, 'React_Core')
+      next unless File.directory?(react_core_root)
+
+      react_alias = File.join(headers_root, 'React')
+      FileUtils.rm_rf(react_alias)
+      FileUtils.mkdir_p(react_alias)
+      Dir.children(headers_root).each do |entry|
+        source_dir = File.join(headers_root, entry)
+        next unless File.directory?(source_dir)
+        next if entry == 'React'
+        next unless entry.start_with?('React_') || entry.start_with?('RCT') || entry.start_with?('FB') || entry == 'ReactCommon' || entry == 'Yoga'
+
+        Dir.glob(File.join(source_dir, '**', '*')).each do |source|
+          next unless File.file?(source)
+
+          target = File.join(react_alias, File.basename(source))
+          next if File.exist?(target)
+
+          FileUtils.ln_s(Pathname.new(source).relative_path_from(Pathname.new(react_alias)).to_s, target)
+        end
+      end
+
+      react_native_source_root = File.expand_path(File.join(__dir__, '..', 'node_modules', 'react-native'))
+      if File.directory?(react_native_source_root)
+        Dir.glob(File.join(react_native_source_root, '**', '*.h')).each do |source|
+          alias_target = File.join(react_alias, File.basename(source))
+          FileUtils.ln_s(Pathname.new(source).relative_path_from(Pathname.new(react_alias)).to_s, alias_target) unless File.exist?(alias_target)
+        end
+      end
+
+      Dir.children(react_core_root).each do |entry|
+        source = File.join(react_core_root, entry)
+        next unless File.file?(source)
+
+        target = File.join(headers_root, entry)
+        next if File.exist?(target)
+
+        FileUtils.ln_s(Pathname.new(source).relative_path_from(Pathname.new(headers_root)).to_s, target)
+      end
+    end
+
+    react_common_headers = File.join(public_headers_root, 'ReactCommon')
+    react_common_sources = [
+      File.join(__dir__, 'Pods', 'React-Core-prebuilt', 'React.xcframework', 'Headers', 'ReactCommon'),
+      File.join(__dir__, 'Pods', 'React-Core-prebuilt', 'React.xcframework', 'Headers', 'React_callinvoker'),
+      File.join(__dir__, 'Pods', 'React-Core-prebuilt', 'React.xcframework', 'Headers', 'React_NativeModulesApple'),
+    ].select { |path| File.directory?(path) }
+    unless react_common_sources.empty?
+      FileUtils.rm_rf(react_common_headers)
+      FileUtils.mkdir_p(react_common_headers)
+      react_common_sources.each do |source_dir|
+        Dir.children(source_dir).each do |entry|
+          source = File.join(source_dir, entry)
+          next unless File.file?(source)
+
+          target = File.join(react_common_headers, entry)
+          FileUtils.ln_s(Pathname.new(source).relative_path_from(Pathname.new(react_common_headers)).to_s, target, force: true)
+        end
+      end
+    end
+
+    jsi_headers = File.join(public_headers_root, 'jsi')
+    jsi_source = File.join(__dir__, '..', 'node_modules', 'react-native', 'ReactCommon', 'jsi', 'jsi')
+    if File.directory?(jsi_source)
+      FileUtils.rm_rf(jsi_headers)
+      FileUtils.ln_s(Pathname.new(jsi_source).relative_path_from(Pathname.new(public_headers_root)).to_s, jsi_headers)
+    end
+
+    jsireact_headers = File.join(public_headers_root, 'jsireact')
+    jsireact_source = File.join(__dir__, '..', 'node_modules', 'react-native', 'ReactCommon', 'jsiexecutor', 'jsireact')
+    if File.directory?(jsireact_source)
+      FileUtils.rm_rf(jsireact_headers)
+      FileUtils.ln_s(Pathname.new(jsireact_source).relative_path_from(Pathname.new(public_headers_root)).to_s, jsireact_headers)
+    end
+
+    yoga_headers = File.join(public_headers_root, 'yoga')
+    yoga_source = File.join(__dir__, '..', 'node_modules', 'react-native', 'ReactCommon', 'yoga', 'yoga')
+    if File.directory?(yoga_source)
+      FileUtils.rm_rf(yoga_headers)
+      FileUtils.ln_s(Pathname.new(yoga_source).relative_path_from(Pathname.new(public_headers_root)).to_s, yoga_headers)
+    end
+
+    public_header_sources = Hash.new { |hash, key| hash[key] = [] }
+    Dir.glob(File.join(__dir__, 'Pods', '**', 'Public', '*')).each do |source_dir|
+      next unless File.directory?(source_dir)
+      next if source_dir.start_with?(public_headers_root)
+
+      public_header_sources[File.basename(source_dir)] << source_dir
+    end
+    public_header_sources['Firebase'] << File.join(__dir__, 'Pods', 'Firebase', 'CoreOnly', 'Sources')
+    public_header_sources['FirebaseCoreExtension'] << File.join(__dir__, 'Pods', 'FirebaseCoreExtension', 'FirebaseCore', 'Extension')
+    public_header_sources['nanopb'] << File.join(__dir__, 'Pods', 'nanopb')
+
+    public_header_sources.each do |header_name, source_dirs|
+      # CocoaPods already exposes GoogleUtilities with a tree that matches
+      # #import "GoogleUtilities/.../Public/...". Rebuilding this folder flattens
+      # symlinks and breaks those includes (e.g. IsAppEncrypted.h, GULUserDefaults.h).
+      next if header_name == 'GoogleUtilities'
+
+      source_dirs = source_dirs.select { |source_dir| File.directory?(source_dir) }
+      next if source_dirs.empty?
+
+      header_dir = File.join(public_headers_root, header_name)
+      FileUtils.rm_rf(header_dir)
+      FileUtils.mkdir_p(header_dir)
+
+      source_dirs.each do |source_dir|
+        Dir.glob(File.join(source_dir, '**', '*')).each do |source|
+          next unless File.file?(source)
+
+          relative = Pathname.new(source).relative_path_from(Pathname.new(source_dir)).to_s
+          target = File.join(header_dir, relative)
+          FileUtils.mkdir_p(File.dirname(target))
+          FileUtils.ln_s(Pathname.new(source).relative_path_from(Pathname.new(File.dirname(target))).to_s, target, force: true)
         end
       end
     end

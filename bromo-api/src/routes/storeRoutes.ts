@@ -859,6 +859,9 @@ storeRouter.post("/:id/b2b-leads", requireVerifiedUser, async (req: FirebaseAuth
     const contactName = String(body.contactName ?? req.dbUser!.displayName).trim();
     const contactPhone = String(body.contactPhone ?? "").trim();
     if (!contactPhone) return res.status(400).json({message: "contactPhone is required"});
+    if (body.consent !== true) {
+      return res.status(400).json({message: "Consent is required to share contact details"});
+    }
     const lead = await StoreLead.create({
       store: store._id,
       buyer: req.dbUser!._id,
@@ -867,6 +870,7 @@ storeRouter.post("/:id/b2b-leads", requireVerifiedUser, async (req: FirebaseAuth
       phone: contactPhone,
       quantity: String(body.quantity ?? "").trim(),
       details: String(body.details ?? "").trim(),
+      consentAt: new Date(),
     });
     await Store.updateOne({_id: store._id}, {$inc: {"b2b.leadCount": 1}});
     res.status(201).json({lead});

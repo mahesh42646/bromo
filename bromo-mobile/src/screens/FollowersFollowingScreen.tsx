@@ -14,7 +14,8 @@ import {BadgeCheck, ChevronLeft} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {getFollowers, getFollowing, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
+import {getFollowers, getFollowing, type SuggestedUser} from '../api/followApi';
+import {RelationButton} from '../components/relations/RelationButton';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'FollowersFollowing'>;
@@ -31,9 +32,7 @@ export function FollowersFollowingScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const {userId, tab} = route.params;
-  const {palette, guidelines} = useTheme();
-  const {borderRadiusScale} = guidelines;
-  const btnR = borderRadiusScale === 'bold' ? 999 : 8;
+  const {palette} = useTheme();
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,20 +68,6 @@ export function FollowersFollowingScreen() {
     setLoadingMore(false);
   }, [hasMore, loadingMore, load, page]);
 
-  const handleFollow = async (user: UserRow, idx: number) => {
-    const current = user.followStatus ?? 'none';
-    try {
-      if (current === 'following' || current === 'requested') {
-        await unfollowUser(user._id);
-        setUsers(prev => prev.map((u, i) => i === idx ? {...u, followStatus: 'none'} : u));
-      } else {
-        const res = await followUser(user._id);
-        const next = res.status === 'pending' ? 'requested' : 'following';
-        setUsers(prev => prev.map((u, i) => i === idx ? {...u, followStatus: next} : u));
-      }
-    } catch {}
-  };
-
   return (
     <ThemedSafeScreen>
       <View style={{
@@ -115,8 +100,7 @@ export function FollowersFollowingScreen() {
             </Text>
           }
           ListFooterComponent={loadingMore ? <ActivityIndicator color={palette.primary} style={{margin: 16}} /> : null}
-          renderItem={({item, index}) => {
-            const fs = item.followStatus ?? 'none';
+          renderItem={({item}) => {
             const avatarUri = item.profilePicture || `https://ui-avatars.com/api/?name=${item.displayName}`;
             return (
               <Pressable
@@ -140,20 +124,17 @@ export function FollowersFollowingScreen() {
                     {formatCount(item.followersCount)} followers
                   </Text>
                 </View>
-                <Pressable
-                  onPress={() => handleFollow(item, index)}
-                  style={{
-                    paddingHorizontal: 16, paddingVertical: 7, borderRadius: btnR,
-                    backgroundColor: fs === 'none' ? palette.primary : 'transparent',
-                    borderWidth: 1, borderColor: palette.primary,
-                  }}>
-                  <Text style={{
-                    color: fs === 'none' ? palette.primaryForeground : palette.primary,
-                    fontWeight: '700', fontSize: 12,
-                  }}>
-                    {fs === 'following' ? 'Following' : fs === 'requested' ? 'Requested' : 'Follow'}
-                  </Text>
-                </Pressable>
+                <RelationButton
+                  row={item}
+                  mode={tab}
+                  onChange={(changedUserId, next) => {
+                    setUsers(prev => prev.map(u => u._id === changedUserId ? {
+                      ...u,
+                      followStatus: next,
+                      relation: {...(u.relation ?? {iFollow: false, followsMe: false, isMe: false}), iFollow: next === 'following'},
+                    } : u));
+                  }}
+                />
               </Pressable>
             );
           }}

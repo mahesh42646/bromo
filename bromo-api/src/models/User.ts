@@ -16,6 +16,7 @@ export interface UserDoc extends Document {
   provider: "email" | "google";
   isActive: boolean;
   onboardingComplete: boolean;
+  interests: string[];
   isPrivate: boolean;
   isVerified: boolean;
   verificationStatus: VerificationStatus;
@@ -122,6 +123,7 @@ const userSchema = new Schema<UserDoc>(
       type: Boolean,
       default: false,
     },
+    interests: [{ type: String, trim: true, lowercase: true }],
     isPrivate: {
       type: Boolean,
       default: false,

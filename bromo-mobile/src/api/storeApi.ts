@@ -495,7 +495,7 @@ export async function unfavoriteStore(storeId: string): Promise<void> {
 
 export async function createB2BLead(
   storeId: string,
-  data: {contactName: string; contactPhone: string; quantity?: string; details?: string},
+  data: {contactName: string; contactPhone: string; quantity?: string; details?: string; consent: true},
 ): Promise<void> {
   const res = await authorizedFetch(`${apiBase()}/stores/${storeId}/b2b-leads`, {
     method: 'POST',

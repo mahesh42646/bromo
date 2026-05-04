@@ -17,8 +17,9 @@ import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import {
-  ChevronLeft,
-  Heart,
+	  ChevronLeft,
+	  Check,
+	  Heart,
   MapPin,
   Truck,
   Phone,
@@ -64,6 +65,7 @@ export function StorePublicProfileScreen() {
   const [favLoading, setFavLoading] = useState(false);
   const [leadPhone, setLeadPhone] = useState('');
   const [leadDetails, setLeadDetails] = useState('');
+  const [leadConsent, setLeadConsent] = useState(false);
   const [billAmount, setBillAmount] = useState('');
   const [redeemPreview, setRedeemPreview] = useState<{
     payableInr: number;
@@ -129,22 +131,28 @@ export function StorePublicProfileScreen() {
       Alert.alert('Required', 'Enter contact number and inquiry details.');
       return;
     }
+    if (!leadConsent) {
+      Alert.alert('Consent required', 'Agree to share your name and phone with this business.');
+      return;
+    }
     setActionLoading(true);
     try {
       await createB2BLead(store._id, {
         contactName: 'BROMO buyer',
         contactPhone: leadPhone.trim(),
         details: leadDetails.trim(),
+        consent: true,
       });
       setLeadPhone('');
       setLeadDetails('');
+      setLeadConsent(false);
       Alert.alert('Inquiry sent', 'The store owner received your bulk inquiry lead.');
     } catch (err) {
       Alert.alert('Inquiry failed', err instanceof Error ? err.message : 'Could not submit inquiry');
     } finally {
       setActionLoading(false);
     }
-  }, [store, leadPhone, leadDetails]);
+  }, [store, leadPhone, leadDetails, leadConsent]);
 
   const calculateRedemption = useCallback(async () => {
     if (!store) return;
@@ -365,6 +373,25 @@ export function StorePublicProfileScreen() {
               placeholderTextColor={palette.placeholder}
               style={[s.actionInput, s.actionTextarea, {borderColor: palette.border, backgroundColor: palette.input, color: palette.foreground}]}
             />
+            <Pressable
+              onPress={() => setLeadConsent(v => !v)}
+              style={{flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12}}>
+              <View style={{
+                width: 20,
+                height: 20,
+                borderRadius: 5,
+                borderWidth: 1,
+                borderColor: leadConsent ? palette.primary : palette.border,
+                backgroundColor: leadConsent ? palette.primary : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                {leadConsent ? <Check size={14} color={palette.primaryForeground} strokeWidth={3} /> : null}
+              </View>
+              <Text style={{flex: 1, color: palette.foregroundSubtle, fontSize: 12, lineHeight: 17}}>
+                I agree to share my name and phone with this business.
+              </Text>
+            </Pressable>
             <Pressable disabled={actionLoading} onPress={submitB2BLead} style={[s.actionButton, {backgroundColor: palette.primary}]}>
               <Text style={{color: palette.primaryForeground, fontWeight: '900'}}>{actionLoading ? 'Sending…' : 'Send Inquiry'}</Text>
             </Pressable>

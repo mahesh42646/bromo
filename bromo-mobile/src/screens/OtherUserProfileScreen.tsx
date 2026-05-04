@@ -3,9 +3,11 @@ import {
   ActivityIndicator,
   DeviceEventEmitter,
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StatusBar,
   Text,
   View,
@@ -13,16 +15,27 @@ import {
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {BadgeCheck, ChevronLeft, Grid3x3, MessageCircle, MoreHorizontal, Play} from 'lucide-react-native';
+import {BadgeCheck, Ban, ChevronLeft, Clapperboard, Flag, Grid3x3, MessageCircle, MoreHorizontal, Play, Share2, UserMinus} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
 import type {AppStackParamList} from '../navigation/appStackParamList';
-import {getUserProfile, followUser, unfollowUser, type UserProfile} from '../api/followApi';
+import {
+  blockUser,
+  getUserMutuals,
+  getUserProfile,
+  followUser,
+  removeFollower,
+  reportUser,
+  unblockUser,
+  unfollowUser,
+  type SuggestedUser,
+  type UserProfile,
+} from '../api/followApi';
 import {getUserGridStats, getUserPosts, type Post, type UserGridStats} from '../api/postsApi';
 import {useMessaging} from '../messaging/MessagingContext';
 import {parentNavigate} from '../navigation/parentNavigate';
-import {postThumbnailUri} from '../lib/postMediaDisplay';
+import {ProfileGridMedia} from '../components/profile/ProfileGridMedia';
 import {peekAuthorSnapshot} from '../lib/authorSessionCache';
 import {
   getOtherUserProfileBundle,
@@ -32,6 +45,7 @@ import {
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'OtherUserProfile'>;
+type GridTab = 'posts' | 'reels';
 
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -77,6 +91,10 @@ export function OtherUserProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [followStatus, setFollowStatus] = useState<'none' | 'following' | 'requested'>('none');
   const [gridStats, setGridStats] = useState<UserGridStats | null>(null);
+  const [gridTab, setGridTab] = useState<GridTab>('posts');
+  const [mutuals, setMutuals] = useState<{count: number; sample: SuggestedUser[]}>({count: 0, sample: []});
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [blockedByMe, setBlockedByMe] = useState(false);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener(
@@ -85,10 +103,33 @@ export function OtherUserProfileScreen() {
         if (String(changedUserId) !== String(userId)) return;
         const next: 'none' | 'following' | 'requested' = requested ? 'requested' : following ? 'following' : 'none';
         setFollowStatus(next);
+        setProfile(p => p ? {
+          ...p,
+          followStatus: next,
+          relation: {...(p.relation ?? {iFollow: false, followsMe: false, isMe: false}), iFollow: next === 'following'},
+        } : p);
       },
     );
     return () => sub.remove();
   }, [userId]);
+
+  useEffect(() => {
+    if (isSelf) {
+      setMutuals({count: 0, sample: []});
+      return;
+    }
+    let live = true;
+    getUserMutuals(userId, 3)
+      .then(res => {
+        if (live) setMutuals(res);
+      })
+      .catch(() => {
+        if (live) setMutuals({count: 0, sample: []});
+      });
+    return () => {
+      live = false;
+    };
+  }, [isSelf, userId]);
 
   const openChat = useCallback(async () => {
     if (!profile) return;
@@ -163,6 +204,7 @@ export function OtherUserProfileScreen() {
     setPosts([]);
     setGridStats(null);
     setFollowStatus('none');
+    setGridTab('posts');
     setLoading(true);
     setLoadingPosts(true);
     fetchProfilePage(false)
@@ -172,6 +214,15 @@ export function OtherUserProfileScreen() {
         setLoadingPosts(false);
       });
   }, [fetchProfilePage, userId]);
+
+  useEffect(() => {
+    if (loading) return;
+    setLoadingPosts(true);
+    getUserPosts(userId, gridTab === 'reels' ? 'reel' : 'post', 1)
+      .then(res => setPosts(res.posts))
+      .catch(() => setPosts([]))
+      .finally(() => setLoadingPosts(false));
+  }, [gridTab, loading, userId]);
 
   const onRefresh = useCallback(async () => {
     invalidateOtherUserProfile(userId);
@@ -187,24 +238,79 @@ export function OtherUserProfileScreen() {
 
   const handleFollow = async () => {
     try {
-      if (followStatus === 'following' || followStatus === 'requested') {
-        await unfollowUser(userId);
-        setFollowStatus('none');
-        setProfile(p => p ? {...p, followersCount: Math.max(0, p.followersCount - 1)} : p);
-      } else {
-        const res = await followUser(userId);
-        const next = res.status === 'pending' ? 'requested' : 'following';
-        setFollowStatus(next);
-        if (next === 'following') {
-          setProfile(p => p ? {...p, followersCount: p.followersCount + 1} : p);
-        }
-      }
+      if (followStatus === 'requested') return;
+      const res = await followUser(userId);
+      const next = res.status === 'pending' ? 'requested' : 'following';
+      setFollowStatus(next);
+      setProfile(p => p ? {
+        ...p,
+        followStatus: next,
+        followersCount: next === 'following' ? p.followersCount + 1 : p.followersCount,
+        relation: {...(p.relation ?? {iFollow: false, followsMe: false, isMe: false}), iFollow: next === 'following'},
+      } : p);
     } catch {}
   };
 
-  const followLabel = followStatus === 'following' ? 'Following' : followStatus === 'requested' ? 'Requested' : 'Follow';
-  const followBg = followStatus === 'none' ? palette.primary : 'transparent';
-  const followTextColor = followStatus === 'none' ? palette.primaryForeground : palette.primary;
+  const handleUnfollow = async () => {
+    try {
+      await unfollowUser(userId);
+      setFollowStatus('none');
+      setProfile(p => p ? {
+        ...p,
+        followStatus: 'none',
+        followersCount: Math.max(0, p.followersCount - 1),
+        relation: {...(p.relation ?? {iFollow: false, followsMe: false, isMe: false}), iFollow: false},
+      } : p);
+    } catch {}
+  };
+
+  const handleRemoveFollower = async () => {
+    try {
+      await removeFollower(userId);
+      setProfile(p => p ? {
+        ...p,
+        followsMe: false,
+        relation: {...(p.relation ?? {iFollow: followStatus === 'following', followsMe: true, isMe: false}), followsMe: false},
+      } : p);
+      setMoreOpen(false);
+    } catch {}
+  };
+
+  const handleBlock = async () => {
+    try {
+      if (blockedByMe) {
+        await unblockUser(userId);
+        setBlockedByMe(false);
+      } else {
+        await blockUser(userId);
+        setBlockedByMe(true);
+        setFollowStatus('none');
+      }
+      setMoreOpen(false);
+    } catch {}
+  };
+
+  const handleReport = async () => {
+    try {
+      await reportUser(userId, 'profile');
+      setMoreOpen(false);
+    } catch {}
+  };
+
+  const handleShareProfile = async () => {
+    if (!profile) return;
+    setMoreOpen(false);
+    await Share.share({
+      message: `https://bromo.app/@${profile.username}`,
+      url: `https://bromo.app/@${profile.username}`,
+    }).catch(() => null);
+  };
+
+  const theyFollowMe = Boolean(profile?.followsMe || profile?.relation?.followsMe);
+  const actionIsMessage = followStatus === 'following';
+  const followLabel = actionIsMessage ? 'Message' : followStatus === 'requested' ? 'Requested' : theyFollowMe ? 'Follow back' : 'Follow';
+  const followBg = actionIsMessage || followStatus === 'requested' ? palette.surface : palette.primary;
+  const followTextColor = actionIsMessage || followStatus === 'requested' ? palette.foreground : palette.primaryForeground;
 
   if (loading) {
     return (
@@ -259,7 +365,7 @@ export function OtherUserProfileScreen() {
         <Text style={{flex: 1, color: palette.foreground, fontSize: 17, fontWeight: '800'}}>
           {profile.username}
         </Text>
-        <Pressable hitSlop={12} style={{padding: 8}}>
+        <Pressable onPress={() => setMoreOpen(true)} hitSlop={12} style={{padding: 8}}>
           <MoreHorizontal size={22} color={palette.foreground} />
         </Pressable>
       </View>
@@ -312,6 +418,31 @@ export function OtherUserProfileScreen() {
           {profile.website ? (
             <Text style={{color: palette.primary, fontSize: 13, marginBottom: 4}}>{profile.website}</Text>
           ) : null}
+          {mutuals.count > 0 ? (
+            <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8}}>
+              <View style={{width: Math.min(mutuals.sample.length, 3) * 18 + 12, height: 28}}>
+                {mutuals.sample.slice(0, 3).map((u, idx) => (
+                  <Image
+                    key={u._id}
+                    source={{uri: u.profilePicture || `https://ui-avatars.com/api/?name=${u.displayName}`}}
+                    style={{
+                      position: 'absolute',
+                      left: idx * 18,
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      borderWidth: 2,
+                      borderColor: palette.background,
+                    }}
+                  />
+                ))}
+              </View>
+              <Text style={{flex: 1, color: palette.mutedForeground, fontSize: 12}} numberOfLines={2}>
+                Followed by {mutuals.sample.map(u => u.displayName || u.username).slice(0, 2).join(', ')}
+                {mutuals.count > mutuals.sample.length ? ` and ${mutuals.count - mutuals.sample.length} others` : ''}
+              </Text>
+            </View>
+          ) : null}
 
           {/* Action buttons */}
           {isSelf ? (
@@ -327,27 +458,29 @@ export function OtherUserProfileScreen() {
           ) : (
             <View style={{flexDirection: 'row', gap: 8, marginTop: 12}}>
               <Pressable
-                onPress={handleFollow}
+                onPress={actionIsMessage ? openChat : handleFollow}
                 style={{
                   flex: 1, paddingVertical: 9, borderRadius: btnR,
                   backgroundColor: followBg,
-                  borderWidth: followStatus === 'none' ? 0 : 1,
-                  borderColor: palette.primary,
+                  borderWidth: actionIsMessage || followStatus === 'requested' ? 1 : 0,
+                  borderColor: palette.border,
                   alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  gap: 6,
                 }}>
+                {actionIsMessage ? <MessageCircle size={14} color={palette.foreground} /> : null}
                 <Text style={{color: followTextColor, fontWeight: '700', fontSize: 13}}>{followLabel}</Text>
               </Pressable>
               <Pressable
-                onPress={openChat}
-                disabled={startingChat}
+                onPress={() => setMoreOpen(true)}
                 style={{
-                  flex: 1, paddingVertical: 9, borderRadius: btnR,
+                  width: 44, paddingVertical: 9, borderRadius: btnR,
                   backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border,
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                   opacity: startingChat ? 0.6 : 1,
                 }}>
-                <MessageCircle size={14} color={palette.foreground} />
-                <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 13}}>Message</Text>
+                <MoreHorizontal size={18} color={palette.foreground} />
               </Pressable>
             </View>
           )}
@@ -355,9 +488,27 @@ export function OtherUserProfileScreen() {
 
         {/* Tab indicator */}
         <View style={{flexDirection: 'row', borderTopWidth: 1, borderTopColor: palette.border}}>
-          <View style={{flex: 1, alignItems: 'center', paddingVertical: 10, borderTopWidth: 2, borderTopColor: palette.primary}}>
-            <Grid3x3 size={20} color={palette.primary} />
-          </View>
+          {[
+            {id: 'posts' as const, icon: Grid3x3},
+            {id: 'reels' as const, icon: Clapperboard},
+          ].map(tab => {
+            const Icon = tab.icon;
+            const active = gridTab === tab.id;
+            return (
+              <Pressable
+                key={tab.id}
+                onPress={() => setGridTab(tab.id)}
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  paddingVertical: 10,
+                  borderTopWidth: 2,
+                  borderTopColor: active ? palette.primary : 'transparent',
+                }}>
+                <Icon size={20} color={active ? palette.primary : palette.mutedForeground} />
+              </Pressable>
+            );
+          })}
         </View>
 
         {/* Posts grid */}
@@ -376,7 +527,7 @@ export function OtherUserProfileScreen() {
                 key={post._id}
                 onPress={() => navigation.navigate('PostDetail', {postId: post._id})}
                 style={{width: colWidth, aspectRatio: 1, padding: 1}}>
-                <Image source={{uri: postThumbnailUri(post)}} style={{width: '100%', height: '100%'}} resizeMode="cover" />
+                <ProfileGridMedia post={post} style={{width: '100%', height: '100%'}} />
                 {post.mediaType === 'video' ? (
                   <View style={{position: 'absolute', top: 6, right: 6}}>
                     <Play size={14} color="#fff" fill="#fff" />
@@ -389,6 +540,70 @@ export function OtherUserProfileScreen() {
 
         <View style={{height: 40}} />
       </ScrollView>
+
+      <Modal visible={moreOpen} transparent animationType="fade" onRequestClose={() => setMoreOpen(false)}>
+        <Pressable
+          onPress={() => setMoreOpen(false)}
+          style={{flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)'}}>
+          <Pressable
+            onPress={event => event.stopPropagation()}
+            style={{
+              backgroundColor: palette.background,
+              borderTopLeftRadius: 18,
+              borderTopRightRadius: 18,
+              borderWidth: 1,
+              borderColor: palette.border,
+              padding: 16,
+              gap: 8,
+            }}>
+            <MoreRow icon={<Share2 size={18} color={palette.foreground} />} label="Share profile" onPress={handleShareProfile} />
+            {theyFollowMe ? (
+              <MoreRow icon={<UserMinus size={18} color={palette.foreground} />} label="Remove follower" onPress={handleRemoveFollower} />
+            ) : null}
+            {followStatus === 'following' || followStatus === 'requested' ? (
+              <MoreRow icon={<UserMinus size={18} color={palette.foreground} />} label="Unfollow" onPress={() => { setMoreOpen(false); handleUnfollow(); }} />
+            ) : null}
+            <MoreRow icon={<Flag size={18} color={palette.foreground} />} label="Report" onPress={handleReport} />
+            <MoreRow
+              icon={<Ban size={18} color={palette.destructive} />}
+              label={blockedByMe ? 'Unblock' : 'Block'}
+              danger={!blockedByMe}
+              onPress={handleBlock}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ThemedSafeScreen>
+  );
+}
+
+function MoreRow({
+  icon,
+  label,
+  danger,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  danger?: boolean;
+  onPress: () => void;
+}) {
+  const {palette} = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        minHeight: 46,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+      }}>
+      {icon}
+      <Text style={{color: danger ? palette.destructive : palette.foreground, fontWeight: '700', fontSize: 15}}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }

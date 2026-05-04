@@ -1,0 +1,94 @@
+diff --git a/node_modules/react-native/src/private/setup/setUpDOM.js b/node_modules/react-native/src/private/setup/setUpDOM.js
+index 1111111..2222222 100644
+--- a/node_modules/react-native/src/private/setup/setUpDOM.js
++++ b/node_modules/react-native/src/private/setup/setUpDOM.js
+@@ -12,6 +12,20 @@ import {polyfillGlobal} from '../../../Libraries/Utilities/PolyfillFunctions';
+ 
+ let initialized = false;
+ 
++function safePolyfillGlobal(name, getValue) {
++  try {
++    polyfillGlobal(name, getValue);
++  } catch (e) {
++    if (__DEV__) {
++      const message = e instanceof Error ? e.message : String(e);
++      console.warn(
++        `[React Native] Skipped DOM polyfill "${name}" (${message}). ` +
++          'The host may already expose this global as non-writable.',
++      );
++    }
++  }
++}
++
+ export default function setUpDOM() {
+   if (initialized) {
+     return;
+@@ -19,57 +33,57 @@ export default function setUpDOM() {
+ 
+   initialized = true;
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'DOMRect',
+     () => require('../webapis/geometry/DOMRect').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'DOMRectReadOnly',
+     () => require('../webapis/geometry/DOMRectReadOnly').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'DOMRectList',
+     () => require('../webapis/geometry/DOMRectList').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'HTMLCollection',
+     () => require('../webapis/dom/oldstylecollections/HTMLCollection').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'NodeList',
+     () => require('../webapis/dom/oldstylecollections/NodeList').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'Node',
+     () => require('../webapis/dom/nodes/ReadOnlyNode').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'Document',
+     () => require('../webapis/dom/nodes/ReactNativeDocument').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'CharacterData',
+     () => require('../webapis/dom/nodes/ReadOnlyCharacterData').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'Text',
+     () => require('../webapis/dom/nodes/ReadOnlyText').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'Element',
+     () => require('../webapis/dom/nodes/ReadOnlyElement').default,
+   );
+ 
+-  polyfillGlobal(
++  safePolyfillGlobal(
+     'HTMLElement',
+     () => require('../webapis/dom/nodes/ReactNativeElement').default,
+   );

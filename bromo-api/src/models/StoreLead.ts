@@ -8,6 +8,7 @@ export interface StoreLeadDoc extends Document {
   phone: string;
   quantity: string;
   details: string;
+  consentAt: Date;
   status: "new" | "contacted" | "closed" | "rejected";
   createdAt: Date;
   updatedAt: Date;
@@ -22,6 +23,7 @@ const storeLeadSchema = new Schema<StoreLeadDoc>(
     phone: { type: String, required: true, trim: true, maxlength: 30 },
     quantity: { type: String, default: "", maxlength: 120 },
     details: { type: String, default: "", maxlength: 1000 },
+    consentAt: { type: Date, required: true },
     status: { type: String, enum: ["new", "contacted", "closed", "rejected"], default: "new" },
   },
   { timestamps: true },

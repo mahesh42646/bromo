@@ -19,13 +19,31 @@ export type UserProfile = {
   creatorStatus?: 'none' | 'pending' | 'verified' | 'rejected';
   creatorBadge?: boolean;
   connectedStore?: {enabled?: boolean; website?: string; planId?: string};
+  interests?: string[];
   followStatus: 'none' | 'following' | 'requested';
+  followsMe?: boolean;
+  relation?: UserRelation;
 };
 
-export type SuggestedUser = Omit<UserProfile, 'followStatus' | 'bio' | 'website'>;
+export type UserRelation = {
+  iFollow: boolean;
+  followsMe: boolean;
+  isMe: boolean;
+  chatId?: string;
+};
 
-export async function getUserSuggestions(limit = 10): Promise<{users: SuggestedUser[]}> {
-  const res = await authedFetch(`/users/suggestions?limit=${limit}`);
+export type SuggestedUser = Omit<UserProfile, 'bio' | 'website' | 'followStatus'> & {
+  followStatus?: UserProfile['followStatus'];
+};
+
+export async function getUserSuggestions(
+  limit = 10,
+  opts?: {context?: 'profile'; peerId?: string},
+): Promise<{users: SuggestedUser[]}> {
+  const params = new URLSearchParams({limit: String(limit)});
+  if (opts?.context) params.set('context', opts.context);
+  if (opts?.peerId) params.set('peerId', opts.peerId);
+  const res = await authedFetch(`/users/suggestions?${params.toString()}`);
   if (!res.ok) throw new Error('Failed to get suggestions');
   return res.json() as Promise<{users: SuggestedUser[]}>;
 }
@@ -53,6 +71,12 @@ export async function getUserProfile(userId: string): Promise<{user: UserProfile
   const res = await authedFetch(`/users/${userId}/profile`);
   if (!res.ok) throw new Error('User not found');
   return res.json() as Promise<{user: UserProfile}>;
+}
+
+export async function getUserMutuals(userId: string, limit = 3): Promise<{count: number; sample: SuggestedUser[]}> {
+  const res = await authedFetch(`/users/${userId}/mutuals?limit=${limit}`);
+  if (!res.ok) throw new Error('Failed to get mutuals');
+  return res.json() as Promise<{count: number; sample: SuggestedUser[]}>;
 }
 
 export async function getFollowers(userId: string, page = 1): Promise<{users: SuggestedUser[]; hasMore: boolean}> {
@@ -88,6 +112,12 @@ export async function unfollowUser(userId: string): Promise<void> {
   DeviceEventEmitter.emit('bromo:followChanged', {userId, following: false, requested: false});
 }
 
+export async function removeFollower(userId: string): Promise<void> {
+  const res = await authedFetch(`/users/${userId}/follower`, {method: 'DELETE'});
+  if (!res.ok) throw new Error('Failed to remove follower');
+  DeviceEventEmitter.emit('bromo:followerRemoved', {userId});
+}
+
 export async function blockUser(userId: string): Promise<void> {
   const res = await authedFetch(`/users/${userId}/block`, {method: 'POST'});
   if (!res.ok) {
@@ -101,6 +131,14 @@ export async function unblockUser(userId: string): Promise<void> {
   const res = await authedFetch(`/users/${userId}/block`, {method: 'DELETE'});
   if (!res.ok) throw new Error('Failed to unblock user');
   DeviceEventEmitter.emit('bromo:userUnblocked', {userId});
+}
+
+export async function reportUser(userId: string, reason = 'other'): Promise<void> {
+  const res = await authedFetch(`/users/${userId}/report`, {
+    method: 'POST',
+    body: JSON.stringify({reason}),
+  });
+  if (!res.ok) throw new Error('Failed to report user');
 }
 
 export async function getFollowRequests(): Promise<{requests: {_id: string; from: SuggestedUser; createdAt: string}[]}> {
