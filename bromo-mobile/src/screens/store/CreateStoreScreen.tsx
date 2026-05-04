@@ -19,7 +19,6 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import Geolocation from '@react-native-community/geolocation';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {
-  ChevronLeft,
   MapPin,
   Camera,
   Image as ImageIcon,
@@ -35,7 +34,8 @@ import {
 } from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {useAuth} from '../../context/AuthContext';
-import {ThemedSafeScreen} from '../../components/ui/ThemedSafeScreen';
+import {Screen} from '../../components/ui/Screen';
+import {Stepper} from '../../components/ui/Stepper';
 import {STORE_CATEGORIES, createStore, getMyStore, updateStore, type Store as StoreRecord, type StoreCategory} from '../../api/storeApi';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 
@@ -237,40 +237,20 @@ export function CreateStoreScreen() {
       : null;
 
   return (
-    <ThemedSafeScreen>
+    <Screen
+      title={existingStore ? 'Store KYC' : 'Create Store'}
+      showBack
+      onBackPress={() => (step > 0 ? setStep(s => s - 1) : navigation.goBack())}
+      style={{flex: 1}}>
       <StatusBar barStyle="light-content" />
 
-      {/* Header */}
-      <View style={[s.header, {borderBottomColor: palette.glassFaint}]}>
-        <Pressable onPress={() => (step > 0 ? setStep(s => s - 1) : navigation.goBack())} hitSlop={12}>
-          <ChevronLeft size={22} color={palette.foreground} />
-        </Pressable>
-        <Text style={[s.headerTitle, {color: palette.foreground}]}>
-          {existingStore ? 'Store KYC' : 'Create Store'}
-        </Text>
-        <View style={{width: 22}} />
-      </View>
-
-      {/* Step dots */}
-      <View style={s.stepRow}>
-        {STEPS.map((label, i) => (
-          <View key={label} style={s.stepItem}>
-            <View
-              style={[
-                s.stepDot,
-                {backgroundColor: i <= step ? palette.primary : palette.glassMid},
-              ]}>
-              {i < step ? (
-                <Check size={10} color={palette.primaryForeground} />
-              ) : (
-                <Text style={{color: i === step ? palette.primaryForeground : palette.foregroundSubtle, fontSize: 10, fontWeight: '700'}}>
-                  {i + 1}
-                </Text>
-              )}
-            </View>
-            <Text style={[s.stepLabel, {color: i === step ? palette.foreground : palette.foregroundSubtle}]}>{label}</Text>
-          </View>
-        ))}
+      <View style={{paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4}}>
+        <Stepper
+          currentStep={step + 1}
+          total={STEPS.length}
+          labels={[...STEPS]}
+          variant="bars"
+        />
       </View>
 
       <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -665,7 +645,7 @@ export function CreateStoreScreen() {
           </Pressable>
         )}
       </View>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

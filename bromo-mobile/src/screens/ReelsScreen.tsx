@@ -54,7 +54,7 @@ import type {MainTabParamList} from '../navigation/appStackParamList';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {CoinEarnToast} from '../components/ui/CoinEarnToast';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {Screen} from '../components/ui';
 import {addViewCoinListener} from '../lib/viewRewardEvents';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {blockUser, followUser, unfollowUser} from '../api/followApi';
@@ -1403,16 +1403,16 @@ export function ReelsScreen() {
 
   if (loading && reels.length === 0) {
     return (
-      <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
+      <Screen bare edges={['top', 'left', 'right']} safeAreaStyle={{backgroundColor: '#000'}}>
         <View style={{flex: 1, alignItems: 'center', justifyContent: 'center'}}>
           <ActivityIndicator color={palette.primary} size="large" />
         </View>
-      </ThemedSafeScreen>
+      </Screen>
     );
   }
 
   return (
-    <ThemedSafeScreen style={{backgroundColor: '#000'}} edges={['top', 'left', 'right']}>
+    <Screen bare edges={['top', 'left', 'right']} safeAreaStyle={{backgroundColor: '#000'}}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Reels / Friends (Instagram-style) */}
@@ -1603,6 +1603,6 @@ export function ReelsScreen() {
         label="Bromo coins"
         onHide={() => setCoinToast(c => ({...c, visible: false}))}
       />
-    </ThemedSafeScreen>
+    </Screen>
   );
 }

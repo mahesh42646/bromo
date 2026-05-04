@@ -35,7 +35,7 @@ import {
 import Geolocation from '@react-native-community/geolocation';
 import { StoreDiscoverCard } from '../components/store/StoreDiscoverCard';
 import { useTheme } from '../context/ThemeContext';
-import { ThemedSafeScreen } from '../components/ui/ThemedSafeScreen';
+import { RefreshableScrollView, Screen } from '../components/ui';
 import { parentNavigate } from '../navigation/parentNavigate';
 import {
   createStoreSubscriptionCheckout,
@@ -233,8 +233,10 @@ export function StoreScreen() {
     return hit?.meters ?? null;
   }, [distanceFilter]);
 
-  const loadStores = useCallback(async () => {
-    setLoading(true);
+  const [listRefreshing, setListRefreshing] = useState(false);
+
+  const loadStores = useCallback(async (mode: 'full' | 'refresh' = 'full') => {
+    if (mode === 'full') setLoading(true);
     try {
       const { stores: result } = await listStores({
         q: query.trim() || undefined,
@@ -252,7 +254,7 @@ export function StoreScreen() {
     } catch {
       setStores([]);
     } finally {
-      setLoading(false);
+      if (mode === 'full') setLoading(false);
     }
   }, [
     query,
@@ -545,8 +547,17 @@ export function StoreScreen() {
     })
   ), [mapMarkers, palette.border, palette.card, palette.foreground, palette.foregroundSubtle, palette.primary]);
 
+  const onPullRefresh = useCallback(async () => {
+    setListRefreshing(true);
+    try {
+      await loadStores('refresh');
+    } finally {
+      setListRefreshing(false);
+    }
+  }, [loadStores]);
+
   return (
-    <ThemedSafeScreen edges={['top', 'left', 'right']}>
+    <Screen bare edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <View style={[s.header, { borderBottomColor: palette.border, backgroundColor: palette.background }]}>
@@ -704,7 +715,11 @@ export function StoreScreen() {
         </View>
       )}
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarHeight + 90 }}>
+      <RefreshableScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: tabBarHeight + 90 }}
+        refreshing={listRefreshing}
+        onRefresh={onPullRefresh}>
         <View style={[s.locationCard, { borderColor: palette.border, backgroundColor: palette.card }]}>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -908,7 +923,7 @@ export function StoreScreen() {
             ))
           )}
         </View>
-      </ScrollView>
+      </RefreshableScrollView>
 
       <Pressable
         onPress={openMyStore}
@@ -1032,7 +1047,7 @@ export function StoreScreen() {
           </View>
         </View>
       </Modal>
-    </ThemedSafeScreen>
+    </Screen>
   );
 }
 

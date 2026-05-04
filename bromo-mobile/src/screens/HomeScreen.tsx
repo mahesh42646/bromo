@@ -9,7 +9,6 @@ import {
   FlatList,
   Image,
   Pressable,
-  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -66,7 +65,7 @@ import { ThemedText } from '../components/ui/ThemedText';
 import { StoryRing } from '../components/ui/StoryRing';
 import { SearchBar } from '../components/ui/SearchBar';
 import { Card } from '../components/ui/Card';
-import { ThemedSafeScreen } from '../components/ui/ThemedSafeScreen';
+import { RefreshableFlatList, Screen, SegmentedTabs } from '../components/ui';
 import { parentNavigate } from '../navigation/parentNavigate';
 import { postPreviewPlayUri, postThumbnailUri } from '../lib/postMediaDisplay';
 import { resolveMediaUrl } from '../lib/resolveMediaUrl';
@@ -1071,12 +1070,29 @@ export function HomeScreen() {
       {id: activeCategory, label: feedCategoryLabel(activeCategory), Icon: Landmark},
     ];
   }, [activeCategory]);
+
+  const categorySegmentItems = useMemo(() => {
+    return categoryChips.map(cat => {
+      const CatIcon = cat.Icon;
+      const active = activeCategory === cat.id;
+      return {
+        value: cat.id,
+        label: cat.label,
+        icon: (
+          <CatIcon
+            size={15}
+            color={active ? palette.primaryForeground : palette.foreground}
+          />
+        ),
+      };
+    });
+  }, [activeCategory, categoryChips, palette.foreground, palette.primaryForeground]);
+
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [notificationUnread, setNotificationUnread] = useState(0);
   const [messagesUnread, setMessagesUnread] = useState(0);
   const { borderRadiusScale } = guidelines;
-  const chipRadius = borderRadiusScale === 'bold' ? 999 : 12;
   const brandIconUri = useMemo(
     () => resolveMediaUrl(branding.faviconUrl || branding.logoUrl),
     [branding.faviconUrl, branding.logoUrl],
@@ -1728,7 +1744,7 @@ export function HomeScreen() {
   });
 
   return (
-    <ThemedSafeScreen edges={['top', 'left', 'right']}>
+    <Screen bare edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <Animated.View style={{height: feedChromeHeight, opacity: feedChromeOpacity, overflow: 'hidden'}}>
@@ -1874,42 +1890,23 @@ export function HomeScreen() {
         )}
       </View>
 
-      {/* Category Chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}
-        style={{ borderBottomWidth: 1, borderBottomColor: palette.border, maxHeight: 54, minHeight: 54 }}>
-        {categoryChips.map(cat => {
-          const CatIcon = cat.Icon;
-          const chipOn = activeCategory === cat.id;
-          return (
-            <Pressable
-              key={cat.id}
-              onPress={() => setActiveCategory(cat.id)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 14, paddingVertical: 8,
-                borderRadius: chipRadius, borderWidth: 1,
-                borderColor: chipOn ? palette.primary : palette.border,
-                backgroundColor: chipOn ? palette.primary : palette.background,
-              }}>
-              <CatIcon size={15} color={chipOn ? palette.primaryForeground : palette.foreground} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: chipOn ? palette.primaryForeground : palette.foreground }}>
-                {cat.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <SegmentedTabs
+        items={categorySegmentItems}
+        value={activeCategory}
+        onChange={v => setActiveCategory(v)}
+        variant="pill"
+        style={{borderBottomWidth: 1, borderBottomColor: palette.border}}
+      />
       </Animated.View>
 
       <View style={{ flex: 1 }}>
-        <FlatList
+        <RefreshableFlatList
           data={feedItems}
           keyExtractor={item => item.key}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: tabBarHeight + 16 }}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
           ListHeaderComponent={
             liveStreams.length === 0 ? null : (
               <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10, gap: 8 }}>
@@ -1949,14 +1946,6 @@ export function HomeScreen() {
                 ))}
               </View>
             )
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={palette.primary}
-              colors={[palette.primary]}
-            />
           }
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.2}
@@ -2316,6 +2305,6 @@ export function HomeScreen() {
           onClose={() => setActiveStoryAd(null)}
         />
       )}
-    </ThemedSafeScreen>
+    </Screen>
   );
 }

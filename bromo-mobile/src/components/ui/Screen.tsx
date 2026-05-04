@@ -24,6 +24,8 @@ export type ScreenProps = {
   refreshing?: boolean;
   edges?: readonly Edge[];
   style?: StyleProp<ViewStyle>;
+  /** Applied to the outer safe-area wrapper (e.g. full-bleed black Reels tab). */
+  safeAreaStyle?: StyleProp<ViewStyle>;
 };
 
 /**
@@ -42,6 +44,7 @@ export function Screen({
   refreshing,
   edges,
   style,
+  safeAreaStyle,
 }: ScreenProps) {
   const header =
     bare ? null : (
@@ -74,7 +77,7 @@ export function Screen({
   }
 
   return (
-    <ThemedSafeScreen edges={edges}>
+    <ThemedSafeScreen edges={edges} style={safeAreaStyle}>
       {header}
       {body}
     </ThemedSafeScreen>

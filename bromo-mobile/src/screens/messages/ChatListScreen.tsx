@@ -14,6 +14,7 @@ import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {BadgeCheck, MessageSquarePlus, Search} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
+import {ActionSheet} from '../../components/ui/ActionSheet';
 import {Screen} from '../../components/ui/Screen';
 import {SearchBar} from '../../components/ui/SearchBar';
 import {useMessaging} from '../../messaging/MessagingContext';
@@ -32,6 +33,12 @@ export function ChatListScreen() {
   const [userSearchResults, setUserSearchResults] = useState<{_id: string; displayName: string; username: string; profilePicture: string}[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [mutedThreads, setMutedThreads] = useState<Set<string>>(() => new Set());
+  const [threadSheetPeer, setThreadSheetPeer] = useState<{
+    id: string;
+    userId?: string;
+    displayName: string;
+    username: string;
+  } | null>(null);
 
   const directoryHits = useMemo(() => {
     const q = search.trim();
@@ -54,51 +61,43 @@ export function ChatListScreen() {
   }, [openThreadForUser, navigation]);
 
   const openThreadActions = useCallback((peer: {id: string; userId?: string; displayName: string; username: string}) => {
-    const muted = mutedThreads.has(peer.id);
-    Alert.alert(peer.displayName, `@${peer.username}`, [
-      {
-        text: 'Share',
-        onPress: () => {
-          const url = `https://bromo.app/u/${peer.username}`;
-          Share.share({message: `${peer.displayName} on BROMO\n${url}`, url}).catch(() => null);
-        },
-      },
-      {
-        text: muted ? 'Unmute' : 'Mute',
-        onPress: async () => {
-          setMutedThreads(prev => {
-            const next = new Set(prev);
-            if (muted) next.delete(peer.id);
-            else next.add(peer.id);
-            return next;
-          });
-          try {
-            if (muted) await unmuteConversation(peer.id);
-            else await muteConversation(peer.id);
-          } catch (err) {
-            Alert.alert('Mute failed', err instanceof Error ? err.message : 'Could not update mute status');
-          }
-        },
-      },
-      {
-        text: 'Block',
-        style: 'destructive',
-        onPress: async () => {
-          if (!peer.userId) {
-            Alert.alert('Block unavailable', 'Open this chat first so the user profile can be resolved.');
-            return;
-          }
-          try {
-            await blockUser(peer.userId);
-            Alert.alert('Blocked', `${peer.displayName} is blocked.`);
-          } catch (err) {
-            Alert.alert('Block failed', err instanceof Error ? err.message : 'Could not block this user');
-          }
-        },
-      },
-      {text: 'Cancel', style: 'cancel'},
-    ]);
-  }, [mutedThreads]);
+    setThreadSheetPeer(peer);
+  }, []);
+
+  const runThreadActionMuteToggle = useCallback(
+    async (peer: {id: string; userId?: string; displayName: string; username: string}) => {
+      const muted = mutedThreads.has(peer.id);
+      setMutedThreads(prev => {
+        const next = new Set(prev);
+        if (muted) next.delete(peer.id);
+        else next.add(peer.id);
+        return next;
+      });
+      try {
+        if (muted) await unmuteConversation(peer.id);
+        else await muteConversation(peer.id);
+      } catch (err) {
+        Alert.alert('Mute failed', err instanceof Error ? err.message : 'Could not update mute status');
+      }
+    },
+    [mutedThreads],
+  );
+
+  const runThreadActionBlock = useCallback(
+    async (peer: {userId?: string; displayName: string}) => {
+      if (!peer.userId) {
+        Alert.alert('Block unavailable', 'Open this chat first so the user profile can be resolved.');
+        return;
+      }
+      try {
+        await blockUser(peer.userId);
+        Alert.alert('Blocked', `${peer.displayName} is blocked.`);
+      } catch (err) {
+        Alert.alert('Block failed', err instanceof Error ? err.message : 'Could not block this user');
+      }
+    },
+    [],
+  );
 
   // Search real users when query changes
   React.useEffect(() => {
@@ -281,6 +280,39 @@ export function ChatListScreen() {
             </View>
           </Pressable>
         )}
+      />
+
+      <ActionSheet
+        visible={threadSheetPeer != null}
+        title={threadSheetPeer?.displayName}
+        message={threadSheetPeer ? `@${threadSheetPeer.username}` : undefined}
+        cancelLabel="Close"
+        onCancel={() => setThreadSheetPeer(null)}
+        options={
+          threadSheetPeer
+            ? [
+                {
+                  label: 'Share profile',
+                  onPress: () => {
+                    const url = `https://bromo.app/u/${threadSheetPeer.username}`;
+                    Share.share({
+                      message: `${threadSheetPeer.displayName} on BROMO\n${url}`,
+                      url,
+                    }).catch(() => null);
+                  },
+                },
+                {
+                  label: mutedThreads.has(threadSheetPeer.id) ? 'Unmute' : 'Mute',
+                  onPress: () => runThreadActionMuteToggle(threadSheetPeer),
+                },
+                {
+                  label: 'Block',
+                  destructive: true,
+                  onPress: () => runThreadActionBlock(threadSheetPeer),
+                },
+              ]
+            : []
+        }
       />
     </Screen>
   );

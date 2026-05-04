@@ -29,6 +29,7 @@ import {ChevronLeft, CheckCircle2, Eye, EyeOff, Mail, XCircle} from 'lucide-reac
 import {useAuth} from '../../../context/AuthContext';
 import {useTheme} from '../../../context/ThemeContext';
 import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
+import {Stepper} from '../../../components/ui/Stepper';
 import {checkUsername as checkUsernameApi} from '../../../api/authApi';
 import type {AuthStackParamList} from '../../../navigation/appStackParamList';
 import {resetToApp} from '../../../navigation/rootNavigation';
@@ -796,15 +797,8 @@ export function RegisterScreen() {
     return (
       <Chrome showBack>
         <View style={{paddingHorizontal: 28, paddingTop: 56}}>
-          <View style={[ss.row, {gap: 4, marginBottom: 32}]}>
-            {[1, 2].map(n => (
-              <View key={n} style={{
-                height: 3,
-                flex: 1,
-                borderRadius: 2,
-                backgroundColor: n <= step ? palette.primary : palette.borderFaint,
-              }} />
-            ))}
+          <View style={{marginBottom: 24}}>
+            <Stepper currentStep={1} total={2} labels={['Username', 'Account']} variant="bars" />
           </View>
 
           <Text style={{color: palette.foregroundSubtle, fontSize: 12, fontWeight: '600', letterSpacing: 1, marginBottom: 6}}>
@@ -949,15 +943,8 @@ export function RegisterScreen() {
       </Pressable>
 
       <View style={{paddingTop: 56, paddingHorizontal: 28}}>
-        <View style={[ss.row, {gap: 4, marginBottom: 28}]}>
-          {[1, 2].map(n => (
-            <View key={n} style={{
-              height: 3,
-              flex: 1,
-              borderRadius: 2,
-              backgroundColor: n <= step ? palette.primary : palette.borderFaint,
-            }} />
-          ))}
+        <View style={{marginBottom: 24}}>
+          <Stepper currentStep={2} total={2} labels={['Username', 'Account']} variant="bars" />
         </View>
 
         <Text style={{color: palette.foregroundSubtle, fontSize: 12, fontWeight: '600', letterSpacing: 1, marginBottom: 6}}>

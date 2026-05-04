@@ -16,8 +16,10 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {ChevronLeft, ChevronRight, Check, Target, Users, Wallet, Zap} from 'lucide-react-native';
+import {ChevronRight, Check, Target, Users, Wallet, Zap} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
+import {Screen} from '../../components/ui/Screen';
+import {Stepper} from '../../components/ui/Stepper';
 import type {AppStackParamList} from '../../navigation/appStackParamList';
 import {getWallet} from '../../api/walletApi';
 import {
@@ -140,42 +142,16 @@ export function PromoteCampaignScreen() {
   const stepTitles = ['Objective', 'Audience', 'Budget', 'Review'];
 
   return (
-    <View style={{flex: 1, backgroundColor: palette.background}}>
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
-        borderBottomWidth: 1, borderBottomColor: palette.border,
-      }}>
-        <Pressable
-          onPress={() => step > 1 ? setStep((step - 1) as Step) : navigation.goBack()}
-          hitSlop={12} style={{marginRight: 12}}>
-          <ChevronLeft size={24} color={palette.foreground} />
-        </Pressable>
-        <Text style={{flex: 1, color: palette.foreground, fontSize: 18, fontWeight: '900'}}>
-          Promote {contentType}
-        </Text>
-        <Text style={{color: palette.foregroundSubtle, fontSize: 12}}>
-          {step}/4
-        </Text>
-      </View>
-
-      {/* Step indicator */}
-      <View style={{flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4, gap: 6}}>
-        {stepTitles.map((title, i) => (
-          <View key={title} style={{flex: 1, alignItems: 'center', gap: 4}}>
-            <View style={{
-              height: 3, borderRadius: 2,
-              backgroundColor: i < step ? palette.primary : palette.border,
-            }} />
-            <Text style={{
-              color: i + 1 === step ? palette.primary : palette.foregroundSubtle,
-              fontSize: 9, fontWeight: '700',
-            }}>
-              {title.toUpperCase()}
-            </Text>
-          </View>
-        ))}
+    <Screen
+      title={`Promote ${contentType}`}
+      showBack
+      onBackPress={() => (step > 1 ? setStep((step - 1) as Step) : navigation.goBack())}
+      right={<Text style={{color: palette.foregroundSubtle, fontSize: 12, fontWeight: '700'}}>{step}/4</Text>}
+      scroll={false}
+      style={{flex: 1}}>
+      <View style={{flex: 1, backgroundColor: palette.background}}>
+      <View style={{paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4}}>
+        <Stepper currentStep={step} total={4} labels={stepTitles} variant="bars" />
       </View>
 
       <ScrollView
@@ -475,6 +451,7 @@ export function PromoteCampaignScreen() {
           )}
         </Pressable>
       </View>
-    </View>
+      </View>
+    </Screen>
   );
 }

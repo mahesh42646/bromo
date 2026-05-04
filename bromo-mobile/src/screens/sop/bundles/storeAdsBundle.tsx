@@ -6,6 +6,7 @@ import type {RouteProp} from '@react-navigation/native';
 import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
+import {Stepper} from '../../../components/ui/Stepper';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
@@ -161,10 +162,13 @@ export function StoreCoinSettingsScreen() {
 
 /* ---- Ads (7) ---- */
 
+const AD_STEP_LABELS = ['Type', 'Audience', 'Budget'] as const;
+
 export function CreateAdStep1Screen() {
   const navigation = useNavigation<Nav>();
   return (
     <SopChrome title="Create ad — type">
+      <Stepper currentStep={1} total={3} labels={[...AD_STEP_LABELS]} variant="bars" />
       <SopRow title="Feed placement" onPress={() => navigation.navigate('CreateAdStep2')} />
       <SopRow title="Reels placement" />
       <SopRow title="Local radius blast" />
@@ -176,6 +180,7 @@ export function CreateAdStep2Screen() {
   const navigation = useNavigation<Nav>();
   return (
     <SopChrome title="Create ad — audience">
+      <Stepper currentStep={2} total={3} labels={[...AD_STEP_LABELS]} variant="bars" />
       <SopMeta label="Content upload, geo radius, interest targets." />
       <PrimaryButton label="Next" onPress={() => navigation.navigate('CreateAdStep3')} />
     </SopChrome>
@@ -186,6 +191,7 @@ export function CreateAdStep3Screen() {
   const navigation = useNavigation<Nav>();
   return (
     <SopChrome title="Create ad — budget">
+      <Stepper currentStep={3} total={3} labels={[...AD_STEP_LABELS]} variant="bars" />
       <SopMeta label="Budget & duration; min 50% cash + points per SOP." />
       <PrimaryButton label="Continue to pay" onPress={() => navigation.navigate('AdPayment', {campaignId: 'cmp1'})} />
     </SopChrome>

@@ -1,9 +1,8 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
   Image,
   Pressable,
-  ScrollView,
   StatusBar,
   Text,
   View,
@@ -19,7 +18,7 @@ import {ThemedText} from '../components/ui/ThemedText';
 import {SearchBar} from '../components/ui/SearchBar';
 import {Card} from '../components/ui/Card';
 import {Badge} from '../components/ui/Badge';
-import {ThemedSafeScreen} from '../components/ui/ThemedSafeScreen';
+import {RefreshableScrollView, Screen, SegmentedTabs} from '../components/ui';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {searchUsers, getUserSuggestions, getNearbyUsers, updateMyLocation, followUser, unfollowUser, type SuggestedUser} from '../api/followApi';
 import {getExplore, type Post} from '../api/postsApi';
@@ -147,7 +146,6 @@ export function SearchScreen() {
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState('explore');
   const {borderRadiusScale} = guidelines;
-  const chipRadius = borderRadiusScale === 'bold' ? 999 : 10;
 
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [nearbyUsers, setNearbyUsers] = useState<Array<SuggestedUser & {distanceMeters?: number}>>([]);
@@ -159,6 +157,61 @@ export function SearchScreen() {
   const [loadingNearby, setLoadingNearby] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [loadingExplore, setLoadingExplore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const filterTabItems = useMemo(
+    () =>
+      FILTER_TABS.map(tab => {
+        const Icon = tab.icon;
+        const active = activeTab === tab.id;
+        return {
+          value: tab.id,
+          label: tab.label,
+          icon: <Icon size={12} color={active ? palette.primaryForeground : palette.mutedForeground} />,
+        };
+      }),
+    [activeTab, palette.mutedForeground, palette.primaryForeground],
+  );
+
+  const onExploreRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [postsRes, adsRes, sugRes] = await Promise.all([
+        getExplore(1).catch(() => ({posts: [] as Post[]})),
+        fetchAds('explore', 3).catch(() => [] as Ad[]),
+        getUserSuggestions(20).catch(() => ({users: [] as SuggestedUser[]})),
+      ]);
+      setExplorePosts(postsRes.posts);
+      setExploreAds(adsRes);
+      setSuggestions(sugRes.users);
+      authedFetch('/posts/trending?limit=20')
+        .then(r => (r.ok ? r.json() : null))
+        .then((data: unknown) => {
+          const posts = (data as {posts?: Post[]})?.posts ?? [];
+          if (posts.length === 0) return;
+          const tagMap = new Map<string, number>();
+          for (const p of posts) {
+            for (const t of p.tags ?? []) {
+              tagMap.set(t, (tagMap.get(t) ?? 0) + p.viewsCount);
+            }
+          }
+          const sorted = [...tagMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+          if (sorted.length >= 3) {
+            setTrendingTopics(
+              sorted.map(([tag], i) => ({
+                id: String(i),
+                tag: tag.startsWith('#') ? tag : `#${tag}`,
+                posts: `${formatCount(tagMap.get(tag) ?? 0)} views`,
+                category: 'Trending',
+              })),
+            );
+          }
+        })
+        .catch(() => {});
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   // Load trending topics from real post tags
   useEffect(() => {
@@ -261,7 +314,7 @@ export function SearchScreen() {
   );
 
   return (
-    <ThemedSafeScreen edges={['top', 'left', 'right']}>
+    <Screen bare edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       {/* Header */}
@@ -291,39 +344,19 @@ export function SearchScreen() {
             }
           }}
         />
-        {/* Filter Tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{gap: 8}}>
-          {FILTER_TABS.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <Pressable
-                key={tab.id}
-                onPress={() => setActiveTab(tab.id)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 5,
-                  paddingHorizontal: 14, paddingVertical: 7,
-                  borderRadius: chipRadius,
-                  backgroundColor: isActive ? palette.primary : isDark ? palette.surface : palette.card,
-                  borderWidth: 1,
-                  borderColor: isActive ? palette.primary : palette.border,
-                }}>
-                <Icon size={12} color={isActive ? palette.primaryForeground : palette.mutedForeground} />
-                <Text style={{fontSize: 12, fontWeight: '700', color: isActive ? palette.primaryForeground : palette.foreground}}>
-                  {tab.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <SegmentedTabs
+          items={filterTabItems}
+          value={activeTab}
+          onChange={v => setActiveTab(v)}
+          variant="pill"
+        />
       </View>
 
-      <ScrollView
+      <RefreshableScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{paddingBottom: tabBarHeight + 16}}>
+        contentContainerStyle={{paddingBottom: tabBarHeight + 16}}
+        refreshing={refreshing}
+        onRefresh={onExploreRefresh}>
 
         {/* Live search results overlay */}
         {showSearchResults && (
@@ -522,7 +555,7 @@ export function SearchScreen() {
         )}
 
         <View style={{height: 20}} />
-      </ScrollView>
-    </ThemedSafeScreen>
+      </RefreshableScrollView>
+    </Screen>
   );
 }
