@@ -170,6 +170,8 @@ export type Post = {
   storeEntryUrl?: string;
   originalAudioId?: string;
   originalAudioTitle?: string;
+  /** Resolved from OriginalAudio when `originalAudioId` is set — use for off-video / muted-video playback */
+  originalSoundUrl?: string;
   remixOfPostId?: string;
   remixCredit?: {postId?: string; creatorId?: string; username?: string};
   scheduledFor?: string;
@@ -207,6 +209,16 @@ export type Post = {
   promotionObjective?: PromotionObjective;
   promotionCta?: {label: string; url: string};
 };
+
+/** When set, play this URL for “Use this sound” unless licensed remux already baked audio into the file. */
+export function resolveAttachedOriginalSoundUri(
+  post: Pick<Post, 'originalSoundUrl' | 'audioRemuxStatus'>,
+): string | undefined {
+  const u = post.originalSoundUrl?.trim();
+  if (!u) return undefined;
+  if (post.audioRemuxStatus === 'ready') return undefined;
+  return u;
+}
 
 /** Derive the best video URL from a post — HLS master if available, else legacy mediaUrl. */
 export function resolveVideoUrl(post: Post, isCellular = false): string {

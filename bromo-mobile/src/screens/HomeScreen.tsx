@@ -21,6 +21,7 @@ import {
 import Geolocation from '@react-native-community/geolocation';
 import {followSourceForContext} from '../lib/followSource';
 import { EditMetaLayers } from '../components/media/EditMetaLayers';
+import { OriginalSoundAudioLayer } from '../components/media/OriginalSoundAudioLayer';
 import { PostVideoWithClientMeta } from '../components/media/PostVideoWithClientMeta';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -84,6 +85,7 @@ import {
   recordShare,
   recordStoreClick,
   resolveVideoUrl,
+  resolveAttachedOriginalSoundUri,
   deletePost,
   votePostPoll,
   type Post,
@@ -381,6 +383,7 @@ const PostCard = React.memo(function PostCard({
   const thumbForVideo = postThumbnailUri(post) || playUri;
   const mediaAspect = postDisplayAspectRatio(post);
   const carouselItems = post.carouselItems?.length ? post.carouselItems : [];
+  const attachedSoundUri = resolveAttachedOriginalSoundUri(post);
 
   const openReelsAtThisPost = () => {
     parentNavigate(navigation, 'Reels', { initialPostId: post._id });
@@ -764,6 +767,14 @@ const PostCard = React.memo(function PostCard({
                 style={{ width: '100%', height: '100%', resizeMode: 'contain' }}
               />
               <EditMetaLayers clientEditMeta={post.clientEditMeta} />
+              {attachedSoundUri ? (
+                <OriginalSoundAudioLayer
+                  uri={attachedSoundUri}
+                  muted={homeFeedMuted}
+                  paused={!isFeedItemVisible}
+                  repeat
+                />
+              ) : null}
             </View>
           )}
         </Pressable>
@@ -870,6 +881,14 @@ const PostCard = React.memo(function PostCard({
                 />
               )}
               <EditMetaLayers clientEditMeta={post.clientEditMeta} />
+              {attachedSoundUri ? (
+                <OriginalSoundAudioLayer
+                  uri={attachedSoundUri}
+                  muted={homeFeedMuted}
+                  paused={!isFeedItemVisible}
+                  repeat
+                />
+              ) : null}
             </View>
           )}
         </View>

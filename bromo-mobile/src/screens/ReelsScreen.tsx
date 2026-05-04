@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {EditMetaLayers} from '../components/media/EditMetaLayers';
+import {OriginalSoundAudioLayer} from '../components/media/OriginalSoundAudioLayer';
 import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {
   ActivityIndicator,
@@ -71,6 +72,7 @@ import {
   recordShare,
   recordStoreClick,
   resolveVideoUrl,
+  resolveAttachedOriginalSoundUri,
   toggleSavePost,
   sendReelFeedback,
   fetchPostWhy,
@@ -751,6 +753,7 @@ const ReelItem = React.memo(function ReelItem({
   const rawVideoUrl = resolveVideoUrl(item, isCellular);
   const playUri = resolveMediaUrl(rawVideoUrl);
   const thumbUri = resolveMediaUrl(item.thumbnailUrl ?? '') || playUri;
+  const attachedReelSound = resolveAttachedOriginalSoundUri(item);
   const isHls = rawVideoUrl.endsWith('.m3u8');
   const videoContext = isHls ? 'reel-hls' : 'reel';
 
@@ -818,6 +821,14 @@ const ReelItem = React.memo(function ReelItem({
             resizeMode="cover"
           />
           <EditMetaLayers clientEditMeta={item.clientEditMeta} />
+          {attachedReelSound ? (
+            <OriginalSoundAudioLayer
+              uri={attachedReelSound}
+              muted={reelsMuted}
+              paused={paused || !isActive}
+              repeat={!autoScroll}
+            />
+          ) : null}
         </>
       )}
 

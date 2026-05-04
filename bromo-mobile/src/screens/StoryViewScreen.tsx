@@ -418,40 +418,7 @@ export function StoryViewScreen() {
     setShowReply(false);
   }, [replyText, group, openThreadForUser, navigation]);
 
-  if (loading) {
-    return (
-      <View style={{flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center'}}>
-        <StatusBar barStyle="light-content" />
-        <ActivityIndicator color="#fff" />
-      </View>
-    );
-  }
-
-  if (!group || stories.length === 0 || !current) {
-    return (
-      <View style={{flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', padding: 24}}>
-        <StatusBar barStyle="light-content" />
-        <Text style={{color: '#fff', fontWeight: '700', textAlign: 'center'}}>No stories available</Text>
-        <Pressable onPress={() => navigation.goBack()} style={{marginTop: 20}} hitSlop={12}>
-          <ChevronLeft color="#fff" size={28} />
-        </Pressable>
-      </View>
-    );
-  }
-
-  const mediaUri = resolveMediaUrl(current.mediaUrl);
-  const poster = postThumbnailUri(current) || undefined;
-  const avatarUri = group.author.profilePicture ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}&size=64`;
-  const viewingOwnStories = Boolean(dbUser?._id && String(group.author._id) === String(dbUser._id));
-
-  // Parse story overlays and bg color from storyMeta
-  const storyMeta = (current as unknown as {storyMeta?: StoryMeta}).storyMeta;
-  const bgColor = storyMeta?.bgColor;
-  const overlays: StoryOverlay[] = storyMeta?.overlays ?? [];
-  const mentionOverlays = overlays.filter(o => o.type === 'mention');
-  const isColorBg = Boolean(bgColor) && (!mediaUri || mediaUri === 'color-bg');
-
+  /** Pinch/zoom on story media — must run before any early return (Rules of Hooks). */
   const mediaScale = useSharedValue(1);
   const mediaTx = useSharedValue(0);
   const mediaTy = useSharedValue(0);
@@ -464,7 +431,7 @@ export function StoryViewScreen() {
     mediaTx.value = 0;
     mediaTy.value = 0;
     pinchBase.value = 1;
-  }, [current._id]);
+  }, [current?._id]);
 
   const pinchGesture = Gesture.Pinch()
     .onBegin(() => {
@@ -501,6 +468,40 @@ export function StoryViewScreen() {
     height: H,
     transform: [{translateX: mediaTx.value}, {translateY: mediaTy.value}, {scale: mediaScale.value}],
   }));
+
+  if (loading) {
+    return (
+      <View style={{flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center'}}>
+        <StatusBar barStyle="light-content" />
+        <ActivityIndicator color="#fff" />
+      </View>
+    );
+  }
+
+  if (!group || stories.length === 0 || !current) {
+    return (
+      <View style={{flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', padding: 24}}>
+        <StatusBar barStyle="light-content" />
+        <Text style={{color: '#fff', fontWeight: '700', textAlign: 'center'}}>No stories available</Text>
+        <Pressable onPress={() => navigation.goBack()} style={{marginTop: 20}} hitSlop={12}>
+          <ChevronLeft color="#fff" size={28} />
+        </Pressable>
+      </View>
+    );
+  }
+
+  const mediaUri = resolveMediaUrl(current.mediaUrl);
+  const poster = postThumbnailUri(current) || undefined;
+  const avatarUri = group.author.profilePicture ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author.displayName)}&size=64`;
+  const viewingOwnStories = Boolean(dbUser?._id && String(group.author._id) === String(dbUser._id));
+
+  // Parse story overlays and bg color from storyMeta
+  const storyMeta = (current as unknown as {storyMeta?: StoryMeta}).storyMeta;
+  const bgColor = storyMeta?.bgColor;
+  const overlays: StoryOverlay[] = storyMeta?.overlays ?? [];
+  const mentionOverlays = overlays.filter(o => o.type === 'mention');
+  const isColorBg = Boolean(bgColor) && (!mediaUri || mediaUri === 'color-bg');
 
   const openOwnAnalytics = () => {
     if (!current?._id) return;

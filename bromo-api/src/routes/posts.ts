@@ -554,13 +554,14 @@ async function getPromotedPostDocs(
   return out;
 }
 
-function splicePromotedIntoFeed(
+async function splicePromotedIntoFeed(
   organicMapped: Record<string, unknown>[],
   promotedRaw: Array<Record<string, unknown>>,
   likedSet: Set<string>,
   followingSet: Set<string>,
   dbUserId: string | undefined,
-): Record<string, unknown>[] {
+): Promise<Record<string, unknown>[]> {
+  await attachOriginalSoundUrls(promotedRaw);
   const seen = new Set(organicMapped.map((p) => String(p._id)));
   const promoted = promotedRaw
     .filter((p) => !seen.has(String(p._id)))
@@ -904,6 +905,32 @@ function normalizeIfNoneMatch(v: string | undefined): string | undefined {
   return t;
 }
 
+/** Batch-fetch OriginalAudio URLs so feed/detail can play “Use this sound” without N+1 client calls. */
+async function attachOriginalSoundUrls(rows: Array<Record<string, unknown>>): Promise<void> {
+  const ids = [
+    ...new Set(
+      rows
+        .map((r) => r.originalAudioId)
+        .filter((id) => id != null && mongoose.Types.ObjectId.isValid(String(id)))
+        .map((id) => String(id)),
+    ),
+  ];
+  if (ids.length === 0) return;
+  const oids = ids.map((id) => new mongoose.Types.ObjectId(id));
+  const docs = await OriginalAudio.find({ _id: { $in: oids }, isActive: true }).select("audioUrl").lean();
+  const byId = new Map(
+    docs.map((d) => [
+      String(d._id),
+      typeof d.audioUrl === "string" ? rewritePublicMediaUrl(d.audioUrl) : "",
+    ]),
+  );
+  for (const row of rows) {
+    const oid = row.originalAudioId ? String(row.originalAudioId) : "";
+    const url = oid ? byId.get(oid) : undefined;
+    if (url) row.originalSoundUrl = url;
+  }
+}
+
 function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, followingSet: Set<string>, dbUserId?: string) {
   const author = p.authorId as Record<string, unknown> | null;
   const authorOid = author ? String((author as {_id: unknown})._id) : "";
@@ -940,6 +967,9 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
   const productTagged =
     Array.isArray((p as { productIds?: unknown }).productIds) &&
     (((p as { productIds: unknown[] }).productIds ?? []).length > 0);
+  const rawOs = (p as { originalSoundUrl?: unknown }).originalSoundUrl;
+  const originalSoundUrl =
+    typeof rawOs === "string" && rawOs.trim() ? rewritePublicMediaUrl(rawOs) : undefined;
   return {
     ...p,
     mediaUrl,
@@ -969,6 +999,7 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
       isVerifiedCreator && Boolean(connectedStore?.enabled)
         ? String(connectedStore?.productCatalogUrl || connectedStore?.website || "").trim() || undefined
         : undefined,
+    ...(originalSoundUrl ? { originalSoundUrl } : {}),
     authorId: undefined,
   };
 }
@@ -1016,10 +1047,12 @@ postsRouter.get(
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
       const followingSet = new Set(followingIds.map(String));
 
-      const mapPosts = (posts: Record<string, unknown>[]) =>
-        posts.map((p) =>
+      const mapPosts = async (posts: Record<string, unknown>[]) => {
+        await attachOriginalSoundUrls(posts);
+        return posts.map((p) =>
           normalizePost(p, likedSet, followingSet, String(dbUser?._id)),
         );
+      };
 
       if (tab === "for-you") {
         const fyPhaseRaw = String(req.query.fyPhase ?? "friends").toLowerCase();
@@ -1030,6 +1063,7 @@ postsRouter.get(
         // No follows: home still uses "friends" phase but only surfaces promoted content (no organic stranger posts).
         if (fyPhase === "friends" && dbUser && !hasFollows) {
           const promotedRaw = await getPromotedPostDocs(dbUser._id, [dbUser._id, ...blockedIds], ["feed", "explore"], 8);
+          await attachOriginalSoundUrls(promotedRaw as Record<string, unknown>[]);
           const onlyPromoted = promotedRaw.map((p) =>
             normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
           );
@@ -1081,17 +1115,18 @@ postsRouter.get(
           const hasMoreFriends = posts.length === PAGE_SIZE;
           const nextCursorFriends = hasMoreFriends ? String(posts[posts.length - 1]._id) : null;
 
-          let friendPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
+          await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
+          let friendPosts = await mapPosts(posts as unknown as Record<string, unknown>[]);
           if (!cf && dbUser) {
             const excludeAuthors = [...followingIds, dbUser._id, ...blockedIds] as mongoose.Types.ObjectId[];
             const promotedRaw = await getPromotedPostDocs(dbUser._id, excludeAuthors, ["feed", "explore"], 2);
-            friendPosts = splicePromotedIntoFeed(
+            friendPosts = (await splicePromotedIntoFeed(
               friendPosts,
               promotedRaw,
               likedSet,
               followingSet,
               String(dbUser._id),
-            ) as typeof friendPosts;
+            )) as typeof friendPosts;
           }
 
           if (!cf) {
@@ -1122,7 +1157,7 @@ postsRouter.get(
         const hasMoreGeneral = false;
         const nextCursorGeneral = null;
 
-        let allPosts = mapPosts(posts);
+        let allPosts = await mapPosts(posts);
         if (dbUser) {
           const promotedRaw = await getPromotedPostDocs(
             dbUser._id,
@@ -1130,13 +1165,13 @@ postsRouter.get(
             ["feed", "explore"],
             6,
           );
-          allPosts = splicePromotedIntoFeed(
+          allPosts = (await splicePromotedIntoFeed(
             allPosts,
             promotedRaw,
             likedSet,
             followingSet,
             String(dbUser._id),
-          ) as typeof allPosts;
+          )) as typeof allPosts;
         }
 
         return res.json({
@@ -1170,7 +1205,7 @@ postsRouter.get(
           .lean();
 
         return res.json({
-          posts: mapPosts(posts as unknown as Record<string, unknown>[]),
+          posts: await mapPosts(posts as unknown as Record<string, unknown>[]),
           tab: "trending",
           page,
           hasMore: posts.length === PAGE_SIZE,
@@ -1195,7 +1230,7 @@ postsRouter.get(
           .lean();
 
         return res.json({
-          posts: mapPosts(posts as unknown as Record<string, unknown>[]),
+          posts: await mapPosts(posts as unknown as Record<string, unknown>[]),
           tab,
           page,
           hasMore: posts.length === PAGE_SIZE,
@@ -1226,12 +1261,15 @@ postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthe
     const likedSet = new Set(likes.map((l) => String(l.targetId)));
     const followingSet = new Set(followingIds.map(String));
 
-    const mapPosts = (rows: Record<string, unknown>[]) =>
-      rows.map((p) => normalizePost(p, likedSet, followingSet, String(dbUser._id)));
+    const mapPosts = async (rows: Record<string, unknown>[]) => {
+      await attachOriginalSoundUrls(rows);
+      return rows.map((p) => normalizePost(p, likedSet, followingSet, String(dbUser._id)));
+    };
 
     // Match GET /posts/feed for-you: no follows → promoted-only surface (not an empty authorId $in).
     if (!hasFollows) {
       const promotedRaw = await getPromotedPostDocs(dbUser._id, [dbUser._id, ...blockedIds], ["feed", "explore"], 8);
+      await attachOriginalSoundUrls(promotedRaw as Record<string, unknown>[]);
       const onlyPromoted = promotedRaw.map((p) =>
         normalizePost(p as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
       );
@@ -1251,16 +1289,17 @@ postsRouter.get("/feed/initial", requireFirebaseToken, async (req: FirebaseAuthe
     const hasMoreFriends = posts.length === PAGE_SIZE;
     const nextCursor = hasMoreFriends ? String(posts[posts.length - 1]._id) : null;
 
-    let friendPosts = mapPosts(posts as unknown as Record<string, unknown>[]);
+    await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
+    let friendPosts = await mapPosts(posts as unknown as Record<string, unknown>[]);
     const excludeAuthors = [...followingIds, dbUser._id, ...blockedIds] as mongoose.Types.ObjectId[];
     const promotedRaw = await getPromotedPostDocs(dbUser._id, excludeAuthors, ["feed", "explore"], 2);
-    friendPosts = splicePromotedIntoFeed(
+    friendPosts = (await splicePromotedIntoFeed(
       friendPosts,
       promotedRaw,
       likedSet,
       followingSet,
       String(dbUser._id),
-    ) as typeof friendPosts;
+    )) as typeof friendPosts;
 
     return res.json({ posts: friendPosts, tab: "for-you", cursor: nextCursor, hasMore: hasMoreFriends });
   } catch (err) {
@@ -1298,8 +1337,10 @@ postsRouter.get("/feed/next", requireFirebaseToken, async (req: FirebaseAuthedRe
       .populate("authorId", AUTHOR_SELECT)
       .lean();
     const nextCursor = posts.length === PAGE_SIZE ? String(posts[posts.length - 1]._id) : null;
-    const out = posts.map((p) =>
-      normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
+    const lean = posts as unknown as Record<string, unknown>[];
+    await attachOriginalSoundUrls(lean);
+    const out = lean.map((p) =>
+      normalizePost(p, likedSet, followingSet, String(dbUser._id)),
     );
     return res.json({ posts: out, tab: "for-you", cursor: nextCursor, hasMore: posts.length === PAGE_SIZE });
   } catch (err) {
@@ -1378,6 +1419,7 @@ postsRouter.get(
       const followingIds = follows.map((f) => f.followingId);
       const followingSet = new Set(followingIds.map(String));
 
+      await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
       let result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
@@ -1390,6 +1432,7 @@ postsRouter.get(
           1,
           "reel",
         );
+        await attachOriginalSoundUrls(promotedRaw as Record<string, unknown>[]);
         if (promotedRaw.length) {
           const rawPr = promotedRaw[0] as Record<string, unknown>;
           const prId = String(rawPr._id);
@@ -1457,6 +1500,7 @@ postsRouter.get("/reels/initial", requireFirebaseToken, async (req: FirebaseAuth
     const followingIds = follows.map((f) => f.followingId);
     const followingSet = new Set(followingIds.map(String));
 
+    await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
     let result = posts.map((p) =>
       normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
     );
@@ -1468,6 +1512,7 @@ postsRouter.get("/reels/initial", requireFirebaseToken, async (req: FirebaseAuth
       1,
       "reel",
     );
+    await attachOriginalSoundUrls(promotedRaw as Record<string, unknown>[]);
     if (promotedRaw.length) {
       const rawPr = promotedRaw[0] as Record<string, unknown>;
       const prId = String(rawPr._id);
@@ -1531,6 +1576,7 @@ postsRouter.get("/reels/next", requireFirebaseToken, async (req: FirebaseAuthedR
     const followingIds = follows.map((f) => f.followingId);
     const followingSet = new Set(followingIds.map(String));
 
+    await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
     const out = posts.map((p) =>
       normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser._id)),
     );
@@ -1585,6 +1631,7 @@ postsRouter.get(
       const order = new Map(ids.map((id, i) => [String(id), i]));
       postsRaw.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
 
+      await attachOriginalSoundUrls(postsRaw as unknown as Record<string, unknown>[]);
       const result = postsRaw.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(user._id)),
       );
@@ -1637,6 +1684,7 @@ postsRouter.get(
           }).select("targetId").lean()
         : [];
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
+      await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
       const result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
@@ -1694,6 +1742,7 @@ postsRouter.get(
 
       const followingSet = new Set(followingIds.map(String));
       const likedSet = new Set(likes.map((l) => String(l.targetId)));
+      await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
       let result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
@@ -1705,13 +1754,13 @@ postsRouter.get(
           ["explore", "feed"],
           2,
         );
-        result = splicePromotedIntoFeed(
+        result = (await splicePromotedIntoFeed(
           result,
           promotedRaw,
           likedSet,
           followingSet,
           String(dbUser._id),
-        ) as typeof result;
+        )) as typeof result;
       }
 
 
@@ -1772,6 +1821,7 @@ postsRouter.get(
         : [];
       const likedSet = new Set(likeRows.map((l) => String(l.targetId)));
 
+      await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
       let result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
@@ -1784,6 +1834,7 @@ postsRouter.get(
           1,
           "reel",
         );
+        await attachOriginalSoundUrls(promotedRaw as Record<string, unknown>[]);
         if (promotedRaw.length) {
           const rawPr = promotedRaw[0] as Record<string, unknown>;
           const prId = String(rawPr._id);
@@ -2427,6 +2478,7 @@ postsRouter.get(
         const order = new Map(ids.map((id, i) => [String(id), i]));
         postsRaw.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
         const viewerId = dbUser != null ? String(dbUser._id) : String(targetUser._id);
+        await attachOriginalSoundUrls(postsRaw as unknown as Record<string, unknown>[]);
         const result = postsRaw.map((p) =>
           normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, viewerId),
         );
@@ -2485,6 +2537,7 @@ postsRouter.get(
         likes.forEach((l) => likedSet.add(String(l.targetId)));
       }
 
+      await attachOriginalSoundUrls(posts as unknown as Record<string, unknown>[]);
       const result = posts.map((p) =>
         normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
       );
@@ -2521,6 +2574,7 @@ postsRouter.get(
         .limit(PAGE_SIZE)
         .populate("authorId", AUTHOR_SELECT)
         .lean();
+      await attachOriginalSoundUrls(rows as unknown as Record<string, unknown>[]);
       const out = rows.map((p) =>
         normalizePost(
           p as unknown as Record<string, unknown>,
@@ -2605,6 +2659,13 @@ postsRouter.get(
         .lean();
       if (!post || !post.isActive || post.isDeleted) return res.status(404).json({ message: "Post not found" });
 
+      const postRow = post as unknown as Record<string, unknown>;
+      await attachOriginalSoundUrls([postRow]);
+      const extraSound =
+        typeof postRow.originalSoundUrl === "string" && postRow.originalSoundUrl.trim()
+          ? {originalSoundUrl: postRow.originalSoundUrl as string}
+          : {};
+
       let isLiked = false;
       let isSaved = false;
       if (dbUser) {
@@ -2673,6 +2734,7 @@ postsRouter.get(
           authorId: undefined,
           taggedPreview,
           productPreview,
+          ...extraSound,
         },
       });
     } catch (err) {
@@ -3165,10 +3227,12 @@ postsRouter.patch(
 
       const populated = await Post.findById(post._id).populate("authorId", AUTHOR_SELECT).lean();
       if (!populated) return res.status(404).json({ message: "Post not found" });
+      const populatedRow = populated as unknown as Record<string, unknown>;
+      await attachOriginalSoundUrls([populatedRow]);
       const likedSet = new Set<string>();
       const followingSet = new Set<string>([String(user._id)]);
       const norm = normalizePost(
-        populated as Record<string, unknown>,
+        populatedRow,
         likedSet,
         followingSet,
         String(user._id),

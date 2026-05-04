@@ -2,11 +2,12 @@ import React, {useRef} from 'react';
 import {StyleSheet, View, type StyleProp, type ViewStyle} from 'react-native';
 import {EditMetaLayers} from './EditMetaLayers';
 import {NetworkVideo, type NetworkVideoHandle, type NetworkVideoProps} from './NetworkVideo';
-import type {Post} from '../../api/postsApi';
+import {OriginalSoundAudioLayer} from './OriginalSoundAudioLayer';
+import {resolveAttachedOriginalSoundUri, type Post} from '../../api/postsApi';
 import {getMetaForAssetIndex, parseClientEditMeta} from '../../create/editMetaTypes';
 
 type Props = Omit<NetworkVideoProps, 'style'> & {
-  post: Pick<Post, 'clientEditMeta'>;
+  post: Pick<Post, 'clientEditMeta' | 'originalSoundUrl' | 'audioRemuxStatus'>;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -20,10 +21,12 @@ export function PostVideoWithClientMeta({
   onProgress: onProgressProp,
   rate: rateProp,
   repeat: repeatProp,
+  muted,
   ...rest
 }: Props) {
   const videoRef = useRef<NetworkVideoHandle>(null);
   const durRef = useRef(0);
+  const attachedSoundUri = resolveAttachedOriginalSoundUri(post);
   const meta = parseClientEditMeta(post.clientEditMeta ?? null);
   const m0 = meta ? getMetaForAssetIndex(meta, 0) : null;
   const trimStart = m0?.trimStart ?? 0;
@@ -32,6 +35,7 @@ export function PostVideoWithClientMeta({
   const rate = rateProp ?? metaRate;
   const trimActive = trimEnd < 0.998;
   const repeat = trimActive ? false : (repeatProp ?? false);
+  const videoMuted = attachedSoundUri ? true : Boolean(muted);
 
   const onLoad: NetworkVideoProps['onLoad'] = d => {
     durRef.current = typeof d.duration === 'number' && Number.isFinite(d.duration) && d.duration > 0 ? d.duration : 0;
@@ -57,12 +61,21 @@ export function PostVideoWithClientMeta({
       <NetworkVideo
         ref={videoRef}
         {...rest}
+        muted={videoMuted}
         style={StyleSheet.absoluteFill}
         rate={rate}
         repeat={repeat}
         onLoad={onLoad}
         onProgress={onProgress}
       />
+      {attachedSoundUri ? (
+        <OriginalSoundAudioLayer
+          uri={attachedSoundUri}
+          muted={Boolean(muted)}
+          paused={Boolean(rest.paused)}
+          repeat={repeat}
+        />
+      ) : null}
       <EditMetaLayers clientEditMeta={post.clientEditMeta} />
     </View>
   );

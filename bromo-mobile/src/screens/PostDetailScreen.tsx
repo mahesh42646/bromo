@@ -29,6 +29,7 @@ import {
   recordShare,
   reportPost,
   resolveVideoUrl,
+  resolveAttachedOriginalSoundUri,
   toggleLike,
   toggleSavePost,
   type CarouselItem,
@@ -36,6 +37,7 @@ import {
   votePostPoll,
 } from '../api/postsApi';
 import {EditMetaLayers} from '../components/media/EditMetaLayers';
+import {OriginalSoundAudioLayer} from '../components/media/OriginalSoundAudioLayer';
 import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
@@ -193,6 +195,7 @@ export function PostDetailScreen() {
   const activeCarouselItem = carouselItems[Math.min(carouselIndex, Math.max(0, carouselItems.length - 1))];
   const mediaAspect = clampAspectRatio(activeCarouselItem?.aspectRatio, post.type === 'reel' ? 9 / 16 : 1);
   const mediaWidth = Math.max(1, windowWidth);
+  const attachedDetailSound = resolveAttachedOriginalSoundUri(post);
 
   return (
     <Screen
@@ -317,6 +320,26 @@ export function PostDetailScreen() {
               </View>
             ) : null}
             <EditMetaLayers clientEditMeta={post.clientEditMeta} />
+            {attachedDetailSound ? (
+              <>
+                <OriginalSoundAudioLayer uri={attachedDetailSound} muted={videoMuted} paused={false} repeat />
+                <Pressable
+                  onPress={() => setVideoMuted(v => !v)}
+                  style={{
+                    position: 'absolute',
+                    bottom: 10,
+                    right: 10,
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                  }}>
+                  {videoMuted ? <VolumeX size={17} color="#fff" /> : <Volume2 size={17} color="#fff" />}
+                </Pressable>
+              </>
+            ) : null}
           </View>
         ) : post.mediaType === 'video' ? (
           <View style={{width: '100%', aspectRatio: mediaAspect, position: 'relative', backgroundColor: '#000'}}>
@@ -356,6 +379,26 @@ export function PostDetailScreen() {
               resizeMode="contain"
             />
             <EditMetaLayers clientEditMeta={post.clientEditMeta} />
+            {attachedDetailSound ? (
+              <>
+                <OriginalSoundAudioLayer uri={attachedDetailSound} muted={videoMuted} paused={false} repeat />
+                <Pressable
+                  onPress={() => setVideoMuted(v => !v)}
+                  style={{
+                    position: 'absolute',
+                    bottom: 10,
+                    right: 10,
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                  }}>
+                  {videoMuted ? <VolumeX size={17} color="#fff" /> : <Volume2 size={17} color="#fff" />}
+                </Pressable>
+              </>
+            ) : null}
           </View>
         )}
 
