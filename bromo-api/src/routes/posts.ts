@@ -3174,12 +3174,14 @@ postsRouter.post(
         .lean();
 
       const result = { ...populated, author: populated?.authorId, authorId: undefined };
+      const resultPayload = { ...result } as Record<string, unknown>;
+      await attachOriginalSoundUrls([resultPayload]);
 
-      // Real-time: broadcast new post/reel/story
+      // Real-time: broadcast new post/reel/story (include resolved originalSoundUrl when applicable)
       if (type === "story") {
         emitStoryNew(String(user._id));
       } else {
-        emitPostNew(result as object);
+        emitPostNew(resultPayload as object);
       }
 
       if (safeTaggedUserIds.length) {
@@ -3251,7 +3253,7 @@ postsRouter.post(
         );
       }
 
-      return res.status(201).json({ post: result });
+      return res.status(201).json({ post: resultPayload });
     } catch (err) {
       console.error("[posts] create error:", err);
       return res.status(500).json({ message: "Failed to create post" });

@@ -1,4 +1,4 @@
-import "../config/ffmpegInit.js";
+import { bundledFfmpegPath } from "../config/ffmpegInit.js";
 import ffmpeg from "fluent-ffmpeg";
 import path from "node:path";
 import fs from "node:fs";
@@ -204,7 +204,7 @@ export function remuxVideoWithLicensedAudio(args: {
   const v0 = String(args.videoStartSec);
   const a0 = String(args.audioStartSec);
   const r = spawnSync(
-    "ffmpeg",
+    bundledFfmpegPath || "ffmpeg",
     [
       "-y",
       "-ss",

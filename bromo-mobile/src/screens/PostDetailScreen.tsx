@@ -41,6 +41,7 @@ import {OriginalSoundAudioLayer} from '../components/media/OriginalSoundAudioLay
 import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMeta';
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
+import {getAudioPlaybackFromMeta} from '../create/editMetaTypes';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'PostDetail'>;
@@ -196,6 +197,7 @@ export function PostDetailScreen() {
   const mediaAspect = clampAspectRatio(activeCarouselItem?.aspectRatio, post.type === 'reel' ? 9 / 16 : 1);
   const mediaWidth = Math.max(1, windowWidth);
   const attachedDetailSound = resolveAttachedOriginalSoundUri(post);
+  const detailAudioPb = getAudioPlaybackFromMeta(post.clientEditMeta);
 
   return (
     <Screen
@@ -322,7 +324,13 @@ export function PostDetailScreen() {
             <EditMetaLayers clientEditMeta={post.clientEditMeta} />
             {attachedDetailSound ? (
               <>
-                <OriginalSoundAudioLayer uri={attachedDetailSound} muted={videoMuted} paused={false} repeat />
+                <OriginalSoundAudioLayer
+                  uri={attachedDetailSound}
+                  muted={videoMuted}
+                  paused={false}
+                  repeat
+                  startOffsetMs={detailAudioPb?.startOffsetMs ?? 0}
+                />
                 <Pressable
                   onPress={() => setVideoMuted(v => !v)}
                   style={{
@@ -381,7 +389,13 @@ export function PostDetailScreen() {
             <EditMetaLayers clientEditMeta={post.clientEditMeta} />
             {attachedDetailSound ? (
               <>
-                <OriginalSoundAudioLayer uri={attachedDetailSound} muted={videoMuted} paused={false} repeat />
+                <OriginalSoundAudioLayer
+                  uri={attachedDetailSound}
+                  muted={videoMuted}
+                  paused={false}
+                  repeat
+                  startOffsetMs={detailAudioPb?.startOffsetMs ?? 0}
+                />
                 <Pressable
                   onPress={() => setVideoMuted(v => !v)}
                   style={{

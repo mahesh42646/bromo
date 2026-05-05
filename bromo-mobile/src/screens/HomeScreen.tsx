@@ -92,6 +92,7 @@ import {
   type StoryGroup,
 } from '../api/postsApi';
 import { getActiveLiveStreams, type ActiveLiveStream } from '../api/liveApi';
+import { getAudioPlaybackFromMeta } from '../create/editMetaTypes';
 import { mergePostsWithSessionCache, prefetchPostThumbnails } from '../lib/postEntityCache';
 import { getAuthorMerge, rememberAuthor } from '../lib/authorSessionCache';
 import { logPromotionDelivery } from '../api/promotionsApi';
@@ -384,6 +385,7 @@ const PostCard = React.memo(function PostCard({
   const mediaAspect = postDisplayAspectRatio(post);
   const carouselItems = post.carouselItems?.length ? post.carouselItems : [];
   const attachedSoundUri = resolveAttachedOriginalSoundUri(post);
+  const audioPb = getAudioPlaybackFromMeta(post.clientEditMeta);
 
   const openReelsAtThisPost = () => {
     parentNavigate(navigation, 'Reels', { initialPostId: post._id });
@@ -773,7 +775,28 @@ const PostCard = React.memo(function PostCard({
                   muted={homeFeedMuted}
                   paused={!isFeedItemVisible}
                   repeat
+                  startOffsetMs={audioPb?.startOffsetMs ?? 0}
                 />
+              ) : null}
+              {attachedSoundUri ? (
+                <Pressable
+                  onPress={e => {
+                    e.stopPropagation();
+                    toggleHomeFeedMuted();
+                  }}
+                  style={{
+                    position: 'absolute',
+                    bottom: 10,
+                    right: 10,
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                  {homeFeedMuted ? <VolumeX size={14} color="#fff" /> : <Volume2 size={14} color="#fff" />}
+                </Pressable>
               ) : null}
             </View>
           )}
@@ -887,7 +910,25 @@ const PostCard = React.memo(function PostCard({
                   muted={homeFeedMuted}
                   paused={!isFeedItemVisible}
                   repeat
+                  startOffsetMs={audioPb?.startOffsetMs ?? 0}
                 />
+              ) : null}
+              {attachedSoundUri ? (
+                <Pressable
+                  onPress={() => toggleHomeFeedMuted()}
+                  style={{
+                    position: 'absolute',
+                    bottom: 10,
+                    right: 10,
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                  {homeFeedMuted ? <VolumeX size={14} color="#fff" /> : <Volume2 size={14} color="#fff" />}
+                </Pressable>
               ) : null}
             </View>
           )}

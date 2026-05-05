@@ -68,6 +68,7 @@ import { EditorTimeline } from './EditorTimeline';
 import { useAudioPickerTracks } from '../../create/useAudioPickerTracks';
 import { useAudioPreview } from '../../create/useAudioPreview';
 import { AudioPreviewHost } from '../../components/media/AudioPreviewHost';
+import { OriginalSoundAudioLayer } from '../../components/media/OriginalSoundAudioLayer';
 import { fetchStickerCatalog } from '../../api/contentApi';
 import { resolveMediaUrl } from '../../lib/resolveMediaUrl';
 
@@ -588,6 +589,9 @@ export function MediaEditorScreen() {
   const pickAudio = useCallback(
     (track: AudioTrack | null) => {
       setSelectedAudio(track);
+      if (track?.url) {
+        setPreviewMuted(false);
+      }
       if (!track) {
         setAudioTiming({
           audioStartOffsetMs: 0,
@@ -629,6 +633,7 @@ export function MediaEditorScreen() {
       draft.trimStartByAsset,
       setAudioTiming,
       setSelectedAudio,
+      setPreviewMuted,
     ],
   );
 
@@ -777,7 +782,13 @@ export function MediaEditorScreen() {
             trimEnd={extras.te}
             playbackSpeed={draft.playbackSpeed}
             paused={isActive ? previewPaused : true}
-            muted={isActive ? previewMuted : true}
+            muted={
+              draft.selectedAudio
+                ? true
+                : isActive
+                  ? previewMuted
+                  : true
+            }
             resizeMode={previewResize}
             onDuration={isActive ? setVideoDurationSec : undefined}
             onTimeUpdate={isActive ? setPreviewTimeSec : undefined}
@@ -839,8 +850,18 @@ export function MediaEditorScreen() {
             <Text style={styles.stagedStickerText}>{sticker.label}</Text>
           </View>
         ))}
+        {draft.selectedAudio?.url && isActive ? (
+          <OriginalSoundAudioLayer
+            uri={draft.selectedAudio.url}
+            muted={previewMuted}
+            paused={previewPaused}
+            repeat={draft.loopVideoToAudio !== false}
+            startOffsetMs={draft.audioStartOffsetMs ?? 0}
+          />
+        ) : null}
       </View>
-      {item.type === 'video' && isActive ? (
+      {((item.type === 'video' && isActive) ||
+        (isActive && Boolean(draft.selectedAudio?.url))) ? (
         <Pressable
           onPress={() => setPreviewMuted(v => !v)}
           style={styles.muteButton}
@@ -860,6 +881,9 @@ export function MediaEditorScreen() {
     draft.playbackSpeed,
     draft.textOverlays,
     draft.stickers,
+    draft.selectedAudio,
+    draft.audioStartOffsetMs,
+    draft.loopVideoToAudio,
     previewPaused,
     previewMuted,
     previewResize,
@@ -1014,7 +1038,7 @@ export function MediaEditorScreen() {
         )}
       </View>
 
-      {cur.type === 'video' ? (
+      {(cur.type === 'video' || Boolean(draft.selectedAudio?.url)) ? (
         <View
           style={[
             styles.playbackBar,
