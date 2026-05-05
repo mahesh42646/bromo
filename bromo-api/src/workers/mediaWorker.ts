@@ -24,7 +24,11 @@ import { rewritePublicMediaUrl } from "../utils/publicMediaUrl.js";
 import { postForSocketBroadcast } from "../utils/postSocketPayload.js";
 import { publicUrlForUploadRelative } from "../utils/uploadFiles.js";
 import { uploadsRoot } from "../utils/uploadFiles.js";
-import { mirrorUploadRelative, mirrorUploadTreeRelative } from "../services/s3Mirror.js";
+import {
+  isS3MirrorConfigured,
+  mirrorUploadRelative,
+  mirrorUploadTreeRelative,
+} from "../services/s3Mirror.js";
 import { enqueueLicensedAudioRemuxForPost } from "../services/audioRemuxEnqueue.js";
 
 const UPLOAD_DIR = uploadsRoot();
@@ -150,12 +154,27 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
   const mezzanineUrl = publicUrlForUploadRelative(mezzanineRel);
 
   let mezzanineThumbnailUrl = "";
+  let thumbRel: string | undefined;
   try {
-    const thumbRel = await generateVideoThumbnail(mezzanineRel);
+    thumbRel = await generateVideoThumbnail(mezzanineRel);
     mezzanineThumbnailUrl = publicUrlForUploadRelative(thumbRel);
-    void mirrorUploadRelative(thumbRel).catch((e) => console.warn("[s3Mirror] mezzanine thumb:", e));
   } catch (e) {
     console.warn("[mediaWorker] mezzanine thumbnail failed:", e);
+  }
+
+  const hlsTreeDir = path.posix.dirname(result.masterRelPath);
+  if (isS3MirrorConfigured()) {
+    try {
+      await mirrorUploadTreeRelative(hlsTreeDir);
+      await mirrorUploadRelative(mezzanineRel);
+      if (thumbRel) await mirrorUploadRelative(thumbRel);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      console.error("[mediaWorker] S3/CloudFront mirror failed (object not at CDN yet):", detail);
+      throw new Error(
+        "Video is ready on the server but could not be copied to CDN. Check S3 permissions and try again.",
+      );
+    }
   }
 
   await MediaJob.updateOne(
@@ -215,16 +234,28 @@ async function processVideoJob(job: MediaJobDoc, jobId: string): Promise<void> {
   await notifyUser(job.userId.toString(), job.postDraftId?.toString(), "ready");
   console.info(`[mediaWorker] job ${jobId} done → HLS ${masterUrl}, MP4 ${mezzanineUrl}`);
 
-  const hlsTree = path.posix.dirname(result.masterRelPath);
-  void mirrorUploadTreeRelative(hlsTree)
-    .then(() => mirrorUploadRelative(mezzanineRel))
-    .catch((e) => console.warn("[s3Mirror] video mirror:", e));
+  if (!isS3MirrorConfigured()) {
+    void mirrorUploadTreeRelative(hlsTreeDir)
+      .then(() => mirrorUploadRelative(mezzanineRel))
+      .then(() => (thumbRel ? mirrorUploadRelative(thumbRel) : Promise.resolve()))
+      .catch((e) => console.warn("[s3Mirror] video mirror (optional):", e));
+  }
 }
 
 async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
   await MediaJob.updateOne({ _id: job._id }, { progress: 20 });
   const newRel = await normalizeImage(job.rawRelPath);
   const imageUrl = publicUrlForUploadRelative(newRel);
+
+  if (isS3MirrorConfigured()) {
+    try {
+      await mirrorUploadRelative(newRel);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      console.error("[mediaWorker] image S3 mirror failed:", detail);
+      throw new Error("Image could not be copied to CDN. Check S3 permissions and try again.");
+    }
+  }
 
   await MediaJob.updateOne(
     { _id: job._id },
@@ -266,7 +297,9 @@ async function processImageJob(job: MediaJobDoc, jobId: string): Promise<void> {
   await notifyUser(job.userId.toString(), job.postDraftId?.toString(), "ready");
   console.info(`[mediaWorker] image job ${jobId} done → ${imageUrl}`);
 
-  void mirrorUploadRelative(newRel).catch((e) => console.warn("[s3Mirror] image mirror:", e));
+  if (!isS3MirrorConfigured()) {
+    void mirrorUploadRelative(newRel).catch((e) => console.warn("[s3Mirror] image mirror (optional):", e));
+  }
 }
 
 async function notifyUser(

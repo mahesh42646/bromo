@@ -686,12 +686,6 @@ export type OriginalAudioDetail = OriginalAudio & {
   totalViews: number;
 };
 
-export async function searchOriginalAudios(q: string): Promise<{audios: OriginalAudio[]}> {
-  const res = await authedFetch(`/posts/audio/search?q=${encodeURIComponent(q)}`);
-  if (!res.ok) throw new Error('Failed to search audio');
-  return res.json() as Promise<{audios: OriginalAudio[]}>;
-}
-
 export async function getOriginalAudioDetail(audioId: string): Promise<{audio: OriginalAudioDetail}> {
   const res = await authedFetch(`/posts/audio/${encodeURIComponent(audioId)}`);
   if (!res.ok) throw new Error('Failed to load audio');
