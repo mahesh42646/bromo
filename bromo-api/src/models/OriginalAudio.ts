@@ -6,6 +6,10 @@ export interface OriginalAudioDoc extends Document {
   title: string;
   audioUrl: string;
   durationMs?: number;
+  /** Poster image from source reel/post for picker/detail UI */
+  coverUrl?: string;
+  /** Aggregate views across all posts using this sound */
+  totalViews: number;
   useCount: number;
   isActive: boolean;
   createdAt: Date;
@@ -19,6 +23,8 @@ const originalAudioSchema = new Schema<OriginalAudioDoc>(
     title: { type: String, required: true, trim: true, index: true },
     audioUrl: { type: String, required: true },
     durationMs: { type: Number },
+    coverUrl: { type: String },
+    totalViews: { type: Number, default: 0 },
     useCount: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true, index: true },
   },
@@ -27,5 +33,6 @@ const originalAudioSchema = new Schema<OriginalAudioDoc>(
 
 originalAudioSchema.index({ title: "text" });
 originalAudioSchema.index({ useCount: -1, createdAt: -1 });
+originalAudioSchema.index({ totalViews: -1, createdAt: -1 });
 
 export const OriginalAudio = mongoose.model<OriginalAudioDoc>("OriginalAudio", originalAudioSchema);

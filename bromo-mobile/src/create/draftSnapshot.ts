@@ -84,6 +84,11 @@ type EditMetaSnap = {
   trimStartByAsset: Record<number, number>;
   trimEndByAsset: Record<number, number>;
   playbackSpeed: number;
+  audio?: {
+    startOffsetMs: number;
+    clipDurationMs?: number;
+    loopVideoToAudio?: boolean;
+  };
   poll?: PollState;
   textOverlays: Array<{
     id: string;
@@ -179,6 +184,20 @@ function buildEditMetaSnap(
  * Compact edit intent for API `Post.clientEditMeta` (v2).
  * Omits fields already sent on the multipart post (music, products, location) to keep request size small.
  */
+function attachAudioBlock(d: CreateDraftState, snap: EditMetaSnap): EditMetaSnap {
+  if (!d.selectedAudio?.originalAudioId && !d.selectedAudio?.musicTrackId) return snap;
+  return {
+    ...snap,
+    audio: {
+      startOffsetMs: Math.max(0, d.audioStartOffsetMs ?? 0),
+      ...(typeof d.clipDurationMs === 'number' && d.clipDurationMs > 0
+        ? {clipDurationMs: d.clipDurationMs}
+        : {}),
+      ...(d.loopVideoToAudio === true ? {loopVideoToAudio: true as const} : {}),
+    },
+  };
+}
+
 export function packEditMetaForUpload(d: CreateDraftState): string {
   const W = Dimensions.get('window').width;
   const H = W / editorPreviewAspectFromDraft(d);
@@ -188,14 +207,14 @@ export function packEditMetaForUpload(d: CreateDraftState): string {
     Math.max(0, d.assets.length - 1),
   );
 
-  let snap = buildEditMetaSnap(d, W, H, assetCount, activeIndex, true, true);
+  let snap = attachAudioBlock(d, buildEditMetaSnap(d, W, H, assetCount, activeIndex, true, true));
   let json = JSON.stringify(snap);
   if (json.length > MAX_CLIENT_EDIT_META_BYTES) {
-    snap = buildEditMetaSnap(d, W, H, assetCount, activeIndex, true, false);
+    snap = attachAudioBlock(d, buildEditMetaSnap(d, W, H, assetCount, activeIndex, true, false));
     json = JSON.stringify(snap);
   }
   if (json.length > MAX_CLIENT_EDIT_META_BYTES) {
-    snap = buildEditMetaSnap(d, W, H, assetCount, activeIndex, false, false);
+    snap = attachAudioBlock(d, buildEditMetaSnap(d, W, H, assetCount, activeIndex, false, false));
     json = JSON.stringify(snap);
   }
   return json;

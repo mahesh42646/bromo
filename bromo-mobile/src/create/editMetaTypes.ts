@@ -22,6 +22,12 @@ export type ClientEditMetaV2 = {
   stickers?: StickerPacked[];
   layoutRef?: {w: number; h: number};
   selectedAudio?: {id: string; title: string; artist: string} | null;
+  /** Serialized in v2 `draftSnapshot` as top-level `audio` on the JSON object. */
+  audio?: {
+    startOffsetMs?: number;
+    clipDurationMs?: number;
+    loopVideoToAudio?: boolean;
+  };
   productIds?: string[];
   location?: {name?: string; lat?: number; lng?: number};
 };
@@ -68,6 +74,37 @@ export function parseClientEditMeta(raw: unknown): ClientEditMetaV2 | null {
   if (!isRecord(o.filterByAsset)) return null;
   const adjustByAsset = isRecord(o.adjustByAsset) ? o.adjustByAsset : {};
   return {...(o as object), adjustByAsset} as unknown as ClientEditMetaV2;
+}
+
+/** Read packed `audio` from API clientEditMeta (v2 JSON includes `audio` alongside filterByAsset). */
+export function getAudioPlaybackFromMeta(raw: unknown): {
+  startOffsetMs: number;
+  clipDurationMs?: number;
+  loopVideoToAudio: boolean;
+} | null {
+  if (raw == null) return null;
+  let o: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      o = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(o)) return null;
+  const a = o.audio;
+  if (!isRecord(a)) return null;
+  const start =
+    typeof a.startOffsetMs === 'number' && Number.isFinite(a.startOffsetMs)
+      ? Math.max(0, a.startOffsetMs)
+      : 0;
+  const clip =
+    typeof a.clipDurationMs === 'number' && a.clipDurationMs > 0 ? a.clipDurationMs : undefined;
+  return {
+    startOffsetMs: start,
+    clipDurationMs: clip,
+    loopVideoToAudio: a.loopVideoToAudio === true,
+  };
 }
 
 export function getMetaForAssetIndex(meta: ClientEditMetaV2, assetIndex: number) {

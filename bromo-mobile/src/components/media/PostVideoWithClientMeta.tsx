@@ -4,7 +4,11 @@ import {EditMetaLayers} from './EditMetaLayers';
 import {NetworkVideo, type NetworkVideoHandle, type NetworkVideoProps} from './NetworkVideo';
 import {OriginalSoundAudioLayer} from './OriginalSoundAudioLayer';
 import {resolveAttachedOriginalSoundUri, type Post} from '../../api/postsApi';
-import {getMetaForAssetIndex, parseClientEditMeta} from '../../create/editMetaTypes';
+import {
+  getAudioPlaybackFromMeta,
+  getMetaForAssetIndex,
+  parseClientEditMeta,
+} from '../../create/editMetaTypes';
 
 type Props = Omit<NetworkVideoProps, 'style'> & {
   post: Pick<Post, 'clientEditMeta' | 'originalSoundUrl' | 'audioRemuxStatus'>;
@@ -27,6 +31,7 @@ export function PostVideoWithClientMeta({
   const videoRef = useRef<NetworkVideoHandle>(null);
   const durRef = useRef(0);
   const attachedSoundUri = resolveAttachedOriginalSoundUri(post);
+  const audioPb = getAudioPlaybackFromMeta(post.clientEditMeta ?? null);
   const meta = parseClientEditMeta(post.clientEditMeta ?? null);
   const m0 = meta ? getMetaForAssetIndex(meta, 0) : null;
   const trimStart = m0?.trimStart ?? 0;
@@ -34,7 +39,10 @@ export function PostVideoWithClientMeta({
   const metaRate = m0?.playbackSpeed ?? 1;
   const rate = rateProp ?? metaRate;
   const trimActive = trimEnd < 0.998;
-  const repeat = trimActive ? false : (repeatProp ?? false);
+  let repeat = trimActive ? false : (repeatProp ?? false);
+  if (attachedSoundUri && audioPb?.loopVideoToAudio) {
+    repeat = true;
+  }
   const videoMuted = attachedSoundUri ? true : Boolean(muted);
 
   const onLoad: NetworkVideoProps['onLoad'] = d => {
@@ -74,6 +82,7 @@ export function PostVideoWithClientMeta({
           muted={Boolean(muted)}
           paused={Boolean(rest.paused)}
           repeat={repeat}
+          startOffsetMs={audioPb?.startOffsetMs ?? 0}
         />
       ) : null}
       <EditMetaLayers clientEditMeta={post.clientEditMeta} />

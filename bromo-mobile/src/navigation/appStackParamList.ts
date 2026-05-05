@@ -115,7 +115,8 @@ export type AppStackParamList = {
   CallHistory: undefined;
 
   MusicLibrary: undefined;
-  AudioDetail: {trackId: string};
+  /** Original audio detail — pass `audioId`; `trackId` is legacy alias only. */
+  AudioDetail: {audioId?: string; trackId?: string};
 
   AutoDm: undefined;
 

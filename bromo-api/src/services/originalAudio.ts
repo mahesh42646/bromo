@@ -2,7 +2,7 @@ import type { Types } from "mongoose";
 import { OriginalAudio } from "../models/OriginalAudio.js";
 import { Post } from "../models/Post.js";
 import { User } from "../models/User.js";
-import { extractOriginalAudioTrack } from "./mediaProcessor.js";
+import { extractOriginalAudioTrack, getVideoDuration } from "./mediaProcessor.js";
 import { publicUrlForUploadRelative } from "../utils/uploadFiles.js";
 import { mirrorUploadRelative } from "./s3Mirror.js";
 
@@ -12,9 +12,10 @@ export async function ensureOriginalAudioForPost(input: {
   sourceRelPath: string;
 }): Promise<void> {
   try {
-    const [existing, owner] = await Promise.all([
+    const [existing, owner, sourcePost] = await Promise.all([
       OriginalAudio.findOne({ sourcePostId: input.postId }).select("_id").lean(),
       User.findById(input.ownerId).select("username displayName").lean(),
+      Post.findById(input.postId).select("caption thumbnailUrl mediaUrl").lean(),
     ]);
     if (existing) return;
 
@@ -22,7 +23,35 @@ export async function ensureOriginalAudioForPost(input: {
       typeof owner?.username === "string" && owner.username.trim()
         ? owner.username.trim()
         : owner?.displayName?.trim() || "Creator";
-    const title = `${username} - Original Audio`;
+    const captionRaw =
+      sourcePost && typeof (sourcePost as { caption?: unknown }).caption === "string"
+        ? (sourcePost as { caption: string }).caption.trim()
+        : "";
+    const snippet = captionRaw.split(/\s+/).slice(0, 6).join(" ").trim();
+    const title = snippet
+      ? `${username} — ${snippet}`
+      : `${username} — Original audio`;
+
+    let durationMs: number | undefined;
+    try {
+      const sec = await getVideoDuration(input.sourceRelPath);
+      if (sec > 0 && Number.isFinite(sec)) durationMs = Math.round(sec * 1000);
+    } catch {
+      durationMs = undefined;
+    }
+
+    let coverUrl: string | undefined;
+    if (sourcePost) {
+      const sp = sourcePost as { thumbnailUrl?: string; mediaUrl?: string };
+      const raw =
+        typeof sp.thumbnailUrl === "string" && sp.thumbnailUrl.trim()
+          ? sp.thumbnailUrl.trim()
+          : typeof sp.mediaUrl === "string"
+            ? sp.mediaUrl.trim()
+            : "";
+      coverUrl = raw || undefined;
+    }
+
     const audioRel = await extractOriginalAudioTrack(input.sourceRelPath, String(input.ownerId));
     const audioUrl = publicUrlForUploadRelative(audioRel);
 
@@ -31,6 +60,8 @@ export async function ensureOriginalAudioForPost(input: {
       sourcePostId: input.postId,
       title,
       audioUrl,
+      ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(coverUrl ? { coverUrl } : {}),
       isActive: true,
     });
 

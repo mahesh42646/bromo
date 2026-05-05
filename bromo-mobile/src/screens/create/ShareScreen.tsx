@@ -124,6 +124,16 @@ function effectiveTrimmedDurationMs(
   draft: CreateDraftState,
   asset: MediaAsset,
 ): number | undefined {
+  if (typeof draft.clipDurationMs === 'number' && draft.clipDurationMs > 0) {
+    return Math.round(draft.clipDurationMs);
+  }
+  if (
+    asset.type === 'image' &&
+    draft.selectedAudio?.durationMs &&
+    draft.selectedAudio.durationMs > 0
+  ) {
+    return Math.round(draft.selectedAudio.durationMs);
+  }
   if (
     asset.type !== 'video' ||
     typeof asset.duration !== 'number' ||
@@ -1209,6 +1219,7 @@ export function ShareScreen() {
               }
             : undefined;
         const durationMs = effectiveTrimmedDurationMs(draft, asset);
+        const carouselDur = effectiveTrimmedDurationMs(draft, asset);
         const clientEditMeta = packEditMetaForUpload(draft);
         const originalAudioId = draft.selectedAudio?.originalAudioId;
         const remixOfPostId = draft.selectedAudio?.sourcePostId;
@@ -1260,6 +1271,8 @@ export function ShareScreen() {
             locationMeta: locationMeta ?? undefined,
             music: draft.selectedAudio?.title,
             ...(musicTrackId ? {musicTrackId} : {}),
+            ...(originalAudioId ? {originalAudioId} : {}),
+            ...(remixOfPostId ? {remixOfPostId} : {}),
             tags: draft.tagged.map(t => t.username),
             taggedUserIds,
             collaboratorIds,
@@ -1269,6 +1282,9 @@ export function ShareScreen() {
             poll: pollPayload,
             ...(feedCategory ? {feedCategory} : {}),
             scheduledFor: scheduleIso ?? undefined,
+            ...(typeof carouselDur === 'number'
+              ? {durationMs: carouselDur}
+              : {}),
           });
         } else if (useAsync) {
           await uploadMediaAsync(

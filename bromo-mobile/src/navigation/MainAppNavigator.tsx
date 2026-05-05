@@ -71,8 +71,8 @@ import {StoreProductDetailScreen} from '../screens/store/StoreProductDetailScree
 import {AllStoresScreen} from '../screens/store/AllStoresScreen';
 import {AddProductScreen} from '../screens/store/AddProductScreen';
 import {CollabInboxScreen} from '../screens/CollabInboxScreen';
+import {AudioDetailScreen} from '../screens/AudioDetailScreen';
 import {
-  AudioDetailScreen,
   AutoDmScreen,
   CallHistoryScreen,
   ContentInsightsScreen,

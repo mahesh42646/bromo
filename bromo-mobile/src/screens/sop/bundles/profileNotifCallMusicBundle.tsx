@@ -33,6 +33,8 @@ export {FollowersFollowingScreen} from '../../FollowersFollowingScreen';
 // Re-exported here only so the existing bundle import still compiles.
 export {WalletScreen as PointsWalletScreen} from '../../WalletScreen';
 
+export {AudioDetailScreen} from '../../AudioDetailScreen';
+
 export function TransactionHistoryScreen() {
   const navigation = useNavigation<Nav>();
   // Redirect to the real wallet screen
@@ -997,22 +999,8 @@ export function MusicLibraryScreen() {
   return (
     <SopChrome title="Music library">
       <SopMeta label="Mood/category browse; admin-managed catalogue." />
-      <SopRow title="Trending" onPress={() => navigation.navigate('AudioDetail', {trackId: 'trend1'})} />
+      <SopRow title="Explore" onPress={() => navigation.navigate('ExploreHome')} />
       <SopRow title="Regional" />
-    </SopChrome>
-  );
-}
-
-export function AudioDetailScreen() {
-  const route = useRoute<RouteProp<AppStackParamList, 'AudioDetail'>>();
-  const navigation = useNavigation<Nav>();
-  return (
-    <SopChrome title="Track">
-      <SopMeta label={`${route.params.trackId} — reels using audio; credit original creator.`} />
-      <PrimaryButton
-        label="Use for reel"
-        onPress={() => navigation.navigate('ReuseAudio', {audioId: route.params.trackId})}
-      />
     </SopChrome>
   );
 }

@@ -42,7 +42,7 @@ import {FILTER_LABELS, FILTER_LAYER_STACKS} from '../../create/filterStyles';
 import {loadCameraSettings} from '../../lib/cameraSettingsStorage';
 import type {CreateStackParamList} from '../../navigation/CreateStackNavigator';
 import type {ThemePalette} from '../../theme/tokens';
-import {getPost} from '../../api/postsApi';
+import {getOriginalAudioDetail, getPost} from '../../api/postsApi';
 import {resolveMediaUrl} from '../../lib/resolveMediaUrl';
 import {useHubCameraCapture} from './useHubCameraCapture';
 
@@ -212,8 +212,27 @@ export function CreateHubScreen() {
       if (initialMode) {
         setMode(initialMode);
       }
+      const preselectId = route.params?.preselectedAudioId?.trim();
+      if (preselectId) {
+        getOriginalAudioDetail(preselectId)
+          .then(({audio}) => {
+            setSelectedAudio({
+              id: audio._id,
+              title: audio.title,
+              artist: `@${audio.owner?.username ?? 'user'}`,
+              url: audio.audioUrl,
+              coverUrl: audio.coverUrl,
+              durationMs: audio.durationMs,
+              useCount: audio.useCount,
+              totalViews: audio.totalViews,
+              originalAudioId: audio._id,
+              sourcePostId: typeof audio.sourcePostId === 'string' ? audio.sourcePostId : undefined,
+            });
+          })
+          .catch(() => null);
+      }
       const remixId = route.params?.remixSourcePostId;
-      if (remixId && initialMode === 'reel') {
+      if (!preselectId && remixId && initialMode === 'reel') {
         getPost(remixId)
           .then(({post}) => {
             const title = post.music?.trim() ? post.music.trim() : 'Original audio';
@@ -227,7 +246,7 @@ export function CreateHubScreen() {
             });
           })
           .catch(() => null);
-      } else if (remixId && initialMode === 'story') {
+      } else if (!preselectId && remixId && initialMode === 'story') {
         getPost(remixId)
           .then(({post}) => {
             const uri = resolveMediaUrl(post.mediaUrl) || post.mediaUrl;
@@ -263,6 +282,7 @@ export function CreateHubScreen() {
       route.params?.editPostId,
       route.params?.mode,
       route.params?.remixSourcePostId,
+      route.params?.preselectedAudioId,
       setMode,
       setSelectedAudio,
     ]),

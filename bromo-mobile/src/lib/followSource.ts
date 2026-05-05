@@ -7,7 +7,8 @@ export function followSourceForContext(
     | {surface: 'reels'; postId: string}
     | {surface: 'search'}
     | {surface: 'profile_suggestions'}
-    | {surface: 'comments'; postId: string},
+    | {surface: 'comments'; postId: string}
+    | {surface: 'audio_detail'; postId?: string},
 ): FollowAttribution {
   switch (ctx.surface) {
     case 'home_feed':
@@ -20,5 +21,7 @@ export function followSourceForContext(
       return {kind: 'discover'};
     case 'comments':
       return {kind: 'post', refId: ctx.postId};
+    case 'audio_detail':
+      return ctx.postId ? {kind: 'post', refId: ctx.postId} : {kind: 'search'};
   }
 }

@@ -1067,12 +1067,20 @@ const ReelItem = React.memo(function ReelItem({
           </View>
         ) : null}
         {item.music ? (
-          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2}}>
+          <Pressable
+            onPress={() => {
+              if (item.originalAudioId) {
+                parentNavigate(navigation, 'AudioDetail', {audioId: item.originalAudioId});
+              }
+            }}
+            disabled={!item.originalAudioId}
+            style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, opacity: item.originalAudioId ? 1 : 0.85}}
+            hitSlop={6}>
             <Music2 size={12} color="#fff" strokeWidth={2} />
             <Text style={{color: '#fff', fontSize: 11, fontWeight: '600'}} numberOfLines={1}>
               {item.music}
             </Text>
-          </View>
+          </Pressable>
         ) : null}
         {item.remixCredit?.username ? (
           <Text style={{color: 'rgba(255,255,255,0.82)', fontSize: 11, fontWeight: '700'}} numberOfLines={1}>

@@ -51,6 +51,7 @@ import {
   allowedCropsForMode,
   aspectRatioFromCrop,
   normalizeCropForMode,
+  type AudioTrack,
   type FilterId,
 } from '../../create/createTypes';
 import { DEFAULT_ADJUSTMENTS } from '../../create/createTypes';
@@ -65,7 +66,10 @@ import type { CreateStackParamList } from '../../navigation/CreateStackNavigator
 import type { ThemePalette } from '../../theme/tokens';
 import { EditorTimeline } from './EditorTimeline';
 import { useAudioPickerTracks } from '../../create/useAudioPickerTracks';
+import { useAudioPreview } from '../../create/useAudioPreview';
+import { AudioPreviewHost } from '../../components/media/AudioPreviewHost';
 import { fetchStickerCatalog } from '../../api/contentApi';
+import { resolveMediaUrl } from '../../lib/resolveMediaUrl';
 
 type Nav = NativeStackNavigationProp<CreateStackParamList, 'MediaEditor'>;
 
@@ -472,6 +476,7 @@ export function MediaEditorScreen() {
     setTrimForActive,
     setPlaybackSpeed,
     setSelectedAudio,
+    setAudioTiming,
     addTextOverlay,
     updateTextOverlay,
     removeTextOverlay,
@@ -574,6 +579,58 @@ export function MediaEditorScreen() {
     ADJUST_KEYS.find(item => item.key === activeAdjustKey) ?? ADJUST_KEYS[0];
 
   const closeTool = useCallback(() => setActiveTool(null), []);
+
+  const { previewUri, play, stop, isPlaying } = useAudioPreview();
+  useEffect(() => {
+    if (activeTool !== 'audio') stop();
+  }, [activeTool, stop]);
+
+  const pickAudio = useCallback(
+    (track: AudioTrack | null) => {
+      setSelectedAudio(track);
+      if (!track) {
+        setAudioTiming({
+          audioStartOffsetMs: 0,
+          clipDurationMs: undefined,
+          loopVideoToAudio: undefined,
+        });
+        return;
+      }
+      const a = draft.assets[draft.activeAssetIndex];
+      const ts = draft.trimStartByAsset[draft.activeAssetIndex] ?? 0;
+      const te = draft.trimEndByAsset[draft.activeAssetIndex] ?? 1;
+      const trimSpan = Math.max(0.001, Math.min(1, te) - Math.max(0, ts));
+      const videoMs =
+        a?.type === 'video' && typeof a.duration === 'number' && a.duration > 0
+          ? Math.round(a.duration * 1000 * trimSpan)
+          : 0;
+      const audioMs =
+        typeof track.durationMs === 'number' && track.durationMs > 0
+          ? track.durationMs
+          : videoMs > 0
+            ? videoMs
+            : 15_000;
+      const clipDurationMs = audioMs > 0 ? audioMs : undefined;
+      const loopVideoToAudio =
+        a?.type === 'video' &&
+        videoMs > 0 &&
+        clipDurationMs != null &&
+        videoMs < clipDurationMs;
+      setAudioTiming({
+        audioStartOffsetMs: 0,
+        clipDurationMs,
+        loopVideoToAudio: loopVideoToAudio ? true : undefined,
+      });
+    },
+    [
+      draft.activeAssetIndex,
+      draft.assets,
+      draft.trimEndByAsset,
+      draft.trimStartByAsset,
+      setAudioTiming,
+      setSelectedAudio,
+    ],
+  );
 
   const carouselRef = useRef<FlatList>(null);
 
@@ -862,6 +919,7 @@ export function MediaEditorScreen() {
 
   return (
     <ThemedSafeScreen style={styles.dark}>
+      <AudioPreviewHost uri={previewUri} />
       <View style={styles.header}>
         <Pressable
           onPress={() => navigation.goBack()}
@@ -1297,9 +1355,9 @@ export function MediaEditorScreen() {
         visible={activeTool === 'audio'}
         onClose={closeTool}
         title="Audio"
-        subtitle="Licensed catalog + original sounds from /posts/audio/search"
+        subtitle="Preview sounds · Catalog + community originals"
         palette={palette}
-        height={380}>
+        height={520}>
         <TextInput
           value={audioQuery}
           onChangeText={setAudioQuery}
@@ -1317,67 +1375,90 @@ export function MediaEditorScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
+        {draft.selectedAudio && typeof draft.clipDurationMs === 'number' ? (
+          <Text style={{color: palette.foregroundSubtle, fontSize: 12, marginBottom: 8}}>
+            Clip length ~{Math.round(draft.clipDurationMs / 1000)}s
+            {draft.loopVideoToAudio ? ' · video loops to match audio' : ''}
+          </Text>
+        ) : null}
         {audioRemoteLoading ? (
           <ActivityIndicator color={palette.accent} style={{ marginBottom: 8 }} />
         ) : null}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.audioRow}>
+        <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
           <Pressable
-            onPress={() => setSelectedAudio(null)}
+            onPress={() => pickAudio(null)}
             style={[
-              styles.audioCard,
+              styles.audioListRow,
               {
                 backgroundColor: palette.surface,
-                borderColor: !draft.selectedAudio
-                  ? palette.accent
-                  : palette.border,
+                borderColor: !draft.selectedAudio ? palette.accent : palette.border,
               },
             ]}>
-            <Music2 size={16} color={palette.foreground} />
-            <Text
-              style={[styles.audioTitle, { color: palette.foreground }]}>
-              No music
-            </Text>
-            <Text
-              style={[
-                styles.audioArtist,
-                { color: palette.foregroundSubtle },
-              ]}>
-              Original
-            </Text>
+            <View style={[styles.audioCoverSm, { backgroundColor: palette.background }]}>
+              <Music2 size={20} color={palette.foregroundMuted} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.audioTitle, { color: palette.foreground }]}>No music</Text>
+              <Text style={[styles.audioArtist, { color: palette.foregroundSubtle }]}>Camera / ambient only</Text>
+            </View>
           </Pressable>
-          {audioRemoteTracks.map(track => (
-            <Pressable
-              key={track.id}
-              onPress={() => setSelectedAudio(track)}
-              style={[
-                styles.audioCard,
-                {
-                  backgroundColor: palette.surface,
-                  borderColor:
-                    draft.selectedAudio?.id === track.id
-                      ? palette.accent
-                      : palette.border,
-                },
-              ]}>
-              <Music2 size={16} color={palette.foreground} />
-              <Text
-                style={[styles.audioTitle, { color: palette.foreground }]}
-                numberOfLines={1}>
-                {track.title}
-              </Text>
-              <Text
+          {audioRemoteTracks.map(track => {
+            const cover = track.coverUrl ? resolveMediaUrl(track.coverUrl) || track.coverUrl : '';
+            const dur =
+              typeof track.durationMs === 'number' && track.durationMs > 0
+                ? `${Math.round(track.durationMs / 1000)}s`
+                : '';
+            const uses =
+              typeof track.useCount === 'number'
+                ? `${track.useCount.toLocaleString()} uses`
+                : '';
+            const canPreview = Boolean(track.url);
+            const playing = canPreview && track.url ? isPlaying(track.url) : false;
+            return (
+              <View
+                key={track.id}
                 style={[
-                  styles.audioArtist,
-                  { color: palette.foregroundSubtle },
-                ]}
-                numberOfLines={1}>
-                {track.artist}
-              </Text>
-            </Pressable>
-          ))}
+                  styles.audioListRow,
+                  {
+                    backgroundColor: palette.surface,
+                    borderColor:
+                      draft.selectedAudio?.id === track.id ? palette.accent : palette.border,
+                  },
+                ]}>
+                {cover ? (
+                  <Image source={{ uri: cover }} style={styles.audioCoverSm} />
+                ) : (
+                  <View style={[styles.audioCoverSm, { backgroundColor: palette.background }]}>
+                    <Music2 size={20} color={palette.foregroundMuted} />
+                  </View>
+                )}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.audioTitle, { color: palette.foreground }]} numberOfLines={2}>
+                    {track.title}
+                  </Text>
+                  <Text style={[styles.audioArtist, { color: palette.foregroundSubtle }]} numberOfLines={1}>
+                    {[track.artist, dur, uses].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+                {canPreview ? (
+                  <Pressable
+                    onPress={() => track.url && play(track.url)}
+                    style={[styles.audioPreviewBtn, { backgroundColor: palette.background }]}>
+                    {playing ? (
+                      <Pause size={16} color={palette.foreground} />
+                    ) : (
+                      <Play size={16} color={palette.foreground} />
+                    )}
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() => pickAudio(track)}
+                  style={[styles.audioUseBtn, { backgroundColor: palette.accent }]}>
+                  <Text style={{ color: palette.accentForeground, fontWeight: '800', fontSize: 12 }}>Use</Text>
+                </Pressable>
+              </View>
+            );
+          })}
         </ScrollView>
       </ToolSheet>
 
@@ -1769,8 +1850,36 @@ function makeStyles(p: ThemePalette) {
       borderWidth: 1,
       gap: 4,
     },
-    audioTitle: { fontSize: 13, fontWeight: '800', marginTop: 6 },
+    audioTitle: { fontSize: 13, fontWeight: '800', marginTop: 0 },
     audioArtist: { fontSize: 11 },
+    audioListRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      padding: 10,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginBottom: 10,
+    },
+    audioCoverSm: {
+      width: 48,
+      height: 48,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    audioPreviewBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    audioUseBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
 
     /* Text */
     textBox: {

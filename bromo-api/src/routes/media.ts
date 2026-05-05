@@ -9,6 +9,7 @@ import { uploadSingle, uploadAvatar } from "../middleware/upload.js";
 import { User } from "../models/User.js";
 import { MediaJob } from "../models/MediaJob.js";
 import { Post } from "../models/Post.js";
+import { OriginalAudio } from "../models/OriginalAudio.js";
 import { generateVideoThumbnail } from "../services/mediaProcessor.js";
 import { normalizeMediaAfterUpload } from "../services/videoNormalize.js";
 import { normalizeImage } from "../services/imageNormalize.js";
@@ -335,6 +336,13 @@ mediaRouter.post(
       processingStatus: "pending",
       isActive: false, // hidden from feeds until HLS ready
     });
+
+    if (originalAudioId) {
+      void OriginalAudio.updateOne(
+        { _id: originalAudioId, isActive: true },
+        { $inc: { useCount: 1 } },
+      ).catch(() => null);
+    }
 
     // Create job record
     const job = await MediaJob.create({

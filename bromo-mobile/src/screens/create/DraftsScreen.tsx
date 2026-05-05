@@ -161,6 +161,9 @@ export function DraftsScreen() {
         trimEndByAsset: {},
         playbackSpeed: 1,
         selectedAudio: rec.music ? {id: 'x', title: rec.music, artist: ''} : null,
+        audioStartOffsetMs: 0,
+        clipDurationMs: undefined,
+        loopVideoToAudio: undefined,
         textOverlays: [],
         stickers: [],
         poll: {

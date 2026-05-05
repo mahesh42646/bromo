@@ -15,11 +15,16 @@ function mapLicensed(t: {id: string; title: string; artist: string}): AudioTrack
 }
 
 function mapOriginal(a: OriginalAudio): AudioTrack {
+  const uname = a.owner?.username?.trim();
   return {
     id: a._id,
     title: a.title,
-    artist: a.owner?.displayName ?? a.owner?.username ?? 'Original sound',
+    artist: uname ? `@${uname}` : a.owner?.displayName ?? 'Original sound',
     url: a.audioUrl,
+    coverUrl: a.coverUrl,
+    durationMs: a.durationMs,
+    useCount: typeof a.useCount === 'number' ? a.useCount : undefined,
+    totalViews: typeof a.totalViews === 'number' ? a.totalViews : undefined,
     originalAudioId: a._id,
     sourcePostId: a.sourcePostId,
   };

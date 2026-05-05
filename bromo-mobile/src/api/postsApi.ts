@@ -172,6 +172,9 @@ export type Post = {
   originalAudioTitle?: string;
   /** Resolved from OriginalAudio when `originalAudioId` is set — use for off-video / muted-video playback */
   originalSoundUrl?: string;
+  /** From OriginalAudio when attached — UI + sync */
+  originalSoundDurationMs?: number;
+  originalAudioCoverUrl?: string;
   remixOfPostId?: string;
   remixCredit?: {postId?: string; creatorId?: string; username?: string};
   scheduledFor?: string;
@@ -635,14 +638,42 @@ export type OriginalAudio = {
   title: string;
   audioUrl: string;
   durationMs?: number;
+  coverUrl?: string;
   useCount: number;
+  totalViews?: number;
+  createdAt?: string;
   owner?: PostAuthor;
+};
+
+export type OriginalAudioDetail = OriginalAudio & {
+  totalViews: number;
 };
 
 export async function searchOriginalAudios(q: string): Promise<{audios: OriginalAudio[]}> {
   const res = await authedFetch(`/posts/audio/search?q=${encodeURIComponent(q)}`);
   if (!res.ok) throw new Error('Failed to search audio');
   return res.json() as Promise<{audios: OriginalAudio[]}>;
+}
+
+export async function getOriginalAudioDetail(audioId: string): Promise<{audio: OriginalAudioDetail}> {
+  const res = await authedFetch(`/posts/audio/${encodeURIComponent(audioId)}`);
+  if (!res.ok) throw new Error('Failed to load audio');
+  return res.json() as Promise<{audio: OriginalAudioDetail}>;
+}
+
+export async function getPostsByOriginalAudio(
+  audioId: string,
+  opts?: {cursor?: string; limit?: number},
+): Promise<{posts: Post[]; nextCursor: string | null; hasMore: boolean}> {
+  const q = new URLSearchParams();
+  if (opts?.cursor) q.set('cursor', opts.cursor);
+  if (opts?.limit != null) q.set('limit', String(opts.limit));
+  const qs = q.toString();
+  const res = await authedFetch(
+    `/posts/audio/${encodeURIComponent(audioId)}/posts${qs ? `?${qs}` : ''}`,
+  );
+  if (!res.ok) throw new Error('Failed to load posts for audio');
+  return res.json() as Promise<{posts: Post[]; nextCursor: string | null; hasMore: boolean}>;
 }
 
 export async function useOriginalAudio(audioId: string): Promise<{audio: OriginalAudio}> {

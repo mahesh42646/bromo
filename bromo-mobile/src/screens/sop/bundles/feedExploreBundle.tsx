@@ -12,7 +12,7 @@ import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {followUser, getFollowing, getNearbyUsers, updateMyLocation, type SuggestedUser} from '../../../api/followApi';
-import {getHashtagPosts, useOriginalAudio, type Post} from '../../../api/postsApi';
+import {getHashtagPosts, type Post} from '../../../api/postsApi';
 import {useAudioPickerTracks} from '../../../create/useAudioPickerTracks';
 import {parentNavigate} from '../../../navigation/parentNavigate';
 import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
@@ -372,11 +372,10 @@ export function MusicPickerScreen() {
           }
           onPress={() => {
             if (track.originalAudioId) {
-              useOriginalAudio(track.originalAudioId).catch(() => null);
               parentNavigate(navigation, 'CreateFlow', {
                 mode: 'reel',
                 bootstrapTs: Date.now(),
-                remixSourcePostId: track.sourcePostId ?? track.originalAudioId,
+                preselectedAudioId: track.originalAudioId,
               });
             } else {
               parentNavigate(navigation, 'CreateFlow', {

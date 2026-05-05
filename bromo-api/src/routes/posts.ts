@@ -122,6 +122,10 @@ postsRouter.post("/views/batch", requireFirebaseToken, async (req: FirebaseAuthe
       console.error("[posts] views/batch bulkWrite:", err);
       return res.status(500).json({ message: "Batch failed" });
     }
+    const impressionPostOids = [...agg.entries()]
+      .filter(([, v]) => v.impression)
+      .map(([pid]) => new mongoose.Types.ObjectId(pid));
+    void incrementOriginalAudioTotalViewsForPostIds(impressionPostOids);
     for (const postId of agg.keys()) {
       Post.findById(postId)
         .select("viewsCount totalWatchTimeMs")
@@ -905,6 +909,12 @@ function normalizeIfNoneMatch(v: string | undefined): string | undefined {
   return t;
 }
 
+type OriginalSoundMeta = {
+  url: string;
+  durationMs?: number;
+  coverUrl?: string;
+};
+
 /** Batch-fetch OriginalAudio URLs so feed/detail can play “Use this sound” without N+1 client calls. */
 async function attachOriginalSoundUrls(rows: Array<Record<string, unknown>>): Promise<void> {
   const ids = [
@@ -917,18 +927,79 @@ async function attachOriginalSoundUrls(rows: Array<Record<string, unknown>>): Pr
   ];
   if (ids.length === 0) return;
   const oids = ids.map((id) => new mongoose.Types.ObjectId(id));
-  const docs = await OriginalAudio.find({ _id: { $in: oids }, isActive: true }).select("audioUrl").lean();
-  const byId = new Map(
-    docs.map((d) => [
-      String(d._id),
-      typeof d.audioUrl === "string" ? rewritePublicMediaUrl(d.audioUrl) : "",
-    ]),
+  const docs = await OriginalAudio.find({ _id: { $in: oids }, isActive: true })
+    .select("audioUrl durationMs coverUrl")
+    .lean();
+  const byId = new Map<string, OriginalSoundMeta>(
+    docs.map((d) => {
+      const url = typeof d.audioUrl === "string" ? rewritePublicMediaUrl(d.audioUrl) : "";
+      const durationMs =
+        typeof d.durationMs === "number" && Number.isFinite(d.durationMs) && d.durationMs > 0
+          ? d.durationMs
+          : undefined;
+      const coverRaw = typeof d.coverUrl === "string" ? d.coverUrl.trim() : "";
+      const coverUrl = coverRaw ? rewritePublicMediaUrl(coverRaw) : undefined;
+      return [String(d._id), { url, durationMs, coverUrl }];
+    }),
   );
   for (const row of rows) {
     const oid = row.originalAudioId ? String(row.originalAudioId) : "";
-    const url = oid ? byId.get(oid) : undefined;
-    if (url) row.originalSoundUrl = url;
+    const meta = oid ? byId.get(oid) : undefined;
+    if (!meta?.url) continue;
+    row.originalSoundUrl = meta.url;
+    if (meta.durationMs !== undefined) row.originalSoundDurationMs = meta.durationMs;
+    if (meta.coverUrl) row.originalAudioCoverUrl = meta.coverUrl;
   }
+}
+
+async function incrementOriginalAudioTotalViewsForPostIds(
+  postIds: mongoose.Types.ObjectId[],
+): Promise<void> {
+  if (!postIds.length) return;
+  try {
+    const rows = await Post.find({
+      _id: { $in: postIds },
+      originalAudioId: { $exists: true, $ne: null },
+    })
+      .select("originalAudioId")
+      .lean();
+    const audioIds = [
+      ...new Set(
+        rows
+          .map((r) => r.originalAudioId)
+          .filter((id): id is mongoose.Types.ObjectId => id != null)
+          .map((id) => String(id)),
+      ),
+    ];
+    if (!audioIds.length) return;
+    await OriginalAudio.bulkWrite(
+      audioIds.map((id) => ({
+        updateOne: {
+          filter: { _id: new mongoose.Types.ObjectId(id), isActive: true },
+          update: { $inc: { totalViews: 1 } },
+        },
+      })),
+      { ordered: false },
+    );
+  } catch (err) {
+    console.warn("[posts] incrementOriginalAudioTotalViewsForPostIds:", err);
+  }
+}
+
+/** Cursor for GET /posts/audio/:id/posts — "{viewsCount}:{postObjectId}" */
+function decodeAudioPostsCursor(raw: string): { views: number; id: string } | null {
+  const t = raw.trim();
+  const colon = t.lastIndexOf(":");
+  if (colon <= 0) return null;
+  const viewsPart = t.slice(0, colon);
+  const idPart = t.slice(colon + 1);
+  const views = Number(viewsPart);
+  if (!mongoose.Types.ObjectId.isValid(idPart) || !Number.isFinite(views)) return null;
+  return { views, id: idPart };
+}
+
+function encodeAudioPostsCursor(views: number, id: string): string {
+  return `${views}:${id}`;
 }
 
 function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, followingSet: Set<string>, dbUserId?: string) {
@@ -970,6 +1041,12 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
   const rawOs = (p as { originalSoundUrl?: unknown }).originalSoundUrl;
   const originalSoundUrl =
     typeof rawOs === "string" && rawOs.trim() ? rewritePublicMediaUrl(rawOs) : undefined;
+  const rawDur = (p as { originalSoundDurationMs?: unknown }).originalSoundDurationMs;
+  const originalSoundDurationMs =
+    typeof rawDur === "number" && Number.isFinite(rawDur) && rawDur > 0 ? rawDur : undefined;
+  const rawCv = (p as { originalAudioCoverUrl?: unknown }).originalAudioCoverUrl;
+  const originalAudioCoverUrl =
+    typeof rawCv === "string" && rawCv.trim() ? rewritePublicMediaUrl(rawCv.trim()) : undefined;
   return {
     ...p,
     mediaUrl,
@@ -1000,6 +1077,8 @@ function normalizePost(p: Record<string, unknown>, likedSet: Set<string>, follow
         ? String(connectedStore?.productCatalogUrl || connectedStore?.website || "").trim() || undefined
         : undefined,
     ...(originalSoundUrl ? { originalSoundUrl } : {}),
+    ...(originalSoundDurationMs !== undefined ? { originalSoundDurationMs } : {}),
+    ...(originalAudioCoverUrl ? { originalAudioCoverUrl } : {}),
     authorId: undefined,
   };
 }
@@ -2196,19 +2275,173 @@ postsRouter.get(
       const audios = await OriginalAudio.find(query)
         .sort(q ? {useCount: -1, createdAt: -1} : {useCount: -1, createdAt: -1})
         .limit(limit)
-        .populate("ownerId", "username displayName profilePicture")
+        .populate("ownerId", AUTHOR_SELECT)
         .lean();
       return res.json({
-        audios: audios.map((audio) => ({
-          ...audio,
-          audioUrl: rewritePublicMediaUrl(audio.audioUrl),
-          owner: audio.ownerId,
-          ownerId: undefined,
-        })),
+        audios: audios.map((audio) => {
+          const owner = audio.ownerId as unknown as Record<string, unknown> | null;
+          const coverRaw = typeof audio.coverUrl === "string" ? audio.coverUrl.trim() : "";
+          return {
+            _id: audio._id,
+            title: audio.title,
+            audioUrl: rewritePublicMediaUrl(audio.audioUrl),
+            durationMs: audio.durationMs,
+            useCount: Number(audio.useCount) || 0,
+            totalViews: Number(audio.totalViews) || 0,
+            coverUrl: coverRaw ? rewritePublicMediaUrl(coverRaw) : undefined,
+            sourcePostId: audio.sourcePostId,
+            createdAt: audio.createdAt,
+            owner: owner
+              ? {
+                  _id: owner._id,
+                  username: owner.username,
+                  displayName: owner.displayName,
+                  profilePicture:
+                    typeof owner.profilePicture === "string"
+                      ? rewritePublicMediaUrl(owner.profilePicture)
+                      : owner.profilePicture,
+                  isVerified: owner.isVerified,
+                  verificationStatus: owner.verificationStatus,
+                }
+              : null,
+          };
+        }),
       });
     } catch (err) {
       console.error("[posts] audio search error:", err);
       return res.status(500).json({message: "Failed to search audio"});
+    }
+  },
+);
+
+// ── GET /posts/audio/:audioId/posts ───────────────────────────────
+postsRouter.get(
+  "/audio/:audioId/posts",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const audioId = String(req.params.audioId);
+      if (!mongoose.Types.ObjectId.isValid(audioId)) {
+        return res.status(400).json({ message: "Invalid audio id" });
+      }
+      const exists = await OriginalAudio.findOne({ _id: audioId, isActive: true }).select("_id").lean();
+      if (!exists) return res.status(404).json({ message: "Audio not found" });
+
+      const dbUser = req.dbUser;
+      const blockedIds = blockedIdsForUser(dbUser);
+      const cursor = String(req.query.cursor ?? "").trim();
+      const limit = Math.min(30, Math.max(1, parseInt(String(req.query.limit ?? "21"), 10) || 21));
+
+      const baseFilter: Record<string, unknown> = {
+        originalAudioId: new mongoose.Types.ObjectId(audioId),
+        ...VISIBLE_POST,
+        ...authorClause(undefined, blockedIds),
+      };
+
+      let mongoFilter: Record<string, unknown> = baseFilter;
+      const decoded = cursor ? decodeAudioPostsCursor(cursor) : null;
+      if (decoded) {
+        mongoFilter = {
+          ...baseFilter,
+          $or: [
+            { viewsCount: { $lt: decoded.views } },
+            {
+              viewsCount: decoded.views,
+              _id: { $lt: new mongoose.Types.ObjectId(decoded.id) },
+            },
+          ],
+        };
+      }
+
+      const fetchLimit = limit + 1;
+      const postsRaw = await Post.find(mongoFilter)
+        .sort({ viewsCount: -1, _id: -1 })
+        .limit(fetchLimit)
+        .populate("authorId", AUTHOR_SELECT)
+        .lean();
+
+      const slice = postsRaw.slice(0, limit);
+      const hasMore = postsRaw.length > limit;
+      const last = slice[slice.length - 1];
+      const nextCursor =
+        hasMore && last
+          ? encodeAudioPostsCursor(Number(last.viewsCount) || 0, String(last._id))
+          : null;
+
+      const likes = dbUser
+        ? await Like.find({
+            userId: dbUser._id,
+            targetType: "post",
+            targetId: { $in: slice.map((p) => p._id) },
+          })
+            .select("targetId")
+            .lean()
+        : [];
+      const likedSet = new Set(likes.map((l) => String(l.targetId)));
+      const follows = dbUser
+        ? await Follow.find({ followerId: dbUser._id, status: "accepted" }).select("followingId").lean()
+        : [];
+      const followingSet = new Set(follows.map((f) => String(f.followingId)));
+
+      await attachOriginalSoundUrls(slice as unknown as Record<string, unknown>[]);
+      const posts = slice.map((p) =>
+        normalizePost(p as unknown as Record<string, unknown>, likedSet, followingSet, String(dbUser?._id)),
+      );
+
+      return res.json({ posts, nextCursor, hasMore });
+    } catch (err) {
+      console.error("[posts] audio posts error:", err);
+      return res.status(500).json({ message: "Failed to fetch posts for audio" });
+    }
+  },
+);
+
+// ── GET /posts/audio/:audioId (detail) ────────────────────────────
+postsRouter.get(
+  "/audio/:audioId",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const audioId = String(req.params.audioId);
+      if (!mongoose.Types.ObjectId.isValid(audioId)) {
+        return res.status(400).json({ message: "Invalid audio id" });
+      }
+      const audio = await OriginalAudio.findOne({ _id: audioId, isActive: true })
+        .populate("ownerId", AUTHOR_SELECT)
+        .lean();
+      if (!audio) return res.status(404).json({ message: "Audio not found" });
+      const owner = audio.ownerId as unknown as Record<string, unknown> | null;
+      const coverRaw = typeof audio.coverUrl === "string" ? audio.coverUrl.trim() : "";
+      return res.json({
+        audio: {
+          _id: audio._id,
+          title: audio.title,
+          audioUrl: rewritePublicMediaUrl(audio.audioUrl),
+          coverUrl: coverRaw ? rewritePublicMediaUrl(coverRaw) : undefined,
+          durationMs: audio.durationMs,
+          useCount: Number(audio.useCount) || 0,
+          totalViews: Number(audio.totalViews) || 0,
+          sourcePostId: audio.sourcePostId,
+          createdAt: audio.createdAt,
+          owner: owner
+            ? {
+                _id: owner._id,
+                username: owner.username,
+                displayName: owner.displayName,
+                profilePicture:
+                  typeof owner.profilePicture === "string"
+                    ? rewritePublicMediaUrl(owner.profilePicture)
+                    : owner.profilePicture,
+                isVerified: owner.isVerified,
+                verificationStatus: owner.verificationStatus,
+                followersCount: Number(owner.followersCount) || 0,
+              }
+            : null,
+        },
+      });
+    } catch (err) {
+      console.error("[posts] audio detail error:", err);
+      return res.status(500).json({ message: "Failed to fetch audio" });
     }
   },
 );
@@ -3409,6 +3642,12 @@ postsRouter.post(
         {$inc: inc},
         {new: true},
       ).lean();
+      if (p && watchMs <= 0 && p.originalAudioId) {
+        void OriginalAudio.updateOne(
+          {_id: p.originalAudioId, isActive: true},
+          {$inc: {totalViews: 1}},
+        ).catch(() => null);
+      }
       if (p && p.viewsCount > 0) {
         const avg = p.totalWatchTimeMs / p.viewsCount;
         void Post.updateOne({_id: postId}, {$set: {avgWatchTimeMs: avg}}).catch(() => null);

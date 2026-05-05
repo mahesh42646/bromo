@@ -36,6 +36,12 @@ export type CreateDraftState = {
   trimEndByAsset: Record<number, number>;
   playbackSpeed: number;
   selectedAudio: AudioTrack | null;
+  /** Window into licensed/original audio (ms). */
+  audioStartOffsetMs: number;
+  /** Final clip length when audio drives the post (ms). */
+  clipDurationMs?: number;
+  /** Video shorter than clip — loop video in playback. */
+  loopVideoToAudio?: boolean;
   textOverlays: TextOverlay[];
   caption: string;
   hashtags: string[];
@@ -77,6 +83,9 @@ const initialDraft: Draft = {
   trimEndByAsset: {},
   playbackSpeed: 1,
   selectedAudio: null,
+  audioStartOffsetMs: 0,
+  clipDurationMs: undefined,
+  loopVideoToAudio: undefined,
   textOverlays: [],
   caption: '',
   hashtags: [],
@@ -109,6 +118,9 @@ type Ctx = {
   setTrimForActive: (start: number, end: number) => void;
   setPlaybackSpeed: (n: number) => void;
   setSelectedAudio: (t: AudioTrack | null) => void;
+  setAudioTiming: (
+    o: Partial<Pick<Draft, 'audioStartOffsetMs' | 'clipDurationMs' | 'loopVideoToAudio'>>,
+  ) => void;
   addTextOverlay: (o: Omit<TextOverlay, 'id'>) => void;
   updateTextOverlay: (id: string, p: Partial<Omit<TextOverlay, 'id'>>) => void;
   removeTextOverlay: (id: string) => void;
@@ -258,6 +270,16 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
     setDraft(d => ({...d, selectedAudio}));
   }, []);
 
+  const setAudioTiming = useCallback(
+    (o: Partial<Pick<Draft, 'audioStartOffsetMs' | 'clipDurationMs' | 'loopVideoToAudio'>>) => {
+      setDraft(d => ({
+        ...d,
+        ...o,
+      }));
+    },
+    [],
+  );
+
   const addTextOverlay = useCallback((o: Omit<TextOverlay, 'id'>) => {
     const id = `txt_${Date.now()}`;
     setDraft(d => ({...d, textOverlays: [...d.textOverlays, {...o, id}]}));
@@ -398,6 +420,7 @@ export function CreateDraftProvider({children}: {children: React.ReactNode}) {
       setTrimForActive,
       setPlaybackSpeed,
       setSelectedAudio,
+      setAudioTiming,
       addTextOverlay,
       updateTextOverlay,
       removeTextOverlay,

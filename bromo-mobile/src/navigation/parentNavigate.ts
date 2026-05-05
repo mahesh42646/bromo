@@ -13,6 +13,7 @@ type CreateFlowNavParams = {
     bootstrapTs: number;
     remixSourcePostId?: string;
     editPostId?: string;
+    preselectedAudioId?: string;
   };
 };
 
@@ -35,6 +36,7 @@ export function parentNavigate(navigation: any, name: string, params?: Record<st
           bootstrapTs?: number;
           remixSourcePostId?: string;
           editPostId?: string;
+          preselectedAudioId?: string;
         };
         const payload: CreateFlowNavParams = {
           screen: 'CreateHub',
@@ -42,6 +44,9 @@ export function parentNavigate(navigation: any, name: string, params?: Record<st
             mode: p.mode,
             bootstrapTs: typeof p.bootstrapTs === 'number' ? p.bootstrapTs : Date.now(),
             remixSourcePostId: p.remixSourcePostId,
+            ...(typeof p.preselectedAudioId === 'string' && p.preselectedAudioId.trim()
+              ? {preselectedAudioId: p.preselectedAudioId.trim()}
+              : {}),
             ...(typeof p.editPostId === 'string' && p.editPostId.trim()
               ? {editPostId: p.editPostId.trim()}
               : {}),
