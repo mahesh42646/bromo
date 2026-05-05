@@ -187,7 +187,6 @@ const userSchema = new Schema<UserDoc>(
       },
       coordinates: { type: [Number], default: undefined },
       updatedAt: { type: Date },
-      default: undefined,
     },
     connectedStore: {
       enabled: { type: Boolean, default: false },
