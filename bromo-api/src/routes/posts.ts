@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Router, type Response } from "express";
-import mongoose from "mongoose";
+import mongoose, { type PipelineStage } from "mongoose";
 import {
   requireFirebaseToken,
   requireVerifiedUser,
@@ -2262,54 +2262,200 @@ postsRouter.post(
   },
 );
 
+function escapeAudioSearchRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function audioBrowseSortSpec(sort: string): Record<string, mongoose.SortOrder> {
+  switch (sort) {
+    case "recent":
+      return { createdAt: -1 };
+    case "most_used":
+      return { useCount: -1, createdAt: -1 };
+    case "most_views":
+      return { totalViews: -1, createdAt: -1 };
+    case "trending":
+    default:
+      return { useCount: -1, totalViews: -1, createdAt: -1 };
+  }
+}
+
+type AudioLeanForClient = {
+  _id: unknown;
+  title?: string;
+  audioUrl?: string;
+  durationMs?: number;
+  useCount?: unknown;
+  totalViews?: unknown;
+  coverUrl?: string;
+  sourcePostId?: unknown;
+  sourceFeedCategory?: string;
+  createdAt?: Date;
+};
+
+function mapOriginalAudioToClientJson(
+  audio: AudioLeanForClient,
+  owner: Record<string, unknown> | null | undefined,
+) {
+  const coverRaw = typeof audio.coverUrl === "string" ? audio.coverUrl.trim() : "";
+  const fc =
+    typeof audio.sourceFeedCategory === "string" && audio.sourceFeedCategory.trim()
+      ? audio.sourceFeedCategory.trim().toLowerCase()
+      : "general";
+  return {
+    _id: audio._id,
+    title: audio.title,
+    audioUrl: rewritePublicMediaUrl(String(audio.audioUrl ?? "")),
+    durationMs: audio.durationMs,
+    useCount: Number(audio.useCount) || 0,
+    totalViews: Number(audio.totalViews) || 0,
+    coverUrl: coverRaw ? rewritePublicMediaUrl(coverRaw) : undefined,
+    sourcePostId: audio.sourcePostId,
+    sourceFeedCategory: fc,
+    createdAt: audio.createdAt,
+    owner: owner
+      ? {
+          _id: owner._id,
+          username: owner.username,
+          displayName: owner.displayName,
+          profilePicture:
+            typeof owner.profilePicture === "string"
+              ? rewritePublicMediaUrl(owner.profilePicture)
+              : owner.profilePicture,
+          isVerified: owner.isVerified,
+          verificationStatus: owner.verificationStatus,
+        }
+      : null,
+  };
+}
+
+function buildAudioBrowseAggregatePipeline(args: {
+  baseMatch: Record<string, unknown>;
+  feedCategory?: string;
+  qRaw: string;
+  sort: string;
+  skip: number;
+  limit: number;
+}): PipelineStage[] {
+  const pipeline: PipelineStage[] = [{ $match: args.baseMatch }];
+  const fc = args.feedCategory?.trim().toLowerCase();
+  if (fc && fc !== "all") {
+    pipeline.push(
+      { $lookup: { from: "posts", localField: "sourcePostId", foreignField: "_id", as: "src" } },
+      { $unwind: { path: "$src", preserveNullAndEmptyArrays: false } },
+      {
+        $match: {
+          $or: [
+            { sourceFeedCategory: fc },
+            { $expr: { $eq: [{ $toLower: "$src.feedCategory" }, fc] } },
+          ],
+        },
+      },
+    );
+  }
+  pipeline.push(
+    { $lookup: { from: "users", localField: "ownerId", foreignField: "_id", as: "own" } },
+    { $unwind: { path: "$own", preserveNullAndEmptyArrays: true } },
+  );
+  if (args.qRaw.trim()) {
+    const re = new RegExp(escapeAudioSearchRe(args.qRaw.trim()), "i");
+    pipeline.push({
+      $match: {
+        $or: [{ title: re }, { "own.username": re }, { "own.displayName": re }],
+      },
+    });
+  }
+  const sort = args.sort;
+  if (sort === "recent") pipeline.push({ $sort: { createdAt: -1 } });
+  else if (sort === "most_views") pipeline.push({ $sort: { totalViews: -1, createdAt: -1 } });
+  else if (sort === "most_used") pipeline.push({ $sort: { useCount: -1, createdAt: -1 } });
+  else pipeline.push({ $sort: { useCount: -1, totalViews: -1, createdAt: -1 } });
+  pipeline.push({ $skip: args.skip }, { $limit: args.limit });
+  return pipeline;
+}
+
 // ── GET /posts/audio/search ────────────────────────────────────────
 postsRouter.get(
   "/audio/search",
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
-      const q = String(req.query.q ?? "").trim();
-      const limit = Math.min(30, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20));
-      const query: Record<string, unknown> = {isActive: true};
-      if (q) query.title = {$regex: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")};
-      const audios = await OriginalAudio.find(query)
-        .sort(q ? {useCount: -1, createdAt: -1} : {useCount: -1, createdAt: -1})
-        .limit(limit)
-        .populate("ownerId", AUTHOR_SELECT)
-        .lean();
-      return res.json({
-        audios: audios.map((audio) => {
-          const owner = audio.ownerId as unknown as Record<string, unknown> | null;
-          const coverRaw = typeof audio.coverUrl === "string" ? audio.coverUrl.trim() : "";
-          return {
-            _id: audio._id,
-            title: audio.title,
-            audioUrl: rewritePublicMediaUrl(audio.audioUrl),
-            durationMs: audio.durationMs,
-            useCount: Number(audio.useCount) || 0,
-            totalViews: Number(audio.totalViews) || 0,
-            coverUrl: coverRaw ? rewritePublicMediaUrl(coverRaw) : undefined,
-            sourcePostId: audio.sourcePostId,
-            createdAt: audio.createdAt,
-            owner: owner
-              ? {
-                  _id: owner._id,
-                  username: owner.username,
-                  displayName: owner.displayName,
-                  profilePicture:
-                    typeof owner.profilePicture === "string"
-                      ? rewritePublicMediaUrl(owner.profilePicture)
-                      : owner.profilePicture,
-                  isVerified: owner.isVerified,
-                  verificationStatus: owner.verificationStatus,
-                }
-              : null,
-          };
+      const qRaw = String(req.query.q ?? "").trim();
+      const sort = String(req.query.sort ?? "trending").toLowerCase();
+      const mine = req.query.mine === "1" || req.query.mine === "true";
+      const feedCategoryRaw = String(req.query.feedCategory ?? "").trim().toLowerCase();
+      const feedCategory =
+        feedCategoryRaw === "" || feedCategoryRaw === "all" ? "" : feedCategoryRaw;
+      const limit = Math.min(80, Math.max(1, parseInt(String(req.query.limit ?? "40"), 10) || 40));
+      const skip = Math.max(0, Math.min(10_000, parseInt(String(req.query.skip ?? "0"), 10) || 0));
+
+      const dbUser = req.dbUser;
+      const userId = dbUser?._id;
+
+      const baseMatch: Record<string, unknown> = { isActive: true };
+      if (mine) {
+        if (!userId) {
+          return res.status(401).json({ message: "Authentication required" });
+        }
+        baseMatch.ownerId = userId;
+      }
+
+      const needsAggregate =
+        qRaw.length > 0 || Boolean(feedCategory);
+
+      if (!needsAggregate) {
+        const audios = await OriginalAudio.find(baseMatch)
+          .sort(audioBrowseSortSpec(sort))
+          .skip(skip)
+          .limit(limit)
+          .populate("ownerId", AUTHOR_SELECT)
+          .lean();
+        return res.json({
+          audios: audios.map((a) =>
+            mapOriginalAudioToClientJson(
+              a as AudioLeanForClient,
+              a.ownerId as unknown as Record<string, unknown> | null,
+            ),
+          ),
+          hasMore: audios.length === limit,
+        });
+      }
+
+      const rows = await OriginalAudio.aggregate(
+        buildAudioBrowseAggregatePipeline({
+          baseMatch,
+          feedCategory: feedCategory || undefined,
+          qRaw,
+          sort,
+          skip,
+          limit,
         }),
+      );
+
+      return res.json({
+        audios: rows.map((row: Record<string, unknown>) => {
+          const own = row.own as Record<string, unknown> | undefined;
+          return mapOriginalAudioToClientJson(
+            {
+              _id: row._id,
+              title: row.title as string | undefined,
+              audioUrl: row.audioUrl as string | undefined,
+              durationMs: row.durationMs as number | undefined,
+              useCount: row.useCount,
+              totalViews: row.totalViews,
+              coverUrl: row.coverUrl as string | undefined,
+              sourcePostId: row.sourcePostId,
+              sourceFeedCategory: row.sourceFeedCategory as string | undefined,
+              createdAt: row.createdAt as Date | undefined,
+            },
+            own,
+          );
+        }),
+        hasMore: rows.length === limit,
       });
     } catch (err) {
       console.error("[posts] audio search error:", err);
-      return res.status(500).json({message: "Failed to search audio"});
+      return res.status(500).json({ message: "Failed to search audio" });
     }
   },
 );

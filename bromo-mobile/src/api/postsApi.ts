@@ -641,9 +641,46 @@ export type OriginalAudio = {
   coverUrl?: string;
   useCount: number;
   totalViews?: number;
+  /** Source reel/post feed bucket — used for audio browse filters */
+  sourceFeedCategory?: string;
   createdAt?: string;
   owner?: PostAuthor;
 };
+
+export type OriginalAudioBrowseSort = 'trending' | 'recent' | 'most_used' | 'most_views';
+
+export type BrowseOriginalAudiosParams = {
+  q?: string;
+  sort?: OriginalAudioBrowseSort;
+  /** Filter by source post category (`general`, `sports`, …). Omit or `all` for every bucket */
+  feedCategory?: string;
+  /** Only sounds extracted from your own reels/posts */
+  mine?: boolean;
+  limit?: number;
+  skip?: number;
+};
+
+export async function browseOriginalAudios(
+  params: BrowseOriginalAudiosParams = {},
+): Promise<{audios: OriginalAudio[]; hasMore: boolean}> {
+  const sp = new URLSearchParams();
+  if (params.q?.trim()) sp.set('q', params.q.trim());
+  if (params.sort) sp.set('sort', params.sort);
+  if (params.feedCategory?.trim()) sp.set('feedCategory', params.feedCategory.trim());
+  if (params.mine) sp.set('mine', '1');
+  if (params.limit != null) sp.set('limit', String(params.limit));
+  if (params.skip != null) sp.set('skip', String(params.skip));
+  const qs = sp.toString();
+  const res = await authedFetch(`/posts/audio/search${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw new Error('Failed to browse audio');
+  return res.json() as Promise<{audios: OriginalAudio[]; hasMore: boolean}>;
+}
+
+/** @deprecated prefer browseOriginalAudios — kept for older call sites */
+export async function searchOriginalAudios(q: string): Promise<{audios: OriginalAudio[]}> {
+  const out = await browseOriginalAudios({q, limit: 40});
+  return {audios: out.audios};
+}
 
 export type OriginalAudioDetail = OriginalAudio & {
   totalViews: number;

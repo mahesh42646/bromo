@@ -7,6 +7,8 @@
  *     image: normalizeImage → update Post + MediaJob → notify
  */
 
+import "../config/ffmpegInit.js";
+
 import fs from "node:fs";
 import path from "node:path";
 import { MediaJob, type MediaJobDoc } from "../models/MediaJob.js";

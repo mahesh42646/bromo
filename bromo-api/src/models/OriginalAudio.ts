@@ -11,6 +11,8 @@ export interface OriginalAudioDoc extends Document {
   /** Aggregate views across all posts using this sound */
   totalViews: number;
   useCount: number;
+  /** Denormalized from source post for fast category filters in audio browse */
+  sourceFeedCategory: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -26,6 +28,7 @@ const originalAudioSchema = new Schema<OriginalAudioDoc>(
     coverUrl: { type: String },
     totalViews: { type: Number, default: 0 },
     useCount: { type: Number, default: 0 },
+    sourceFeedCategory: { type: String, default: "general", index: true, trim: true },
     isActive: { type: Boolean, default: true, index: true },
   },
   { timestamps: true },
@@ -34,5 +37,6 @@ const originalAudioSchema = new Schema<OriginalAudioDoc>(
 originalAudioSchema.index({ title: "text" });
 originalAudioSchema.index({ useCount: -1, createdAt: -1 });
 originalAudioSchema.index({ totalViews: -1, createdAt: -1 });
+originalAudioSchema.index({ isActive: 1, sourceFeedCategory: 1, useCount: -1 });
 
 export const OriginalAudio = mongoose.model<OriginalAudioDoc>("OriginalAudio", originalAudioSchema);

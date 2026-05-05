@@ -15,7 +15,7 @@ export async function ensureOriginalAudioForPost(input: {
     const [existing, owner, sourcePost] = await Promise.all([
       OriginalAudio.findOne({ sourcePostId: input.postId }).select("_id").lean(),
       User.findById(input.ownerId).select("username displayName").lean(),
-      Post.findById(input.postId).select("caption thumbnailUrl mediaUrl").lean(),
+      Post.findById(input.postId).select("caption thumbnailUrl mediaUrl feedCategory").lean(),
     ]);
     if (existing) return;
 
@@ -55,11 +55,20 @@ export async function ensureOriginalAudioForPost(input: {
     const audioRel = await extractOriginalAudioTrack(input.sourceRelPath, String(input.ownerId));
     const audioUrl = publicUrlForUploadRelative(audioRel);
 
+    let sourceFeedCategory = "general";
+    if (sourcePost) {
+      const raw = (sourcePost as { feedCategory?: string }).feedCategory;
+      if (typeof raw === "string" && raw.trim()) {
+        sourceFeedCategory = raw.trim().toLowerCase();
+      }
+    }
+
     const audio = await OriginalAudio.create({
       ownerId: input.ownerId,
       sourcePostId: input.postId,
       title,
       audioUrl,
+      sourceFeedCategory,
       ...(durationMs !== undefined ? { durationMs } : {}),
       ...(coverUrl ? { coverUrl } : {}),
       isActive: true,
