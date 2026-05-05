@@ -2,7 +2,6 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Alert,
   FlatList,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -34,11 +33,12 @@ import {
   X,
 } from 'lucide-react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Geolocation from '@react-native-community/geolocation';
 import {NetworkVideo} from '../../components/media/NetworkVideo';
 import {resolveMediaUrl} from '../../lib/resolveMediaUrl';
 import {useTheme} from '../../context/ThemeContext';
-import {RefreshableFlatList, Screen} from '../../components/ui';
+import {BromoImage, RefreshableFlatList, Screen} from '../../components/ui';
 import type {ChatMessage, TextMessage} from '../../messaging/messageTypes';
 import {USER_LABEL_OPTIONS} from '../../messaging/messageTypes';
 import {MOCK_GIF_CATALOG, MOCK_STICKERS} from '../../messaging/mockMessaging';
@@ -47,6 +47,8 @@ import {formatBubbleTime, daySeparatorLabel} from '../../messaging/formatTime';
 import type {MessagesStackParamList} from '../../navigation/MessagesStackNavigator';
 import {parentNavigate} from '../../navigation/parentNavigate';
 import {getPost} from '../../api/postsApi';
+import {getShareUrl} from '../../lib/shareUrl';
+import {socketService} from '../../services/socketService';
 
 type Nav = NativeStackNavigationProp<MessagesStackParamList, 'ChatThread'>;
 type R = RouteProp<MessagesStackParamList, 'ChatThread'>;
@@ -59,6 +61,7 @@ export function ChatThreadScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<R>();
   const {peerId, sharePostId, prefilledText} = route.params;
+  const insets = useSafeAreaInsets();
   const {palette, guidelines, isDark} = useTheme();
   const {
     peers,
@@ -75,7 +78,14 @@ export function ChatThreadScreen() {
     threadOrder,
   } = useMessaging();
 
-  const peer = peers[peerId];
+  const peer = peers[peerId] ?? {
+    id: peerId,
+    displayName: 'Chat',
+    username: '',
+    avatar: '',
+    label: null,
+    verified: false,
+  };
   const messages = useMemo(() => messagesByPeer[peerId] ?? [], [messagesByPeer, peerId]);
   const listRef = useRef<FlatList<RowItem>>(null);
 
@@ -129,7 +139,7 @@ export function ChatThreadScreen() {
           createdAt: Date.now(),
           delivery: 'sending',
           reactions: [],
-          text: `https://bromo.app/p/${sharePostId}`,
+          text: getShareUrl({kind: 'post', id: sharePostId}),
         };
         sendMessage(peerId, msg);
       });
@@ -157,6 +167,7 @@ export function ChatThreadScreen() {
     }
     return out;
   }, [messages]);
+  const invertedRows = useMemo(() => [...rows].reverse(), [rows]);
 
   const simulateDelivery = useCallback(
     (id: string) => {
@@ -193,6 +204,14 @@ export function ChatThreadScreen() {
     sendMessage(peerId, msg);
     simulateDelivery(id);
   };
+
+  const updateInput = useCallback(
+    (text: string) => {
+      setInput(text);
+      if (peerId) socketService.emitTyping(peerId, text.trim().length > 0);
+    },
+    [peerId],
+  );
 
   const scheduleMedia = (msg: ChatMessage) => {
     sendMessage(peerId, msg);
@@ -450,7 +469,7 @@ export function ChatThreadScreen() {
       case 'image':
         inner = (
           <View>
-            <Image source={{uri: m.uri}} style={{width: 220, height: 220, borderRadius: bubbleR}} />
+            <BromoImage uri={m.uri} style={{width: 220, height: 220, borderRadius: bubbleR}} />
             <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4}}>
               <Text style={{fontSize: 10, color: fg, opacity: 0.75}}>{formatBubbleTime(m.createdAt)}</Text>
               {renderDelivery(m)}
@@ -492,7 +511,7 @@ export function ChatThreadScreen() {
       case 'gif':
         inner = (
           <View>
-            <Image source={{uri: m.uri}} style={{width: 200, height: 200, borderRadius: bubbleR}} />
+            <BromoImage uri={m.uri} style={{width: 200, height: 200, borderRadius: bubbleR}} />
             <View style={{flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4, alignItems: 'center'}}>
               <Text style={{fontSize: 10, color: fg, opacity: 0.75}}>{formatBubbleTime(m.createdAt)}</Text>
               {renderDelivery(m)}
@@ -503,7 +522,7 @@ export function ChatThreadScreen() {
       case 'sticker':
         inner = (
           <View>
-            <Image source={{uri: m.uri}} style={{width: 72, height: 72}} />
+            <BromoImage uri={m.uri} style={{width: 72, height: 72}} />
             <View style={{flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4, alignItems: 'center'}}>
               <Text style={{fontSize: 10, color: fg, opacity: 0.75}}>{formatBubbleTime(m.createdAt)}</Text>
               {renderDelivery(m)}
@@ -529,11 +548,11 @@ export function ChatThreadScreen() {
         inner = (
           <View style={{width: 240}}>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8}}>
-              <Image source={{uri: m.authorAvatar}} style={{width: 28, height: 28, borderRadius: 14}} />
+              <BromoImage uri={m.authorAvatar} style={{width: 28, height: 28, borderRadius: 14}} />
               <Text style={{color: fg, fontWeight: '800', fontSize: 13}}>@{m.authorUsername}</Text>
             </View>
             <View style={{position: 'relative'}}>
-              <Image source={{uri: m.previewUri}} style={{width: '100%', height: 140, borderRadius: 12}} />
+              <BromoImage uri={m.previewUri} style={{width: '100%', height: 140, borderRadius: 12}} />
               <View
                 style={{
                   position: 'absolute',
@@ -661,7 +680,7 @@ export function ChatThreadScreen() {
           borderBottomWidth: 1,
           borderBottomColor: palette.border,
         }}>
-        <Image source={{uri: peer.avatar}} style={{width: 36, height: 36, borderRadius: 18}} />
+        <BromoImage uri={peer.avatar} style={{width: 36, height: 36, borderRadius: 18}} />
         <View style={{flex: 1, minWidth: 0}}>
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
             <Text numberOfLines={1} style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>
@@ -678,18 +697,18 @@ export function ChatThreadScreen() {
 
       <KeyboardAvoidingView
         style={{flex: 1}}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}>
         <RefreshableFlatList<RowItem>
           ref={listRef}
-          data={rows}
+          data={invertedRows}
+          inverted
           keyExtractor={item => item.key}
           onRefresh={() => {
             ensureThread(peerId);
             markRead(peerId);
           }}
-          contentContainerStyle={{paddingHorizontal: 12, paddingVertical: 16, paddingBottom: 8}}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({animated: true})}
+          contentContainerStyle={{paddingHorizontal: 12, paddingVertical: 16}}
           renderItem={({item}) =>
             item.kind === 'sep' ? (
               <Text
@@ -706,7 +725,7 @@ export function ChatThreadScreen() {
             ) : (
               <View style={{flexDirection: 'row', alignItems: 'flex-end', gap: 6}}>
                 {!peer.isGroup && item.m.senderId !== 'me' ? (
-                  <Image source={{uri: peer.avatar}} style={{width: 28, height: 28, borderRadius: 14, marginBottom: 4}} />
+                  <BromoImage uri={peer.avatar} style={{width: 28, height: 28, borderRadius: 14, marginBottom: 4}} />
                 ) : (
                   <View style={{width: 28}} />
                 )}
@@ -757,7 +776,7 @@ export function ChatThreadScreen() {
             gap: 8,
             borderTopWidth: 1,
             borderTopColor: palette.border,
-            paddingBottom: 10,
+            paddingBottom: Math.max(10, insets.bottom + 6),
           }}>
           <Pressable
             onPress={openCamera}
@@ -773,7 +792,7 @@ export function ChatThreadScreen() {
           </Pressable>
           <TextInput
             value={input}
-            onChangeText={setInput}
+            onChangeText={updateInput}
             placeholder={editId ? 'Edit message…' : 'Message…'}
             placeholderTextColor={palette.mutedForeground}
             style={{
@@ -828,7 +847,7 @@ export function ChatThreadScreen() {
               contentContainerStyle={{gap: 12, paddingBottom: 24}}
               renderItem={({item}) => (
                 <Pressable onPress={() => sendGif(item.uri, item.title)} style={{flex: 1}}>
-                  <Image source={{uri: item.uri}} style={{height: 120, borderRadius: 12, width: '100%'}} />
+                  <BromoImage uri={item.uri} style={{height: 120, borderRadius: 12, width: '100%'}} />
                 </Pressable>
               )}
             />
@@ -843,7 +862,7 @@ export function ChatThreadScreen() {
             <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 16, justifyContent: 'center'}}>
               {MOCK_STICKERS.map(s => (
                 <Pressable key={s.id} onPress={() => sendSticker(s.uri, s.name)}>
-                  <Image source={{uri: s.uri}} style={{width: 64, height: 64}} />
+                  <BromoImage uri={s.uri} style={{width: 64, height: 64}} />
                 </Pressable>
               ))}
             </View>

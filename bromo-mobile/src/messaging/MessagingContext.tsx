@@ -9,18 +9,20 @@ import React, {
   type ReactNode,
 } from 'react';
 import type {ChatListFilter, ChatMessage, ChatPeer, MessageDelivery, UserLabelId} from './messageTypes';
-import {USER_DIRECTORY} from './mockMessaging';
 import {
   getConversations,
   getMessages,
   sendMessage as apiSendMessage,
   unsendMessage as apiUnsendMessage,
   editMessage as apiEditMessage,
+  reactToMessage as apiReactToMessage,
   createConversation as apiCreateConversation,
   markConversationRead,
   type ApiConversation,
   type ApiMessage,
 } from '../api/chatApi';
+import {socketService} from '../services/socketService';
+import {queryClient} from '../lib/queryClient';
 
 const SELF = 'me' as const;
 
@@ -33,13 +35,30 @@ function isMongoId(s: string): boolean {
   return /^[a-f0-9]{24}$/i.test(s);
 }
 
+function senderIdOf(m: ApiMessage): string {
+  const raw = m.senderId as unknown;
+  if (typeof raw === 'string') return raw;
+  if (raw && typeof raw === 'object' && '_id' in raw) {
+    return String((raw as {_id?: unknown})._id ?? '');
+  }
+  return '';
+}
+
+function senderProfileOf(m: ApiMessage) {
+  const raw = m.senderId as unknown;
+  return raw && typeof raw === 'object' && '_id' in raw
+    ? (raw as {_id: string; displayName?: string; username?: string; profilePicture?: string})
+    : null;
+}
+
 function apiMsgToLocal(m: ApiMessage, myDbUserId: string, peerId: string): ChatMessage {
-  const isMine = m.senderId._id === myDbUserId || (m.senderId as unknown as string) === myDbUserId;
+  const senderId = senderIdOf(m);
+  const isMine = senderId === myDbUserId;
   const meta = m.meta ?? {};
   const base = {
     id: m._id,
     peerId,
-    senderId: isMine ? (SELF as 'me') : m.senderId._id,
+    senderId: isMine ? (SELF as 'me') : senderId,
     createdAt: new Date(m.createdAt).getTime(),
     delivery: 'read' as MessageDelivery,
     reactions: m.reactions.map(r => ({emoji: r.emoji, count: 1, includesMe: r.userId === myDbUserId})),
@@ -147,11 +166,7 @@ const MessagingContext = createContext<MessagingContextValue | null>(null);
 type Props = {children: ReactNode; myDbUserId: string | null};
 
 export function MessagingProvider({children, myDbUserId}: Props) {
-  const [peers, setPeers] = useState<Record<string, ChatPeer>>(() => {
-    const r: Record<string, ChatPeer> = {};
-    for (const p of USER_DIRECTORY) r[p.id] = {...p};
-    return r;
-  });
+  const [peers, setPeers] = useState<Record<string, ChatPeer>>({});
   const [threadOrder, setThreadOrder] = useState<string[]>([]);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, ChatMessage[]>>({});
   const [lastReadAt, setLastReadAt] = useState<Record<string, number>>({});
@@ -208,6 +223,7 @@ export function MessagingProvider({children, myDbUserId}: Props) {
         prev.includes(peerId) ? [peerId, ...prev.filter(id => id !== peerId)] : [peerId, ...prev],
       );
       setMessagesByPeer(prev => (prev[peerId] ? prev : {...prev, [peerId]: []}));
+      socketService.emit('chat:join', {conversationId: peerId});
 
       // Load messages from API for real conversations
       if (isMongoId(peerId) && myDbUserId && !loadedThreads.current.has(peerId)) {
@@ -265,6 +281,13 @@ export function MessagingProvider({children, myDbUserId}: Props) {
     [myDbUserId],
   );
 
+  const setDelivery = useCallback((peerId: string, messageId: string, delivery: MessageDelivery) => {
+    setMessagesByPeer(prev => ({
+      ...prev,
+      [peerId]: (prev[peerId] ?? []).map(m => m.id === messageId ? {...m, delivery} : m),
+    }));
+  }, []);
+
   const sendMessage = useCallback(
     (peerId: string, msg: ChatMessage) => {
       const t = Date.now();
@@ -274,7 +297,13 @@ export function MessagingProvider({children, myDbUserId}: Props) {
 
       // Persist to API for real conversations
       if (isMongoId(peerId) && myDbUserId) {
-        const apiData: {type: string; text?: string; mediaUrl?: string; meta?: Record<string, unknown>} = {
+        const apiData: {
+          type: string;
+          text?: string;
+          mediaUrl?: string;
+          meta?: Record<string, unknown>;
+          replyToId?: string;
+        } = {
           type: msg.kind,
         };
         if (msg.kind === 'text') apiData.text = msg.text;
@@ -294,12 +323,24 @@ export function MessagingProvider({children, myDbUserId}: Props) {
             authorAvatar: msg.authorAvatar,
           };
         }
-        if (msg.replyToId) apiData.meta = {...(apiData.meta ?? {}), replyToId: msg.replyToId};
+        if (msg.replyToId) {
+          apiData.replyToId = msg.replyToId;
+        }
 
-        apiSendMessage(peerId, apiData).catch(() => {});
+        apiSendMessage(peerId, apiData)
+          .then(({message}) => {
+            const local = apiMsgToLocal(message, myDbUserId, peerId);
+            setMessagesByPeer(prev => ({
+              ...prev,
+              [peerId]: (prev[peerId] ?? []).map(m => (m.id === msg.id ? local : m)),
+            }));
+          })
+          .catch(() => {
+            setDelivery(peerId, msg.id, 'failed');
+          });
       }
     },
-    [myDbUserId],
+    [myDbUserId, setDelivery],
   );
 
   const finalizeOutgoing = useCallback((peerId: string, messageId: string) => {
@@ -308,13 +349,6 @@ export function MessagingProvider({children, myDbUserId}: Props) {
       [peerId]: (prev[peerId] ?? []).map(m =>
         m.id === messageId && m.senderId === SELF ? {...m, delivery: 'read' as const} : m,
       ),
-    }));
-  }, []);
-
-  const setDelivery = useCallback((peerId: string, messageId: string, delivery: MessageDelivery) => {
-    setMessagesByPeer(prev => ({
-      ...prev,
-      [peerId]: (prev[peerId] ?? []).map(m => m.id === messageId ? {...m, delivery} : m),
     }));
   }, []);
 
@@ -367,7 +401,74 @@ export function MessagingProvider({children, myDbUserId}: Props) {
       });
       return {...prev, [peerId]: list};
     });
+    if (isMongoId(messageId)) {
+      apiReactToMessage(messageId, emoji).catch(() => {});
+    }
   }, []);
+
+  const upsertIncomingMessage = useCallback(
+    (conversationId: string, message: ApiMessage) => {
+      if (!myDbUserId) return;
+      const local = apiMsgToLocal(message, myDbUserId, conversationId);
+      const sender = senderProfileOf(message);
+      if (sender && sender._id !== myDbUserId) {
+        setPeers(prev => prev[conversationId] ? prev : {
+          ...prev,
+          [conversationId]: {
+            id: conversationId,
+            userId: sender._id,
+            displayName: sender.displayName ?? sender.username ?? 'User',
+            username: sender.username ?? '',
+            avatar: sender.profilePicture ?? '',
+            label: null,
+            verified: false,
+          },
+        });
+      }
+      setMessagesByPeer(prev => {
+        const list = prev[conversationId] ?? [];
+        const exists = list.some(m => m.id === local.id);
+        const next = exists ? list.map(m => (m.id === local.id ? local : m)) : [...list, local];
+        next.sort((a, b) => a.createdAt - b.createdAt);
+        return {...prev, [conversationId]: next};
+      });
+      setThreadOrder(prev => [conversationId, ...prev.filter(id => id !== conversationId)]);
+      setLastTouched(prev => ({...prev, [conversationId]: local.createdAt}));
+    },
+    [myDbUserId],
+  );
+
+  useEffect(() => {
+    if (!myDbUserId) return;
+    socketService.connect().catch(() => null);
+    const onMessage = ({conversationId, message}: {conversationId: string; message: ApiMessage}) => {
+      upsertIncomingMessage(conversationId, message);
+      queryClient.invalidateQueries({queryKey: ['chat', 'conversations']});
+    };
+    const onRead = ({conversationId, readerId}: {conversationId: string; readerId: string}) => {
+      if (readerId === myDbUserId) {
+        setLastReadAt(prev => ({...prev, [conversationId]: Date.now()}));
+      }
+    };
+    const offMsg = socketService.on('chat:message', onMessage);
+    const offMsgNew = socketService.on('message:new', onMessage);
+    const offUpdated = socketService.on('chat:message_updated', onMessage);
+    const offEdited = socketService.on('message:edited', onMessage);
+    const offUnsent = socketService.on('message:unsent', onMessage);
+    const offReaction = socketService.on('message:reaction', onMessage);
+    const offRead = socketService.on('chat:read', onRead);
+    const offMsgRead = socketService.on('message:read', onRead);
+    return () => {
+      offMsg();
+      offMsgNew();
+      offUpdated();
+      offEdited();
+      offUnsent();
+      offReaction();
+      offRead();
+      offMsgRead();
+    };
+  }, [myDbUserId, upsertIncomingMessage]);
 
   const forwardMessage = useCallback(
     (fromPeerId: string, messageId: string, toPeerId: string) => {

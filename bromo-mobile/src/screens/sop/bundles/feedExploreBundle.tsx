@@ -16,6 +16,7 @@ import {getHashtagPosts, type Post} from '../../../api/postsApi';
 import {useAudioPickerTracks} from '../../../create/useAudioPickerTracks';
 import {parentNavigate} from '../../../navigation/parentNavigate';
 import {ProfileGridMedia} from '../../../components/profile/ProfileGridMedia';
+import {getShareUrl} from '../../../lib/shareUrl';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 
@@ -51,7 +52,7 @@ export function ShareSendScreen() {
   const {dbUser} = useAuth();
   const {openThreadForUser} = useMessaging();
   const {postId} = route.params;
-  const postLink = `https://bromo.app/p/${postId}`;
+  const postLink = getShareUrl({kind: 'post', id: postId});
 
   const [following, setFollowing] = useState<SuggestedUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -186,7 +187,6 @@ export {StoryViewScreen} from '../../StoryViewScreen';
 export function SearchResultsScreen() {
   const route = useRoute<RouteProp<AppStackParamList, 'SearchResults'>>();
   const navigation = useNavigation<Nav>();
-  const {palette} = useTheme();
   const q = route.params.query;
   return (
     <SopChrome title={`“${q}”`}>
@@ -239,7 +239,7 @@ export function HashtagDetailScreen() {
                 if (post.type === 'reel' || post.mediaType === 'video') {
                   parentNavigate(navigation, 'Reels', {initialPostId: post._id});
                 } else {
-                  navigation.navigate('PostDetail', {postId: post._id});
+                  navigation.navigate('PostDetail', {postId: post._id, initialPost: post});
                 }
               }}
               style={{width: '32.8%', aspectRatio: 1, borderRadius: 6, overflow: 'hidden', backgroundColor: palette.input}}>
@@ -253,7 +253,6 @@ export function HashtagDetailScreen() {
 }
 
 export function NearbyPeopleScreen() {
-  const navigation = useNavigation<Nav>();
   const {palette} = useTheme();
   const [rows, setRows] = useState<Array<SuggestedUser & {distanceMeters?: number}>>([]);
   const [loading, setLoading] = useState(true);

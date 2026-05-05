@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {PermissionsAndroid, Platform} from 'react-native';
+import RNCallKeep from 'react-native-callkeep';
 import {
   mediaDevices,
   RTCIceCandidate,
@@ -70,6 +71,9 @@ export function useWebRtcCall(args: UseWebRtcCallArgs) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStreamT | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStreamT | null>(null);
+  const [micMuted, setMicMuted] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(media === 'video');
+  const [cameraEnabled, setCameraEnabled] = useState(media === 'video');
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const callIdRef = useRef<string | null>(
@@ -376,7 +380,53 @@ export function useWebRtcCall(args: UseWebRtcCallArgs) {
     }
     setStatus('ended');
     tearDown();
+    setMicMuted(false);
   }, [tearDown]);
+
+  const toggleMute = useCallback(() => {
+    setMicMuted(prev => {
+      const next = !prev;
+      try {
+        localStream?.getAudioTracks().forEach(t => {
+          t.enabled = !next;
+        });
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, [localStream]);
+
+  const switchCamera = useCallback(() => {
+    try {
+      const track = localStream?.getVideoTracks?.()[0] as ({switchCamera?: () => void; _switchCamera?: () => void} | undefined);
+      if (track?.switchCamera) track.switchCamera();
+      else track?._switchCamera?.();
+    } catch {
+      /* ignore */
+    }
+  }, [localStream]);
+
+  const toggleCamera = useCallback(() => {
+    setCameraEnabled(prev => {
+      const next = !prev;
+      localStream?.getVideoTracks().forEach(track => {
+        track.enabled = next;
+      });
+      return next;
+    });
+  }, [localStream]);
+
+  const toggleSpeaker = useCallback(() => {
+    setSpeakerOn(prev => {
+      const next = !prev;
+      const cid = callIdRef.current;
+      if (cid && Platform.OS === 'android') {
+        RNCallKeep.toggleAudioRouteSpeaker(cid, next);
+      }
+      return next;
+    });
+  }, []);
 
   return useMemo(
     () => ({
@@ -384,10 +434,32 @@ export function useWebRtcCall(args: UseWebRtcCallArgs) {
       errorMessage,
       localStream,
       remoteStream,
+      micMuted,
+      speakerOn,
+      cameraEnabled,
       acceptIncoming,
       rejectIncoming,
       endCall,
+      toggleMute,
+      toggleSpeaker,
+      toggleCamera,
+      switchCamera,
     }),
-    [acceptIncoming, endCall, errorMessage, localStream, rejectIncoming, remoteStream, status],
+    [
+      acceptIncoming,
+      endCall,
+      errorMessage,
+      localStream,
+      cameraEnabled,
+      micMuted,
+      rejectIncoming,
+      remoteStream,
+      speakerOn,
+      status,
+      switchCamera,
+      toggleCamera,
+      toggleMute,
+      toggleSpeaker,
+    ],
   );
 }

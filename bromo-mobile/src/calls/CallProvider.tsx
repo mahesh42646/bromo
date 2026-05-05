@@ -2,6 +2,7 @@ import React, {useEffect, useRef} from 'react';
 import {navigationRef} from '../navigation/rootNavigation';
 import {useAuth} from '../context/AuthContext';
 import {socketService, type CallSocketIncoming} from '../services/socketService';
+import {displayNativeIncomingCall, setupNativeCallBridge} from './nativeCallBridge';
 
 /**
  * Listens for incoming WebRTC call invites and navigates to VoiceCall / VideoCall on the app stack.
@@ -12,12 +13,10 @@ export function CallProvider({children}: {children: React.ReactNode}) {
 
   useEffect(() => {
     if (!dbUser?._id) return;
+    let cancelled = false;
+    let offIncoming: (() => void) | undefined;
 
-    socketService.connect().catch(() => {
-      /* ignore */
-    });
-
-    const off = socketService.on('call:incoming', (payload: CallSocketIncoming) => {
+    const navigateToCall = (payload: CallSocketIncoming) => {
       if (seenRef.current === payload.callId) return;
       seenRef.current = payload.callId;
 
@@ -43,10 +42,25 @@ export function CallProvider({children}: {children: React.ReactNode}) {
           go();
         }, 400);
       }
+    };
+
+    const offNative = setupNativeCallBridge({
+      onAnswer: navigateToCall,
+      onEnd: payload => socketService.emitCallReject({callId: payload.callId}),
+    });
+
+    void socketService.connect().then(() => {
+      if (cancelled) return;
+      offIncoming = socketService.on('call:incoming', payload => {
+        displayNativeIncomingCall(payload);
+        navigateToCall(payload);
+      });
     });
 
     return () => {
-      off();
+      cancelled = true;
+      offIncoming?.();
+      offNative();
     };
   }, [dbUser?._id]);
 

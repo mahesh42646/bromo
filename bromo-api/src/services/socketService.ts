@@ -24,6 +24,20 @@ function sumConversationUnreadForUser(
   return total;
 }
 
+function conversationRoom(conversationId: string): string {
+  return `dm:${conversationId}`;
+}
+
+async function canAccessConversation(conversationId: string, mongoUserId: string): Promise<boolean> {
+  if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(mongoUserId)) return false;
+  const found = await Conversation.exists({
+    _id: conversationId,
+    participants: new mongoose.Types.ObjectId(mongoUserId),
+    isActive: true,
+  });
+  return Boolean(found);
+}
+
 /** Recompute notification badge and push to the user's socket room (Mongo user id). */
 export async function emitNotificationUnreadForUser(recipientMongoId: string): Promise<void> {
   if (!io || !mongoose.Types.ObjectId.isValid(recipientMongoId)) return;
@@ -90,6 +104,12 @@ export function initSocketServer(httpServer: HttpServer): Server {
       socket.join(`user:${mongoId}`);
       void emitNotificationUnreadForUser(mongoId);
       void emitChatUnreadForUser(mongoId);
+      void Conversation.find({participants: new mongoose.Types.ObjectId(mongoId), isActive: true})
+        .select("_id")
+        .lean()
+        .then(rows => rows.forEach(row => socket.join(conversationRoom(String(row._id)))))
+        .catch(() => null);
+      socket.broadcast.emit("presence:online", {userId: mongoId});
     }
 
     if (io) attachCallSignalingHandlers(io, socket, mongoId);
@@ -124,8 +144,29 @@ export function initSocketServer(httpServer: HttpServer): Server {
       io?.to(`live:${streamId}`).emit("live:like", {streamId, userId: firebaseUid});
     });
 
+    socket.on("chat:join", async ({conversationId}: {conversationId?: string}) => {
+      if (!mongoId || !conversationId) return;
+      if (await canAccessConversation(conversationId, mongoId)) {
+        socket.join(conversationRoom(conversationId));
+      }
+    });
+
+    socket.on("typing:start", async ({conversationId}: {conversationId?: string}) => {
+      if (!mongoId || !conversationId) return;
+      if (await canAccessConversation(conversationId, mongoId)) {
+        io?.to(conversationRoom(conversationId)).emit("typing:start", {conversationId, userId: mongoId});
+      }
+    });
+
+    socket.on("typing:stop", async ({conversationId}: {conversationId?: string}) => {
+      if (!mongoId || !conversationId) return;
+      if (await canAccessConversation(conversationId, mongoId)) {
+        io?.to(conversationRoom(conversationId)).emit("typing:stop", {conversationId, userId: mongoId});
+      }
+    });
+
     socket.on("disconnect", () => {
-      // Clean up any live rooms
+      if (mongoId) socket.broadcast.emit("presence:offline", {userId: mongoId});
     });
   });
 
@@ -150,8 +191,10 @@ export function emitPostShare(postId: string, sharesCount: number): void {
 }
 
 export function emitChatMessage(conversationId: string, participantIds: string[], message: object): void {
+  io?.to(conversationRoom(conversationId)).emit("message:new", {conversationId, message});
   for (const participantId of participantIds) {
     io?.to(`user:${participantId}`).emit("chat:message", {conversationId, message});
+    io?.to(`user:${participantId}`).emit("message:new", {conversationId, message});
   }
 }
 
@@ -161,9 +204,34 @@ export function emitChatMessageUpdated(conversationId: string, participantIds: s
   }
 }
 
+export function emitChatMessageEdited(conversationId: string, participantIds: string[], message: object): void {
+  emitChatMessageUpdated(conversationId, participantIds, message);
+  io?.to(conversationRoom(conversationId)).emit("message:edited", {conversationId, message});
+  for (const participantId of participantIds) {
+    io?.to(`user:${participantId}`).emit("message:edited", {conversationId, message});
+  }
+}
+
+export function emitChatMessageUnsent(conversationId: string, participantIds: string[], message: object): void {
+  emitChatMessageUpdated(conversationId, participantIds, message);
+  io?.to(conversationRoom(conversationId)).emit("message:unsent", {conversationId, message});
+  for (const participantId of participantIds) {
+    io?.to(`user:${participantId}`).emit("message:unsent", {conversationId, message});
+  }
+}
+
+export function emitChatReaction(conversationId: string, participantIds: string[], message: object): void {
+  io?.to(conversationRoom(conversationId)).emit("message:reaction", {conversationId, message});
+  for (const participantId of participantIds) {
+    io?.to(`user:${participantId}`).emit("message:reaction", {conversationId, message});
+  }
+}
+
 export function emitChatRead(conversationId: string, participantIds: string[], readerId: string): void {
+  io?.to(conversationRoom(conversationId)).emit("message:read", {conversationId, readerId});
   for (const participantId of participantIds) {
     io?.to(`user:${participantId}`).emit("chat:read", {conversationId, readerId});
+    io?.to(`user:${participantId}`).emit("message:read", {conversationId, readerId});
   }
 }
 

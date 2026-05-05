@@ -58,7 +58,8 @@ export function CreateStackNavigator() {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          animation: 'slide_from_right',
+          animation: 'none',
+          freezeOnBlur: true,
           contentStyle: {backgroundColor: '#000'},
         }}>
         <Stack.Screen name="CreateHub" component={CreateHubScreen} />
@@ -67,19 +68,19 @@ export function CreateStackNavigator() {
         <Stack.Screen
           name="ShareFinal"
           component={ShareScreen}
-          options={{animation: 'slide_from_bottom'}}
+          options={{animation: 'none'}}
         />
         <Stack.Screen name="CameraSettings" component={CameraSettingsScreen} />
         <Stack.Screen
           name="InAppCamera"
           component={InAppCameraScreen}
-          options={{animation: 'fade'}}
+          options={{animation: 'none'}}
         />
         <Stack.Screen name="Drafts" component={DraftsScreen} />
         <Stack.Screen
           name="LivePreview"
           component={LivePreviewScreen}
-          options={{animation: 'slide_from_bottom'}}
+          options={{animation: 'none'}}
         />
         <Stack.Screen name="FilterEffects" component={FilterEffectsScreen} />
         <Stack.Screen name="CloseFriendsPicker" component={CloseFriendsPickerScreen} />

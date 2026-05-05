@@ -24,7 +24,6 @@ import {
   Image as ImageIcon,
   Truck,
   Store,
-  ChevronDown,
   Navigation,
   Check,
   BadgePercent,
@@ -84,7 +83,6 @@ export function CreateStoreScreen() {
   const [minOrderInr, setMinOrderInr] = useState('0');
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [bannerImageUri, setBannerImageUri] = useState<string | null>(null);
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
   useEffect(() => {
     let alive = true;

@@ -2015,9 +2015,10 @@ export function HomeScreen() {
           onEndReachedThreshold={0.2}
           onScroll={event => feedChromeScrollY.setValue(event.nativeEvent.contentOffset.y)}
           scrollEventThrottle={16}
-          initialNumToRender={2}
-          maxToRenderPerBatch={2}
-          windowSize={3}
+          initialNumToRender={4}
+          maxToRenderPerBatch={4}
+          updateCellsBatchingPeriod={80}
+          windowSize={5}
           removeClippedSubviews
           viewabilityConfig={feedViewabilityConfig}
           onViewableItemsChanged={onFeedViewableItemsChanged}

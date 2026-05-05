@@ -36,6 +36,9 @@ export interface UserDoc extends Document {
     rejectionReason?: string;
   };
   fcmTokens: string[];
+  voipTokens: string[];
+  /** iOS PushKit VoIP device token (hex), when registered */
+  voipPushToken?: string;
   blockedUserIds: mongoose.Types.ObjectId[];
   mutedConversationIds: mongoose.Types.ObjectId[];
   rewardPoints: number;
@@ -173,6 +176,8 @@ const userSchema = new Schema<UserDoc>(
       rejectionReason: { type: String, default: "" },
     },
     fcmTokens: [{ type: String }],
+    voipTokens: [{ type: String }],
+    voipPushToken: { type: String, default: "" },
     blockedUserIds: [{ type: Schema.Types.ObjectId, ref: "User", index: true }],
     mutedConversationIds: [{ type: Schema.Types.ObjectId, ref: "Conversation" }],
     rewardPoints: {

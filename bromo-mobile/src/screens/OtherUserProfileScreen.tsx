@@ -21,6 +21,7 @@ import type {AppStackParamList} from '../navigation/appStackParamList';
 import {
   blockUser,
   getUserMutuals,
+  getUserProfileByUsername,
   getUserProfile,
   followUser,
   removeFollower,
@@ -34,7 +35,9 @@ import {getUserGridStats, getUserPosts, type Post, type UserGridStats} from '../
 import {useMessaging} from '../messaging/MessagingContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {ProfileGridMedia} from '../components/profile/ProfileGridMedia';
+import {BromoImage} from '../components/ui/BromoImage';
 import {peekAuthorSnapshot} from '../lib/authorSessionCache';
+import {getShareUrl} from '../lib/shareUrl';
 import {
   getOtherUserProfileBundle,
   invalidateOtherUserProfile,
@@ -73,16 +76,20 @@ function profileFromAuthorPeek(userId: string): UserProfile | null {
 export function OtherUserProfileScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const {userId} = route.params;
+  const routeUserId = route.params.userId;
+  const routeUsername = route.params.username;
   const {palette, guidelines} = useTheme();
   const {dbUser} = useAuth();
   const {openThreadForUser} = useMessaging();
   const {borderRadiusScale} = guidelines;
   const btnR = borderRadiusScale === 'bold' ? 999 : 8;
-  const isSelf = dbUser?._id === userId;
+  const [resolvedUserId, setResolvedUserId] = useState(routeUserId ?? '');
+  const userId = resolvedUserId || routeUserId || '';
+  const profileKey = routeUserId ?? routeUsername ?? '';
+  const isSelf = Boolean(userId && dbUser?._id === userId);
   const [startingChat, setStartingChat] = useState(false);
 
-  const [profile, setProfile] = useState<UserProfile | null>(() => profileFromAuthorPeek(userId));
+  const [profile, setProfile] = useState<UserProfile | null>(() => routeUserId ? profileFromAuthorPeek(routeUserId) : null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingPosts, setLoadingPosts] = useState(false);
@@ -98,7 +105,7 @@ export function OtherUserProfileScreen() {
     const sub = DeviceEventEmitter.addListener(
       'bromo:followChanged',
       ({userId: changedUserId, following, requested}: {userId: string; following: boolean; requested?: boolean}) => {
-        if (String(changedUserId) !== String(userId)) return;
+      if (!userId || String(changedUserId) !== String(userId)) return;
         const next: 'none' | 'following' | 'requested' = requested ? 'requested' : following ? 'following' : 'none';
         setFollowStatus(next);
         setProfile(p => p ? {
@@ -117,6 +124,7 @@ export function OtherUserProfileScreen() {
       return;
     }
     let live = true;
+    if (!userId) return;
     getUserMutuals(userId, 3)
       .then(res => {
         if (live) setMutuals(res);
@@ -130,7 +138,7 @@ export function OtherUserProfileScreen() {
   }, [isSelf, userId]);
 
   const openChat = useCallback(async () => {
-    if (!profile) return;
+    if (!profile || !userId) return;
     setStartingChat(true);
     try {
       const convId = await openThreadForUser(
@@ -152,8 +160,9 @@ export function OtherUserProfileScreen() {
 
   const fetchProfilePage = useCallback(
     async (forceNetwork: boolean) => {
-      if (!forceNetwork) {
-        const b = getOtherUserProfileBundle(userId);
+    if (!profileKey) return;
+    if (!forceNetwork && userId) {
+      const b = getOtherUserProfileBundle(userId);
         if (b) {
           setProfile(b.profile);
           setFollowStatus(b.profile.followStatus ?? 'none');
@@ -163,10 +172,17 @@ export function OtherUserProfileScreen() {
         }
       }
 
+      const profilePromise = routeUserId
+        ? getUserProfile(routeUserId)
+        : getUserProfileByUsername(routeUsername ?? '');
+      const profileRes = await profilePromise;
+      const canonicalUserId = profileRes.user._id;
+      setResolvedUserId(canonicalUserId);
+
       const [res, gridRes, postsRes] = await Promise.allSettled([
-        getUserProfile(userId),
-        getUserGridStats(userId),
-        getUserPosts(userId, 'post', 1),
+        Promise.resolve(profileRes),
+        getUserGridStats(canonicalUserId),
+        getUserPosts(canonicalUserId, 'post', 1),
       ]);
 
       let prof: UserProfile | null = null;
@@ -191,14 +207,15 @@ export function OtherUserProfileScreen() {
       }
 
       if (prof) {
-        rememberOtherUserProfileBundle(userId, {profile: prof, gridStats: grid, posts: plist});
+        rememberOtherUserProfileBundle(prof._id, {profile: prof, gridStats: grid, posts: plist});
       }
     },
-    [userId],
+    [profileKey, routeUserId, routeUsername, userId],
   );
 
   useEffect(() => {
-    setProfile(profileFromAuthorPeek(userId));
+    setResolvedUserId(routeUserId ?? '');
+    setProfile(routeUserId ? profileFromAuthorPeek(routeUserId) : null);
     setPosts([]);
     setGridStats(null);
     setFollowStatus('none');
@@ -211,10 +228,10 @@ export function OtherUserProfileScreen() {
         setLoading(false);
         setLoadingPosts(false);
       });
-  }, [fetchProfilePage, userId]);
+  }, [fetchProfilePage, routeUserId, profileKey]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || !userId) return;
     setLoadingPosts(true);
     getUserPosts(userId, gridTab === 'reels' ? 'reel' : 'post', 1)
       .then(res => setPosts(res.posts))
@@ -223,6 +240,7 @@ export function OtherUserProfileScreen() {
   }, [gridTab, loading, userId]);
 
   const onRefresh = useCallback(async () => {
+    if (!userId) return;
     invalidateOtherUserProfile(userId);
     setRefreshing(true);
     setLoadingPosts(true);
@@ -235,6 +253,7 @@ export function OtherUserProfileScreen() {
   }, [fetchProfilePage, userId]);
 
   const handleFollow = async () => {
+    if (!userId) return;
     try {
       if (followStatus === 'requested') return;
       const res = await followUser(userId, {kind: 'profile', refId: userId});
@@ -250,6 +269,7 @@ export function OtherUserProfileScreen() {
   };
 
   const handleUnfollow = async () => {
+    if (!userId) return;
     try {
       await unfollowUser(userId);
       setFollowStatus('none');
@@ -263,6 +283,7 @@ export function OtherUserProfileScreen() {
   };
 
   const handleRemoveFollower = async () => {
+    if (!userId) return;
     try {
       await removeFollower(userId);
       setProfile(p => p ? {
@@ -275,6 +296,7 @@ export function OtherUserProfileScreen() {
   };
 
   const handleBlock = async () => {
+    if (!userId) return;
     try {
       if (blockedByMe) {
         await unblockUser(userId);
@@ -289,6 +311,7 @@ export function OtherUserProfileScreen() {
   };
 
   const handleReport = async () => {
+    if (!userId) return;
     try {
       await reportUser(userId, 'profile');
       setMoreOpen(false);
@@ -297,10 +320,11 @@ export function OtherUserProfileScreen() {
 
   const handleShareProfile = async () => {
     if (!profile) return;
+    const profileUrl = getShareUrl({kind: 'profile', id: profile.username});
     setMoreOpen(false);
     await Share.share({
-      message: `https://bromo.app/@${profile.username}`,
-      url: `https://bromo.app/@${profile.username}`,
+      message: profileUrl,
+      url: profileUrl,
     }).catch(() => null);
   };
 
@@ -355,8 +379,8 @@ export function OtherUserProfileScreen() {
         {/* Profile info */}
         <View style={{padding: 16}}>
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 16}}>
-            <Image
-              source={{uri: avatarUri}}
+            <BromoImage
+              uri={avatarUri}
               style={{width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: palette.primary}}
             />
             <View style={{flex: 1, flexDirection: 'row', justifyContent: 'space-around'}}>
@@ -490,7 +514,7 @@ export function OtherUserProfileScreen() {
             {posts.map(post => (
               <Pressable
                 key={post._id}
-                onPress={() => navigation.navigate('PostDetail', {postId: post._id})}
+                onPress={() => navigation.navigate('PostDetail', {postId: post._id, initialPost: post})}
                 style={{width: colWidth, aspectRatio: 1, padding: 1}}>
                 <ProfileGridMedia post={post} style={{width: '100%', height: '100%'}} />
                 {post.mediaType === 'video' ? (

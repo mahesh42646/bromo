@@ -58,6 +58,7 @@ import { storeRouter } from "./routes/storeRoutes.js";
 import { dashboardOverviewRouter } from "./routes/dashboardOverview.js";
 import { callsRouter } from "./routes/calls.js";
 import { contentRouter } from "./routes/content.js";
+import { mountShareLanding } from "./routes/shareLanding.js";
 import { startPromotionBillingWorker } from "./workers/promotionBillingWorker.js";
 import { startScheduledPostWorker } from "./workers/scheduledPostWorker.js";
 import { startAudioRemuxWorker } from "./workers/audioRemuxWorker.js";
@@ -176,6 +177,8 @@ export function createApp() {
   app.use("/dashboard", dashboardOverviewRouter);
   app.use("/calls", callsRouter);
   app.use("/content", contentRouter);
+
+  mountShareLanding(app);
 
   app.use((_req, res) => {
     res.status(404).json({ message: "Not found" });

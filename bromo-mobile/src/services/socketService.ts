@@ -6,6 +6,7 @@ import {io, type Socket} from 'socket.io-client';
 import {getAuth} from '@react-native-firebase/auth';
 import {apiBase, getIdToken} from '../api/authApi';
 import type {Post} from '../api/postsApi';
+import type {ApiMessage} from '../api/chatApi';
 
 export type CallSocketIncoming = {
   callId: string;
@@ -25,6 +26,18 @@ type SocketEvents = {
   'notification:unread': (data: {count: number}) => void;
   /** Total unread across all DM conversations for the current user. */
   'chat:unread': (data: {total: number}) => void;
+  'chat:message': (data: {conversationId: string; message: ApiMessage}) => void;
+  'chat:message_updated': (data: {conversationId: string; message: ApiMessage}) => void;
+  'chat:read': (data: {conversationId: string; readerId: string}) => void;
+  'message:new': (data: {conversationId: string; message: ApiMessage}) => void;
+  'message:edited': (data: {conversationId: string; message: ApiMessage}) => void;
+  'message:unsent': (data: {conversationId: string; message: ApiMessage}) => void;
+  'message:reaction': (data: {conversationId: string; message: ApiMessage}) => void;
+  'message:read': (data: {conversationId: string; readerId: string}) => void;
+  'typing:start': (data: {conversationId: string; userId: string}) => void;
+  'typing:stop': (data: {conversationId: string; userId: string}) => void;
+  'presence:online': (data: {userId: string}) => void;
+  'presence:offline': (data: {userId: string}) => void;
   'story:new': (data: {authorId: string}) => void;
   'story:delete': (data: {authorId: string; storyPostId: string}) => void;
   'live:start': (data: {streamId: string; userId: string; title: string; viewerCount: number}) => void;
@@ -52,12 +65,23 @@ type SocketEvents = {
 
 class SocketService {
   private socket: Socket | null = null;
+  private connectPromise: Promise<void> | null = null;
+  private listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+  private pendingEmits: Array<{event: string; data?: unknown}> = [];
   private lastErrLogAt = 0;
   private lastErrMsg = '';
 
   async connect(): Promise<void> {
     if (this.socket?.connected) return;
+    if (this.connectPromise) return this.connectPromise;
 
+    this.connectPromise = this.connectInternal().finally(() => {
+      this.connectPromise = null;
+    });
+    return this.connectPromise;
+  }
+
+  private async connectInternal(): Promise<void> {
     const user = getAuth().currentUser;
     if (!user) return;
 
@@ -69,6 +93,8 @@ class SocketService {
     }
 
     const base = apiBase();
+    this.socket?.removeAllListeners();
+    this.socket?.disconnect();
     this.socket = io(base, {
       auth: {token},
       // Polling first: many reverse proxies break immediate WebSocket handshakes; upgrade when possible.
@@ -84,6 +110,8 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('[Socket] Connected:', this.socket?.id);
+      const q = this.pendingEmits.splice(0);
+      q.forEach(item => this.socket?.emit(item.event, item.data));
     });
 
     this.socket.on('disconnect', reason => {
@@ -99,36 +127,64 @@ class SocketService {
         console.warn('[Socket] Connect error:', msg);
       }
     });
+    this.attachListeners();
+  }
+
+  private attachListeners(): void {
+    if (!this.socket) return;
+    for (const [event, handlers] of this.listeners) {
+      for (const handler of handlers) {
+        this.socket.on(event, handler);
+      }
+    }
   }
 
   disconnect(): void {
     this.socket?.disconnect();
     this.socket = null;
+    this.pendingEmits = [];
   }
 
   on<K extends keyof SocketEvents>(event: K, handler: SocketEvents[K]): () => void {
-    this.socket?.on(event as string, handler as (...args: unknown[]) => void);
-    return () => this.socket?.off(event as string, handler as (...args: unknown[]) => void);
+    const eventName = event as string;
+    const cb = handler as (...args: unknown[]) => void;
+    const set = this.listeners.get(eventName) ?? new Set<(...args: unknown[]) => void>();
+    set.add(cb);
+    this.listeners.set(eventName, set);
+    this.socket?.on(eventName, cb);
+    return () => {
+      this.listeners.get(eventName)?.delete(cb);
+      this.socket?.off(eventName, cb);
+    };
   }
 
   emit(event: string, data?: unknown): void {
-    this.socket?.emit(event, data);
+    if (this.socket?.connected) {
+      this.socket.emit(event, data);
+      return;
+    }
+    this.pendingEmits.push({event, data});
+    this.connect().catch(() => null);
+  }
+
+  emitTyping(conversationId: string, typing: boolean): void {
+    this.emit(typing ? 'typing:start' : 'typing:stop', {conversationId});
   }
 
   joinLive(streamId: string): void {
-    this.socket?.emit('live:join', {streamId});
+    this.emit('live:join', {streamId});
   }
 
   leaveLive(streamId: string): void {
-    this.socket?.emit('live:leave', {streamId});
+    this.emit('live:leave', {streamId});
   }
 
   sendLiveComment(streamId: string, text: string): void {
-    this.socket?.emit('live:send_comment', {streamId, text});
+    this.emit('live:send_comment', {streamId, text});
   }
 
   sendLiveLike(streamId: string): void {
-    this.socket?.emit('live:send_like', {streamId});
+    this.emit('live:send_like', {streamId});
   }
 
   emitCallInvite(payload: {
@@ -137,19 +193,19 @@ class SocketService {
     callType: 'audio' | 'video';
     callerName?: string;
   }): void {
-    this.socket?.emit('call:invite', payload);
+    this.emit('call:invite', payload);
   }
 
   emitCallAccept(payload: {callId: string}): void {
-    this.socket?.emit('call:accept', payload);
+    this.emit('call:accept', payload);
   }
 
   emitCallReject(payload: {callId: string}): void {
-    this.socket?.emit('call:reject', payload);
+    this.emit('call:reject', payload);
   }
 
   emitCallEnd(payload: {callId: string}): void {
-    this.socket?.emit('call:end', payload);
+    this.emit('call:end', payload);
   }
 
   emitCallSdp(payload: {
@@ -158,7 +214,7 @@ class SocketService {
     sdp: string;
     sdpType: 'offer' | 'answer';
   }): void {
-    this.socket?.emit('call:sdp', payload);
+    this.emit('call:sdp', payload);
   }
 
   emitCallIce(payload: {
@@ -166,7 +222,7 @@ class SocketService {
     callId: string;
     candidate: Record<string, unknown>;
   }): void {
-    this.socket?.emit('call:ice', payload);
+    this.emit('call:ice', payload);
   }
 
   isConnected(): boolean {

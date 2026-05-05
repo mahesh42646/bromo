@@ -6,20 +6,19 @@ import {
   Text,
   View,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
 import {Copy, Link2, Share2} from 'lucide-react-native';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {Screen} from '../components/ui/Screen';
+import {getShareUrl} from '../lib/shareUrl';
 
 export function ShareProfileScreen() {
-  const navigation = useNavigation();
   const {palette, guidelines} = useTheme();
   const {dbUser} = useAuth();
   const {borderRadiusScale} = guidelines;
   const btnR = borderRadiusScale === 'bold' ? 999 : 10;
 
-  const profileUrl = `https://bromo.app/@${dbUser?.username ?? ''}`;
+  const profileUrl = dbUser?.username ? getShareUrl({kind: 'profile', id: dbUser.username}) : '';
 
   const copyLink = useCallback(() => {
     Share.share({message: profileUrl})

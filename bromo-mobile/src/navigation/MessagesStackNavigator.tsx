@@ -17,7 +17,8 @@ export function MessagesStackNavigator() {
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        animation: 'slide_from_right',
+        animation: 'none',
+        freezeOnBlur: true,
         contentStyle: {backgroundColor: '#000'},
       }}>
       <Stack.Screen name="ChatList" component={ChatListScreen} />

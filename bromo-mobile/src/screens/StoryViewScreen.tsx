@@ -108,7 +108,7 @@ export function StoryViewScreen() {
   const {dbUser} = useAuth();
   const {openThreadForUser} = useMessaging();
   const insets = useSafeAreaInsets();
-  const {userId} = route.params;
+  const {userId, storyId} = route.params;
 
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<StoryGroup[]>([]);
@@ -219,10 +219,21 @@ export function StoryViewScreen() {
   useEffect(() => {
     if (groups.length === 0 || groupsInitialized.current) return;
     groupsInitialized.current = true;
-    const i = groups.findIndex(g => g.author._id === userId || g.author.username === userId);
-    setGroupIdx(Math.max(0, i));
+    if (storyId) {
+      const groupIndex = groups.findIndex(g => g.stories.some(story => story._id === storyId));
+      if (groupIndex >= 0) {
+        setGroupIdx(groupIndex);
+        const nextStoryIndex = groups[groupIndex]?.stories.findIndex(story => story._id === storyId) ?? 0;
+        setStoryIdx(Math.max(0, nextStoryIndex));
+        return;
+      }
+    }
+    if (userId) {
+      const i = groups.findIndex(g => g.author._id === userId || g.author.username === userId);
+      setGroupIdx(Math.max(0, i));
+    }
     setStoryIdx(0);
-  }, [groups, userId]);
+  }, [groups, storyId, userId]);
 
   const group = groups[groupIdx];
   const stories = group?.stories ?? [];
@@ -431,7 +442,7 @@ export function StoryViewScreen() {
     mediaTx.value = 0;
     mediaTy.value = 0;
     pinchBase.value = 1;
-  }, [current?._id]);
+  }, [current?._id, mediaScale, mediaTx, mediaTy, pinchBase]);
 
   const pinchGesture = Gesture.Pinch()
     .onBegin(() => {

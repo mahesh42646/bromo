@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Modal,
   Pressable,
   StatusBar,
@@ -20,12 +19,12 @@ import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {parentNavigate} from '../navigation/parentNavigate';
 import {RefreshableScrollView, Screen} from '../components/ui';
+import {BromoImage} from '../components/ui/BromoImage';
 import {ActionSheet} from '../components/ui/ActionSheet';
 import {ThemedConfirmModal} from '../components/ui/ThemedConfirmModal';
 import type {AppStackParamList} from '../navigation/appStackParamList';
 import {
   deletePost,
-  getPost,
   recordShare,
   reportPost,
   resolveVideoUrl,
@@ -42,6 +41,8 @@ import {PostVideoWithClientMeta} from '../components/media/PostVideoWithClientMe
 import {resolveMediaUrl} from '../lib/resolveMediaUrl';
 import {postThumbnailUri} from '../lib/postMediaDisplay';
 import {getAudioPlaybackFromMeta} from '../create/editMetaTypes';
+import {usePost} from '../hooks/queries/usePost';
+import {findCachedPost, primePostCache} from '../lib/queryClient';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
 type Route = RouteProp<AppStackParamList, 'PostDetail'>;
@@ -69,14 +70,16 @@ function clampAspectRatio(value: unknown, fallback = 1): number {
 export function PostDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const {postId} = route.params;
+  const {postId, initialPost} = route.params;
   const {width: windowWidth} = useWindowDimensions();
   const {palette, guidelines} = useTheme();
   const {dbUser} = useAuth();
   const {borderRadiusScale} = guidelines;
 
-  const [post, setPost] = useState<Post | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cachedPost = initialPost ?? findCachedPost(postId) ?? null;
+  const postQuery = usePost(postId, cachedPost);
+  const [post, setPost] = useState<Post | null>(cachedPost);
+  const [loading, setLoading] = useState(!cachedPost);
   const [bookmarked, setBookmarked] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [videoMuted, setVideoMuted] = useState(true);
@@ -86,20 +89,29 @@ export function PostDetailScreen() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const loadPost = useCallback(async () => {
-    await getPost(postId)
+    await postQuery
+      .refetch()
       .then(res => {
-        setPost(res.post);
-        setBookmarked(Boolean(res.post.isSaved));
+        if (!res.data) return;
+        primePostCache(res.data);
+        setPost(res.data);
+        setBookmarked(Boolean(res.data.isSaved));
       })
       .catch(err => {
         console.error('[PostDetail] getPost failed', postId, err);
       })
       .finally(() => setLoading(false));
-  }, [postId]);
+  }, [postId, postQuery]);
 
   useEffect(() => {
-    void loadPost();
-  }, [loadPost]);
+    if (postQuery.data) {
+      setPost(postQuery.data);
+      setBookmarked(Boolean(postQuery.data.isSaved));
+      setLoading(false);
+    } else if (!cachedPost) {
+      void loadPost();
+    }
+  }, [cachedPost, loadPost, postQuery.data]);
 
   const handleLike = useCallback(() => {
     if (!post) return;
@@ -277,7 +289,7 @@ export function PostDetailScreen() {
         <Pressable
           onPress={() => navigation.navigate('OtherUserProfile', {userId: post.author._id})}
           style={{flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10}}>
-          <Image source={{uri: avatarUri}} style={{width: 40, height: 40, borderRadius: 20}} />
+          <BromoImage uri={avatarUri} style={{width: 40, height: 40, borderRadius: 20}} />
           <View style={{flex: 1}}>
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 5}}>
               <Text style={{color: palette.foreground, fontWeight: '700', fontSize: 14}}>{post.author.displayName}</Text>
@@ -306,8 +318,8 @@ export function PostDetailScreen() {
               }}
               renderItem={({item}) => (
                 <View style={{width: mediaWidth, aspectRatio: mediaAspect, alignItems: 'center', justifyContent: 'center'}}>
-                  <Image
-                    source={{uri: resolveMediaUrl(item.thumbnailUrl || item.mediaUrl)}}
+                  <BromoImage
+                    uri={item.thumbnailUrl || item.mediaUrl}
                     style={{width: '100%', height: '100%'}}
                     resizeMode="contain"
                   />
@@ -381,8 +393,8 @@ export function PostDetailScreen() {
           </View>
         ) : (
           <View style={{width: '100%', aspectRatio: mediaAspect, position: 'relative', backgroundColor: '#000'}}>
-            <Image
-              source={{uri: resolveMediaUrl(post.mediaUrl)}}
+            <BromoImage
+              uri={post.mediaUrl}
               style={{width: '100%', height: '100%'}}
               resizeMode="contain"
             />

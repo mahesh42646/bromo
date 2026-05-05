@@ -30,6 +30,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.877911020224-4cuqme08t2r15dn3p8kun0pucrbeqdec</string>
+				<string>bromo</string>
 			</array>
 		</dict>
 	</array>

@@ -19,10 +19,10 @@ export type AppStackParamList = {
   Profile: {openSettings?: boolean} | undefined;
 
   CategoryFeed: {categoryId: string};
-  PostDetail: {postId: string};
+  PostDetail: {postId: string; initialPost?: import('../api/postsApi').Post};
   Comments: {postId: string};
   ShareSend: {postId: string};
-  StoryView: {userId: string};
+  StoryView: {userId?: string; storyId?: string};
   SearchResults: {query: string};
   HashtagDetail: {tag: string};
   NearbyPeople: undefined;
@@ -80,7 +80,7 @@ export type AppStackParamList = {
   AdEarnings: undefined;
 
   EditProfile: undefined;
-  OtherUserProfile: {userId: string};
+  OtherUserProfile: {userId?: string; username?: string};
   ShareProfile: undefined;
   FollowersFollowing: {tab: 'followers' | 'following'; userId: string};
   PointsWallet: undefined;

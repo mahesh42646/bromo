@@ -10,7 +10,6 @@ import {
   PanResponder,
   Platform,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   View,

@@ -850,7 +850,7 @@ export function ProfileScreen() {
             {userPosts.map(post => (
               <Pressable
                 key={post._id}
-                onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id})}
+                onPress={() => parentNavigate(navigation, 'PostDetail', {postId: post._id, initialPost: post})}
                 style={styles.gridTile}>
                 <View style={styles.gridTileMain}>
                   <ProfileGridMedia post={post} style={styles.gridImg} />

@@ -2,6 +2,7 @@ export {ActionSheet, type ActionSheetOption, type ActionSheetProps} from './Acti
 export {BrandHeader} from './BrandHeader';
 export {CoinEarnToast, type CoinEarnToastProps} from './CoinEarnToast';
 export {RefreshableFlatList} from './RefreshableFlatList';
+export {BromoImage} from './BromoImage';
 export {RefreshableScrollView} from './RefreshableScrollView';
 export {Screen, type ScreenProps} from './Screen';
 export {ScreenHeader, SCREEN_HEADER_HEIGHT, type ScreenHeaderProps} from './ScreenHeader';

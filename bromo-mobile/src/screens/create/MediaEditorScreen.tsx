@@ -756,7 +756,7 @@ export function MediaEditorScreen() {
     );
   }
 
-  const renderPreviewCanvas = useCallback((
+  const renderPreviewCanvas = (
     item: typeof cur,
     isActive: boolean,
     extras: {
@@ -874,72 +874,39 @@ export function MediaEditorScreen() {
         </Pressable>
       ) : null}
     </View>
-  ), [
-    previewW,
-    previewHeight,
-    palette,
-    draft.playbackSpeed,
-    draft.textOverlays,
-    draft.stickers,
-    draft.selectedAudio,
-    draft.audioStartOffsetMs,
-    draft.loopVideoToAudio,
-    previewPaused,
-    previewMuted,
-    previewResize,
-    setVideoDurationSec,
-    setPreviewTimeSec,
-    markPreviewGateDone,
-    updateTextOverlay,
-    removeTextOverlay,
-    styles,
-  ]);
-
-  const renderCarouselItem = useCallback(
-    ({item, index}: ListRenderItemInfo<(typeof assets)[0]>) => {
-      const f = (draft.filterByAsset[index] ?? 'normal') as FilterId;
-      const r = draft.rotationByAsset[index] ?? 0;
-      const adj = draft.adjustByAsset[index] ?? {
-        ...DEFAULT_ADJUSTMENTS,
-      };
-      const ts = draft.trimStartByAsset[index] ?? 0;
-      const te = draft.trimEndByAsset[index] ?? 1;
-      const ao = adjustOverlayStyle(adj);
-      const wO = warmthOverlayStyle(adj);
-      const sO = saturationOverlayStyle(adj);
-      const vO = vignetteOverlayStyle(adj);
-      return (
-        <View
-          style={[
-            {alignItems: 'center', justifyContent: 'center'},
-            {width: viewportW, height: previewHeight},
-          ]}>
-          {renderPreviewCanvas(item, index === i, {
-            f,
-            r,
-            adjOverlay: ao,
-            wOv: wO,
-            sOv: sO,
-            vOv: vO,
-            ts,
-            te,
-          })}
-        </View>
-      );
-    },
-    [
-      assets,
-      draft.filterByAsset,
-      draft.rotationByAsset,
-      draft.adjustByAsset,
-      draft.trimStartByAsset,
-      draft.trimEndByAsset,
-      i,
-      viewportW,
-      previewHeight,
-      renderPreviewCanvas,
-    ],
   );
+
+  const renderCarouselItem = ({item, index}: ListRenderItemInfo<(typeof assets)[0]>) => {
+    const f = (draft.filterByAsset[index] ?? 'normal') as FilterId;
+    const r = draft.rotationByAsset[index] ?? 0;
+    const adj = draft.adjustByAsset[index] ?? {
+      ...DEFAULT_ADJUSTMENTS,
+    };
+    const ts = draft.trimStartByAsset[index] ?? 0;
+    const te = draft.trimEndByAsset[index] ?? 1;
+    const ao = adjustOverlayStyle(adj);
+    const wO = warmthOverlayStyle(adj);
+    const sO = saturationOverlayStyle(adj);
+    const vO = vignetteOverlayStyle(adj);
+    return (
+      <View
+        style={[
+          {alignItems: 'center', justifyContent: 'center'},
+          {width: viewportW, height: previewHeight},
+        ]}>
+        {renderPreviewCanvas(item, index === i, {
+          f,
+          r,
+          adjOverlay: ao,
+          wOv: wO,
+          sOv: sO,
+          vOv: vO,
+          ts,
+          te,
+        })}
+      </View>
+    );
+  };
 
   return (
     <ThemedSafeScreen style={styles.dark}>

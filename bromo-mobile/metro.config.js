@@ -32,6 +32,15 @@ function dedupeReactNativeResolver(context, moduleName, platform) {
 }
 
 let config = mergeConfig(base, {
+  transformer: {
+    ...base.transformer,
+    getTransformOptions: async () => ({
+      transform: {
+        experimentalImportSupport: false,
+        inlineRequires: true,
+      },
+    }),
+  },
   watchFolders: [monorepoRoot],
   resolver: {
     unstable_enableSymlinks: true,

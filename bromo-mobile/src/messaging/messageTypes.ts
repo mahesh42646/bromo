@@ -1,6 +1,6 @@
 export type UserLabelId = 'bff' | 'friend' | 'brother' | 'sister' | 'family' | 'work' | null;
 
-export type MessageDelivery = 'sending' | 'sent' | 'delivered' | 'read';
+export type MessageDelivery = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export type ChatPeer = {
   id: string;

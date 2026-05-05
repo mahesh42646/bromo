@@ -7,7 +7,6 @@ import type {RouteProp} from '@react-navigation/native';
 import {BarChart2, Eye, Heart, MessageCircle, Send, TrendingUp} from 'lucide-react-native';
 import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
-import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {ThemedSafeScreen} from '../../../components/ui/ThemedSafeScreen';
 import {SopChrome, SopMeta, SopRow} from '../ui/SopChrome';
 import {getNotifications, markAllRead, markRead, type AppNotification} from '../../../api/notificationsApi';
@@ -87,7 +86,7 @@ export function SavedPostsScreen() {
                 if (post.type === 'reel' || post.mediaType === 'video') {
                   parentNavigate(navigation, 'Reels', {initialPostId: post._id});
                 } else {
-                  navigation.navigate('PostDetail', {postId: post._id});
+                  navigation.navigate('PostDetail', {postId: post._id, initialPost: post});
                 }
               }}
               style={{width: '32.8%', aspectRatio: 1, borderRadius: 6, overflow: 'hidden', backgroundColor: palette.input}}>

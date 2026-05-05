@@ -9,7 +9,13 @@ const Stack = createNativeStackNavigator<BootstrapParamList>();
 
 export function BootstrapNavigator() {
   return (
-    <Stack.Navigator screenOptions={{headerShown: false}} initialRouteName="Splash">
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: 'none',
+        freezeOnBlur: true,
+      }}
+      initialRouteName="Splash">
       <Stack.Screen name="Splash" component={SplashScreen} />
       <Stack.Screen name="Auth" component={AuthNavigator} />
       <Stack.Screen name="App" component={MainAppNavigator} />

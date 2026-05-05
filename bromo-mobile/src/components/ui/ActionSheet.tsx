@@ -3,7 +3,6 @@ import {
   Modal,
   Pressable,
   Text,
-  View,
   useWindowDimensions,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';

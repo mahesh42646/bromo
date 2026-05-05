@@ -1,9 +1,7 @@
 import React from 'react';
-import {Alert, Image, Text, View} from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import {useTheme} from '../../../context/ThemeContext';
 import type {AppStackParamList} from '../../../navigation/appStackParamList';
 import {PrimaryButton} from '../../../components/ui/PrimaryButton';
 import {Stepper} from '../../../components/ui/Stepper';
@@ -13,7 +11,6 @@ type Nav = NativeStackNavigationProp<AppStackParamList>;
 
 export function StoreNearbyHomeScreen() {
   const navigation = useNavigation<Nav>();
-  const {palette} = useTheme();
   return (
     <SopChrome title="Nearby stores · ~3KM">
       <SopMeta label="Map/list toggle, filters, sort by distance or offer strength." />
@@ -51,7 +48,6 @@ export function StoreDiscountScreen() {
 }
 
 export function OfferRedemptionScreen() {
-  const route = useRoute<RouteProp<AppStackParamList, 'OfferRedemption'>>();
   const navigation = useNavigation<Nav>();
   return (
     <SopChrome title="Checkout">

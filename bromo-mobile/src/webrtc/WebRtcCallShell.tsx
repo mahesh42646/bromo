@@ -2,7 +2,7 @@ import React, {useEffect} from 'react';
 import {ActivityIndicator, Pressable, Text, View} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {Phone, Video as VideoIcon, X} from 'lucide-react-native';
+import {Camera, Mic, MicOff, Phone, RefreshCw, Video as VideoIcon, VideoOff, Volume2, VolumeX, X} from 'lucide-react-native';
 import {RTCView} from 'react-native-webrtc';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
@@ -152,11 +152,66 @@ function WebRtcCallShellReady({media, remoteUserId, peerName, direction, callId,
             />
           </View>
         ) : (
-          <PrimaryButton
-            label="End call"
-            variant="outline"
-            onPress={() => call.endCall()}
-          />
+          <>
+            {call.status === 'active' || call.status === 'connecting' ? (
+              <View style={{flexDirection: 'row', justifyContent: 'center', gap: 20, marginBottom: 8}}>
+                <Pressable
+                  onPress={() => call.toggleMute()}
+                  hitSlop={12}
+                  style={{alignItems: 'center', gap: 6}}
+                  accessibilityLabel={call.micMuted ? 'Unmute' : 'Mute'}>
+                  {call.micMuted ? (
+                    <MicOff size={28} color={palette.foregroundMuted} />
+                  ) : (
+                    <Mic size={28} color={palette.primary} />
+                  )}
+                  <Text style={{color: palette.mutedForeground, fontSize: 11}}>Mute</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => call.toggleSpeaker()}
+                  hitSlop={12}
+                  style={{alignItems: 'center', gap: 6}}
+                  accessibilityLabel={call.speakerOn ? 'Speaker off' : 'Speaker on'}>
+                  {call.speakerOn ? (
+                    <Volume2 size={28} color={palette.primary} />
+                  ) : (
+                    <VolumeX size={28} color={palette.foregroundMuted} />
+                  )}
+                  <Text style={{color: palette.mutedForeground, fontSize: 11}}>Speaker</Text>
+                </Pressable>
+                {media === 'video' ? (
+                  <>
+                    <Pressable
+                      onPress={() => call.toggleCamera()}
+                      hitSlop={12}
+                      style={{alignItems: 'center', gap: 6}}
+                      accessibilityLabel={call.cameraEnabled ? 'Camera off' : 'Camera on'}>
+                      {call.cameraEnabled ? (
+                        <Camera size={28} color={palette.primary} />
+                      ) : (
+                        <VideoOff size={28} color={palette.foregroundMuted} />
+                      )}
+                      <Text style={{color: palette.mutedForeground, fontSize: 11}}>Camera</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => call.switchCamera()}
+                      hitSlop={12}
+                      style={{alignItems: 'center', gap: 6}}
+                      accessibilityLabel="Flip camera">
+                      <RefreshCw size={28} color={palette.foregroundMuted} />
+                      <Text style={{color: palette.mutedForeground, fontSize: 11}}>Flip</Text>
+                    </Pressable>
+                  </>
+                ) : null}
+              </View>
+            ) : null}
+            {call.status === 'active' ? (
+              <Text style={{color: palette.mutedForeground, textAlign: 'center', fontSize: 12}}>
+                Network stable
+              </Text>
+            ) : null}
+            <PrimaryButton label="End call" variant="outline" onPress={() => call.endCall()} />
+          </>
         )}
         {call.status === 'connecting' ? (
           <ActivityIndicator color={palette.primary} style={{marginTop: 8}} />

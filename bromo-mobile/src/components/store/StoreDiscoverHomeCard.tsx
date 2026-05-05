@@ -1,8 +1,6 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import {
-    BadgeCheck,
-    Crown,
     Eye,
     Heart,
     MapPin,
@@ -10,7 +8,6 @@ import {
     Phone,
     Star,
     Store,
-    Truck,
 } from 'lucide-react-native';
 import type { Store as BromoStore } from '../../api/storeApi';
 import type { ThemePalette } from '../../theme/tokens';
@@ -49,19 +46,10 @@ export function StoreDiscoverHomeCard({
     onViewOffers,
     style,
 }: Props) {
-    const badge = store.subscription?.status === 'active' ? store.subscription.badge : 'none';
-    const badgeColor =
-        badge === 'gold' ? '#d4a837' : badge === 'premium' ? '#3b82f6' : badge === 'standard' ? '#10b981' : '';
     const offerPercent = Math.max(12, Math.min(50, Math.round((store.ratingAvg || 3.6) * 8)));
-    const engagementPct = Math.max(
-        40,
-        Math.min(97, Math.round(((store.ratingAvg || 3.5) / 5) * 58 + Math.min(36, store.totalViews / 180))),
-    );
     const dailyUsers = Math.max(0, Math.round(store.totalViews * 0.62));
     const statusText = store.isActive ? 'Open' : 'Closed';
     const statusColor = store.isActive ? palette.success : palette.accent;
-    const planText =
-        store.activePlan?.title?.replace(' Plan', '') || (badge !== 'none' ? badge.toUpperCase() : 'Basic');
     const distanceText = store.distance != null ? fmtDistance(store.distance) : '—';
     const ratingText = store.ratingAvg > 0 ? store.ratingAvg.toFixed(1) : '4.0';
     const reviewsText = formatCompact(store.ratingCount || 0);

@@ -96,6 +96,7 @@ export async function sendMessage(
     text?: string;
     mediaUrl?: string;
     meta?: Record<string, unknown>;
+    /** Mongo id of message being replied to */
     replyToId?: string;
   },
 ): Promise<{message: ApiMessage}> {

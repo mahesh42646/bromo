@@ -26,7 +26,6 @@ import {
   Award,
   Calendar,
   Check,
-  ChevronRight,
   Download,
   EyeOff,
   Globe,
@@ -1376,7 +1375,7 @@ export function ShareScreen() {
         setBusy(null);
       }
     },
-    [asset, closeAll, draft, editPostId],
+    [asset, closeAll, draft, editPostId, previewBoxH, previewBoxW],
   );
 
   const visibilityOptions: {

@@ -2,7 +2,7 @@
  * Professional hub — wallet, promotions, and content insights (Instagram-style dashboard entry).
  */
 import React, {useCallback, useState} from 'react';
-import {ActivityIndicator, Pressable, ScrollView, Text, View} from 'react-native';
+import {ActivityIndicator, Pressable, Text, View} from 'react-native';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {BarChart2, ChevronRight, Coins, Megaphone, TrendingUp} from 'lucide-react-native';

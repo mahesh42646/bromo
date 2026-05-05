@@ -2,7 +2,7 @@
  * BROMO Mobile App
  */
 import './global.css';
-import React from 'react';
+import React, {useEffect} from 'react';
 import {registerGlobals} from 'react-native-webrtc';
 import {Platform, StatusBar, View} from 'react-native';
 
@@ -20,9 +20,15 @@ import {PlaybackMuteProvider} from './src/context/PlaybackMuteContext';
 import {BootstrapNavigator} from './src/navigation/BootstrapNavigator';
 import {navigationRef} from './src/navigation/rootNavigation';
 import {CallProvider} from './src/calls/CallProvider';
+import {linking} from './src/navigation/deepLinks';
+import {setupPushNavigationHandlers} from './src/services/pushRegistration';
+import {PersistQueryClientProvider} from '@tanstack/react-query-persist-client';
+import {queryClient, queryPersister} from './src/lib/queryClient';
 
 function AppContent() {
   const {isDark, palette} = useTheme();
+
+  useEffect(() => setupPushNavigationHandlers(), []);
   const baseNav = isDark ? DarkTheme : DefaultTheme;
   const navigationTheme = {
     ...baseNav,
@@ -43,7 +49,7 @@ function AppContent() {
         backgroundColor={palette.background}
         translucent={Platform.OS === 'android' ? false : true}
       />
-      <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+      <NavigationContainer ref={navigationRef} theme={navigationTheme} linking={linking}>
         <CallProvider>
           <BootstrapNavigator />
         </CallProvider>
@@ -59,7 +65,11 @@ function App() {
         <ThemeProvider>
           <AuthProvider>
             <PlaybackMuteProvider>
-              <AppContent />
+              <PersistQueryClientProvider
+                client={queryClient}
+                persistOptions={{persister: queryPersister, maxAge: 24 * 60 * 60 * 1000}}>
+                <AppContent />
+              </PersistQueryClientProvider>
             </PlaybackMuteProvider>
           </AuthProvider>
         </ThemeProvider>

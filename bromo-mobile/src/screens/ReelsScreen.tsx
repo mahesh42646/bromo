@@ -8,7 +8,6 @@ import {
   DeviceEventEmitter,
   Dimensions,
   FlatList,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -55,7 +54,7 @@ import type {MainTabParamList} from '../navigation/appStackParamList';
 import {useTheme} from '../context/ThemeContext';
 import {useAuth} from '../context/AuthContext';
 import {CoinEarnToast} from '../components/ui/CoinEarnToast';
-import {Screen, SegmentedTabs} from '../components/ui';
+import {BromoImage, Screen, SegmentedTabs} from '../components/ui';
 import {ActionSheet} from '../components/ui/ActionSheet';
 import {ThemedConfirmModal} from '../components/ui/ThemedConfirmModal';
 import {addViewCoinListener} from '../lib/viewRewardEvents';
@@ -95,6 +94,7 @@ import {perfFlags} from '../config/perfFlags';
 import type {ThemePalette} from '../theme/tokens';
 import {usePlaybackMute} from '../context/PlaybackMuteContext';
 import {openExternalUrl} from '../lib/openExternalUrl';
+import {prefetchNextReels} from '../lib/videoPrefetcher';
 
 function enrichReelChunk(posts: Post[]): Post[] {
   const merged = mergePostsWithSessionCache(posts);
@@ -815,8 +815,8 @@ const ReelItem = React.memo(function ReelItem({
         />
       ) : (
         <>
-          <Image
-            source={{uri: thumbUri}}
+          <BromoImage
+            uri={thumbUri}
             style={{width: '100%', height: '100%', position: 'absolute'}}
             resizeMode="cover"
           />
@@ -957,7 +957,7 @@ const ReelItem = React.memo(function ReelItem({
               borderColor: '#fff',
               overflow: 'hidden',
             }}>
-            <Image source={{uri: discUri}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
+            <BromoImage uri={discUri} style={{width: '100%', height: '100%'}} resizeMode="cover" />
           </View>
         </Pressable>
       </View>
@@ -967,7 +967,7 @@ const ReelItem = React.memo(function ReelItem({
         style={{position: 'absolute', bottom: 28 , left: 14, right: 76, gap: 2, zIndex: 10}}
         pointerEvents="box-none">
         <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
-        <Image source={{uri: resolveMediaUrl(avatarUri) || avatarUri}} style={{width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)'}} />
+        <BromoImage uri={avatarUri} style={{width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)'}} />
         
           <Pressable onPress={() => parentNavigate(navigation, 'OtherUserProfile', {userId: item.author._id})}>
             <Text style={{color: '#fff', fontSize: 14, fontWeight: '800'}}>@{item.author.username}</Text>
@@ -1196,6 +1196,14 @@ export function ReelsScreen() {
   useEffect(() => {
     displayReelsLenRef.current = displayReels.length;
   }, [displayReels.length]);
+
+  useEffect(() => {
+    const nextPosts = displayReels
+      .slice(activeIndex + 1, activeIndex + 3)
+      .filter((item): item is ReelFeedItem & {_itemType: 'reel'} => item._itemType === 'reel')
+      .map(item => item.data);
+    if (nextPosts.length > 0) prefetchNextReels(nextPosts);
+  }, [activeIndex, displayReels]);
 
   useEffect(() => {
     setActiveIndex(0);

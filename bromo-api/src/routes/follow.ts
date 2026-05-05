@@ -121,6 +121,43 @@ async function serializeUsersWithRelations(dbUser: FirebaseAuthedRequest["dbUser
   });
 }
 
+async function sendUserProfile(
+  req: FirebaseAuthedRequest,
+  res: Response,
+  targetId: mongoose.Types.ObjectId | string,
+) {
+  const dbUser = req.dbUser;
+  const isSelf = dbUser != null && String(dbUser._id) === String(targetId);
+  const target = await User.findById(targetId)
+    .select(`${isSelf ? SELF_USER_SELECT : USER_SELECT} ${PROFILE_SELECT}`)
+    .lean();
+  if (!target) return res.status(404).json({ message: "User not found" });
+  if (dbUser && ((dbUser.blockedUserIds ?? []) as unknown[]).some((id) => String(id) === String(target._id))) {
+    return res.status(403).json({message: "User is blocked"});
+  }
+
+  const { relationByUserId, statusByUserId } = await relationMapsFor(dbUser, [target._id]);
+  const key = String(target._id);
+  const followStatus = statusByUserId.get(key) ?? "none";
+  const relation = relationByUserId.get(key) ?? {
+    iFollow: false,
+    followsMe: false,
+    isMe: isSelf,
+  };
+
+  return res.json({
+    user: {
+      ...target,
+      followersCount: target.followersCount ?? 0,
+      followingCount: target.followingCount ?? 0,
+      postsCount: target.postsCount ?? 0,
+      followStatus,
+      followsMe: relation.followsMe,
+      relation,
+    },
+  });
+}
+
 async function getInterestWeights(dbUser: FirebaseAuthedRequest["dbUser"]): Promise<Map<string, number>> {
   const weights = new Map<string, number>();
   const add = (raw: unknown, weight: number) => {
@@ -414,57 +451,33 @@ followRouter.get(
   },
 );
 
+// ── GET /users/by-username/:username/profile ─────────────────────────
+followRouter.get(
+  "/by-username/:username/profile",
+  requireFirebaseToken,
+  async (req: FirebaseAuthedRequest, res: Response) => {
+    try {
+      const username = String(req.params.username ?? "").replace(/^@/, "").trim();
+      if (!username) return res.status(400).json({ message: "username required" });
+      const target = await User.findOne({ username }).select("_id").lean();
+      if (!target) return res.status(404).json({ message: "User not found" });
+      return sendUserProfile(req, res, target._id);
+    } catch (err) {
+      console.error("[follow] username profile error:", err);
+      return res.status(500).json({ message: "Failed to get profile" });
+    }
+  },
+);
+
 // ── GET /users/:userId/profile ──────────────────────────────────────
 followRouter.get(
   "/:userId/profile",
   requireFirebaseToken,
   async (req: FirebaseAuthedRequest, res: Response) => {
     try {
-      const dbUser = req.dbUser;
-      const isSelf = dbUser != null && String(dbUser._id) === String(req.params.userId);
-      const target = await User.findById(req.params.userId)
-        .select(`${isSelf ? SELF_USER_SELECT : USER_SELECT} ${PROFILE_SELECT}`)
-        .lean();
-      if (!target) return res.status(404).json({ message: "User not found" });
-      if (dbUser && ((dbUser.blockedUserIds ?? []) as unknown[]).some((id) => String(id) === String(target._id))) {
-        return res.status(403).json({message: "User is blocked"});
-      }
-
-      let followStatus: "none" | "following" | "requested" = "none";
-      let followsMe = false;
-      if (dbUser) {
-        const [follow, inverseFollow] = await Promise.all([
-          Follow.findOne({
-            followerId: dbUser._id,
-            followingId: target._id,
-          }).lean(),
-          Follow.findOne({
-            followerId: target._id,
-            followingId: dbUser._id,
-            status: "accepted",
-          }).lean(),
-        ]);
-        if (follow) {
-          followStatus = follow.status === "accepted" ? "following" : "requested";
-        }
-        followsMe = Boolean(inverseFollow);
-      }
-
-      return res.json({
-        user: {
-          ...target,
-          followersCount: target.followersCount ?? 0,
-          followingCount: target.followingCount ?? 0,
-          postsCount: target.postsCount ?? 0,
-          followStatus,
-          followsMe,
-          relation: {
-            iFollow: followStatus === "following",
-            followsMe,
-            isMe: isSelf,
-          },
-        },
-      });
+      const uid = req.params.userId;
+      const userId = Array.isArray(uid) ? uid[0] : uid;
+      return sendUserProfile(req, res, userId);
     } catch (err) {
       console.error("[follow] profile error:", err);
       return res.status(500).json({ message: "Failed to get profile" });

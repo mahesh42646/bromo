@@ -80,6 +80,13 @@ export async function getUserProfile(userId: string): Promise<{user: UserProfile
   return res.json() as Promise<{user: UserProfile}>;
 }
 
+export async function getUserProfileByUsername(username: string): Promise<{user: UserProfile}> {
+  const clean = username.replace(/^@/, '').trim();
+  const res = await authedFetch(`/users/by-username/${encodeURIComponent(clean)}/profile`);
+  if (!res.ok) throw new Error('User not found');
+  return res.json() as Promise<{user: UserProfile}>;
+}
+
 export async function getUserMutuals(userId: string, limit = 3): Promise<{count: number; sample: SuggestedUser[]}> {
   const res = await authedFetch(`/users/${userId}/mutuals?limit=${limit}`);
   if (!res.ok) throw new Error('Failed to get mutuals');

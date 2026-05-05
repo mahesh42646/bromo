@@ -2,7 +2,7 @@ import React, {useCallback, useMemo, useState} from 'react';
 import {
   Alert,
   ActivityIndicator,
-  Image,
+  Modal,
   Pressable,
   Share,
   StatusBar,
@@ -14,13 +14,14 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {BadgeCheck, MessageSquarePlus, Search} from 'lucide-react-native';
 import {useTheme} from '../../context/ThemeContext';
 import {ActionSheet} from '../../components/ui/ActionSheet';
-import {RefreshableFlatList, Screen} from '../../components/ui';
+import {BromoImage, RefreshableFlatList, Screen} from '../../components/ui';
 import {SearchBar} from '../../components/ui/SearchBar';
 import {useMessaging} from '../../messaging/MessagingContext';
 import {formatThreadRowTime} from '../../messaging/formatTime';
 import type {MessagesStackParamList} from '../../navigation/MessagesStackNavigator';
 import {blockUser, searchUsers} from '../../api/followApi';
 import {muteConversation, unmuteConversation} from '../../api/chatApi';
+import {getShareUrl} from '../../lib/shareUrl';
 
 type Nav = NativeStackNavigationProp<MessagesStackParamList, 'ChatList'>;
 
@@ -31,6 +32,10 @@ export function ChatListScreen() {
   const [search, setSearch] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<{_id: string; displayName: string; username: string; profilePicture: string}[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newChatQuery, setNewChatQuery] = useState('');
+  const [newChatResults, setNewChatResults] = useState<{_id: string; displayName: string; username: string; profilePicture: string}[]>([]);
+  const [newChatSearching, setNewChatSearching] = useState(false);
   const [mutedThreads, setMutedThreads] = useState<Set<string>>(() => new Set());
   const [threadSheetPeer, setThreadSheetPeer] = useState<{
     id: string;
@@ -115,6 +120,22 @@ export function ChatListScreen() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  React.useEffect(() => {
+    const q = newChatQuery.trim();
+    if (!newChatOpen || q.length < 2) {
+      setNewChatResults([]);
+      return;
+    }
+    setNewChatSearching(true);
+    const timer = setTimeout(() => {
+      searchUsers(q)
+        .then(res => setNewChatResults(res.users))
+        .catch(() => setNewChatResults([]))
+        .finally(() => setNewChatSearching(false));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [newChatOpen, newChatQuery]);
+
   return (
     <Screen
       title="Messages"
@@ -124,7 +145,7 @@ export function ChatListScreen() {
       right={
         <>
           {loadingConversations ? <ActivityIndicator color={palette.primary} size="small" /> : null}
-          <Pressable hitSlop={12} style={{padding: 8}}>
+          <Pressable hitSlop={12} style={{padding: 8}} onPress={() => setNewChatOpen(true)}>
             <MessageSquarePlus size={22} color={palette.foreground} />
           </Pressable>
         </>
@@ -186,8 +207,8 @@ export function ChatListScreen() {
                 key={u._id}
                 onPress={() => openNewChatWithUser(u)}
                 style={{flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16, gap: 12}}>
-                <Image
-                  source={{uri: u.profilePicture || `https://ui-avatars.com/api/?name=${u.displayName}`}}
+                <BromoImage
+                  uri={u.profilePicture || `https://ui-avatars.com/api/?name=${u.displayName}`}
                   style={{width: 48, height: 48, borderRadius: 24}}
                 />
                 <View style={{flex: 1}}>
@@ -203,7 +224,7 @@ export function ChatListScreen() {
                 key={p.id}
                 onPress={() => openThread(p.id)}
                 style={{flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16, gap: 12}}>
-                <Image source={{uri: p.avatar || `https://ui-avatars.com/api/?name=${p.displayName}`}} style={{width: 48, height: 48, borderRadius: 24}} />
+                <BromoImage uri={p.avatar || `https://ui-avatars.com/api/?name=${p.displayName}`} style={{width: 48, height: 48, borderRadius: 24}} />
                 <View style={{flex: 1}}>
                   <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
                     <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>{p.displayName}</Text>
@@ -240,7 +261,10 @@ export function ChatListScreen() {
               paddingHorizontal: 16,
               gap: 12,
             }}>
-            <Image source={{uri: item.peer.avatar}} style={{width: 56, height: 56, borderRadius: 28}} />
+            <View>
+              <BromoImage uri={item.peer.avatar} style={{width: 56, height: 56, borderRadius: 28}} />
+              <View style={{position: 'absolute', right: 2, bottom: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: palette.success, borderWidth: 2, borderColor: palette.background}} />
+            </View>
             <View style={{flex: 1, minWidth: 0}}>
               <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
                 <Text numberOfLines={1} style={{color: palette.foreground, fontWeight: '800', fontSize: 15, flex: 1}}>
@@ -295,7 +319,7 @@ export function ChatListScreen() {
                 {
                   label: 'Share profile',
                   onPress: () => {
-                    const url = `https://bromo.app/u/${threadSheetPeer.username}`;
+                    const url = getShareUrl({kind: 'profile', id: threadSheetPeer.username});
                     Share.share({
                       message: `${threadSheetPeer.displayName} on BROMO\n${url}`,
                       url,
@@ -315,6 +339,45 @@ export function ChatListScreen() {
             : []
         }
       />
+      <Modal visible={newChatOpen} transparent animationType="fade" onRequestClose={() => setNewChatOpen(false)}>
+        <Pressable
+          onPress={() => setNewChatOpen(false)}
+          style={{flex: 1, backgroundColor: palette.overlay, justifyContent: 'flex-end'}}>
+          <Pressable
+            onPress={event => event.stopPropagation()}
+            style={{backgroundColor: palette.background, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: '80%'}}>
+            <Text style={{color: palette.foreground, fontSize: 18, fontWeight: '900', marginBottom: 12}}>New chat</Text>
+            <SearchBar value={newChatQuery} onChangeText={setNewChatQuery} placeholder="Search people..." />
+            {newChatSearching ? <ActivityIndicator color={palette.primary} style={{marginVertical: 18}} /> : null}
+            <RefreshableFlatList
+              data={newChatResults}
+              keyExtractor={item => item._id}
+              contentContainerStyle={{paddingTop: 12, paddingBottom: 28}}
+              ListEmptyComponent={
+                newChatQuery.trim().length >= 2 && !newChatSearching ? (
+                  <Text style={{color: palette.mutedForeground, textAlign: 'center', paddingVertical: 24}}>No users found.</Text>
+                ) : null
+              }
+              renderItem={({item}) => (
+                <Pressable
+                  onPress={() => {
+                    setNewChatOpen(false);
+                    setNewChatQuery('');
+                    openNewChatWithUser(item);
+                  }}
+                  style={{flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12}}>
+                  <BromoImage uri={item.profilePicture || `https://ui-avatars.com/api/?name=${item.displayName}`} style={{width: 48, height: 48, borderRadius: 24}} />
+                  <View style={{flex: 1}}>
+                    <Text style={{color: palette.foreground, fontWeight: '800', fontSize: 15}}>{item.displayName}</Text>
+                    <Text style={{color: palette.mutedForeground, fontSize: 13}}>@{item.username}</Text>
+                  </View>
+                  <MessageSquarePlus size={18} color={palette.primary} />
+                </Pressable>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }

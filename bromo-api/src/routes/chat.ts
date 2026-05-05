@@ -10,7 +10,9 @@ import { User } from "../models/User.js";
 import { createNotification } from "../models/Notification.js";
 import {
   emitChatMessage,
-  emitChatMessageUpdated,
+  emitChatMessageEdited,
+  emitChatMessageUnsent,
+  emitChatReaction,
   emitChatRead,
   emitChatUnreadForUser,
 } from "../services/socketService.js";
@@ -315,7 +317,7 @@ chatRouter.put(
       message.mediaUrl = "";
       await message.save();
       const conversation = await Conversation.findById(message.conversationId).select("participants").lean();
-      emitChatMessageUpdated(String(message.conversationId), (conversation?.participants ?? []).map(String), message.toObject());
+      emitChatMessageUnsent(String(message.conversationId), (conversation?.participants ?? []).map(String), message.toObject());
       return res.json({ unsent: true });
     } catch (err) {
       console.error("[chat] unsend error:", err);
@@ -345,7 +347,7 @@ chatRouter.put(
       message.editedAt = new Date();
       await message.save();
       const conversation = await Conversation.findById(message.conversationId).select("participants").lean();
-      emitChatMessageUpdated(String(message.conversationId), (conversation?.participants ?? []).map(String), message.toObject());
+      emitChatMessageEdited(String(message.conversationId), (conversation?.participants ?? []).map(String), message.toObject());
 
       return res.json({ message });
     } catch (err) {
@@ -375,6 +377,13 @@ chatRouter.post(
         message.reactions.push({ userId: user._id, emoji });
       }
       await message.save();
+      const [conversation, populated] = await Promise.all([
+        Conversation.findById(message.conversationId).select("participants").lean(),
+        Message.findById(message._id).populate("senderId", USER_SELECT).lean(),
+      ]);
+      if (populated) {
+        emitChatReaction(String(message.conversationId), (conversation?.participants ?? []).map(String), populated);
+      }
 
       return res.json({ reactions: message.reactions });
     } catch (err) {

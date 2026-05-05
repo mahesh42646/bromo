@@ -8,6 +8,9 @@ const apiBaseUrl = String(bromoConfig.apiBaseUrl ?? '')
 const cdnBaseUrlStatic = String((bromoConfig as {cdnBaseUrl?: string}).cdnBaseUrl ?? '')
   .trim()
   .replace(/\/+$/, '');
+const shareHostStatic = String((bromoConfig as {shareHost?: string}).shareHost ?? apiBaseUrl)
+  .trim()
+  .replace(/\/+$/, '');
 
 export function mediaBaseUrl(): string {
   return cdnBaseUrlStatic || apiBaseUrl;
@@ -23,6 +26,7 @@ export const appBranding = {
 
 export const settings = {
   apiBaseUrl,
+  shareHost: shareHostStatic || apiBaseUrl,
   get cdnBaseUrl(): string {
     return mediaBaseUrl();
   },

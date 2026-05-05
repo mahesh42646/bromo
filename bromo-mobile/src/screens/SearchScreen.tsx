@@ -452,7 +452,7 @@ export function SearchScreen() {
                                   if (post.type === 'reel' || post.mediaType === 'video') {
                                     parentNavigate(navigation, 'Main', {screen: 'Reels', params: {initialPostId: post._id}});
                                   } else {
-                                    parentNavigate(navigation, 'PostDetail', {postId: post._id});
+                                    parentNavigate(navigation, 'PostDetail', {postId: post._id, initialPost: post});
                                   }
                                 }}
                                 style={{position: 'relative'}}>

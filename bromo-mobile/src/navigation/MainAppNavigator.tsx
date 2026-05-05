@@ -99,19 +99,24 @@ export function MainAppNavigator() {
   const {dbUser} = useAuth();
   return (
     <MessagingProvider myDbUserId={dbUser?._id ?? null}>
-    <Stack.Navigator screenOptions={{headerShown: false}}>
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: 'none',
+        freezeOnBlur: true,
+      }}>
       <Stack.Screen name="Main" component={TabNavigator} />
       <Stack.Screen
         name="CreateFlow"
         component={CreateStackNavigator}
-        options={{presentation: 'fullScreenModal', animation: 'slide_from_bottom'}}
+        options={{presentation: 'fullScreenModal', animation: 'none'}}
       />
       <Stack.Screen
         name="MessagesFlow"
         component={MessagesStackNavigator}
-        options={{presentation: 'fullScreenModal', animation: 'slide_from_right'}}
+        options={{presentation: 'fullScreenModal', animation: 'none'}}
       />
-      <Stack.Screen name="Profile" component={ProfileScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="Profile" component={ProfileScreen} options={{animation: 'none'}} />
       <Stack.Screen name="CategoryFeed" component={CategoryFeedScreen} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
       <Stack.Screen
@@ -119,14 +124,14 @@ export function MainAppNavigator() {
         component={CommentsScreen}
         options={{
           presentation: 'transparentModal',
-          animation: 'slide_from_bottom',
+          animation: 'none',
           gestureEnabled: false,
         }}
       />
       <Stack.Screen
         name="ShareSend"
         component={ShareSendScreen}
-        options={{presentation: 'modal', animation: 'slide_from_bottom'}}
+        options={{presentation: 'modal', animation: 'none'}}
       />
       <Stack.Screen name="StoryView" component={StoryViewScreen} />
       <Stack.Screen name="SearchResults" component={SearchResultsScreen} />
@@ -164,14 +169,14 @@ export function MainAppNavigator() {
       <Stack.Screen name="StoreReachDetail" component={StoreReachDetailScreen} />
       <Stack.Screen name="StoreCoinSettings" component={StoreCoinSettingsScreen} />
       {/* ── New real store screens ── */}
-      <Stack.Screen name="CreateStore" component={CreateStoreScreen} options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="ManageStore" component={ManageStoreScreen} options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="StorePublicProfile" component={StorePublicProfileScreen} options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="RedemptionScanner" component={RedemptionScannerScreen} options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="LiveWatch" component={LiveWatchScreen} options={{animation: 'fade'}} />
-      <Stack.Screen name="StoreProductDetail" component={StoreProductDetailScreen} options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="AllStores" component={AllStoresScreen} options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="AddProduct" component={AddProductScreen} options={{animation: 'slide_from_bottom', presentation: 'modal'}} />
+      <Stack.Screen name="CreateStore" component={CreateStoreScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="ManageStore" component={ManageStoreScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="StorePublicProfile" component={StorePublicProfileScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="RedemptionScanner" component={RedemptionScannerScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="LiveWatch" component={LiveWatchScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="StoreProductDetail" component={StoreProductDetailScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="AllStores" component={AllStoresScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="AddProduct" component={AddProductScreen} options={{animation: 'none', presentation: 'modal'}} />
       <Stack.Screen name="CreateAdStep1" component={CreateAdStep1Screen} />
       <Stack.Screen name="CreateAdStep2" component={CreateAdStep2Screen} />
       <Stack.Screen name="CreateAdStep3" component={CreateAdStep3Screen} />
@@ -188,9 +193,9 @@ export function MainAppNavigator() {
       <Stack.Screen name="WatchHistory" component={WatchHistoryScreen} />
       <Stack.Screen name="ManageContent" component={ManageContentScreen} />
       <Stack.Screen name="ContentInsights" component={ContentInsightsScreen} />
-      <Stack.Screen name="ProfessionalHub" component={ProfessionalHubScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="ProfessionalHub" component={ProfessionalHubScreen} options={{animation: 'none'}} />
       <Stack.Screen name="CreatorDashboard" component={CreatorDashboardScreen} />
-      <Stack.Screen name="CollabInbox" component={CollabInboxScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="CollabInbox" component={CollabInboxScreen} options={{animation: 'none'}} />
       <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} />
       <Stack.Screen name="VoiceCall" component={VoiceCallScreen} />
       <Stack.Screen name="VideoCall" component={VideoCallScreen} />
@@ -199,10 +204,10 @@ export function MainAppNavigator() {
       <Stack.Screen name="AudioDetail" component={AudioDetailScreen} />
       <Stack.Screen name="AutoDm" component={AutoDmScreen} />
       {/* Wallet & Promotions */}
-      <Stack.Screen name="PointsWallet" component={WalletScreen} options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="PromoteCampaign" component={PromoteCampaignScreen} options={{animation: 'slide_from_bottom', presentation: 'modal'}} />
-      <Stack.Screen name="MyCampaigns" component={MyCampaignsScreen} options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="CampaignAnalytics" component={CampaignAnalyticsScreen} options={{animation: 'slide_from_right'}} />
+      <Stack.Screen name="PointsWallet" component={WalletScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="PromoteCampaign" component={PromoteCampaignScreen} options={{animation: 'none', presentation: 'modal'}} />
+      <Stack.Screen name="MyCampaigns" component={MyCampaignsScreen} options={{animation: 'none'}} />
+      <Stack.Screen name="CampaignAnalytics" component={CampaignAnalyticsScreen} options={{animation: 'none'}} />
     </Stack.Navigator>
     </MessagingProvider>
   );
