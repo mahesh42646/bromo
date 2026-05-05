@@ -1,4 +1,4 @@
-package bromo.platform
+package com.bromo.platform
 
 import android.app.Application
 import com.facebook.react.PackageList

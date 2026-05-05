@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Switch, Text, TextInput, View} from 'react-native';
+import {ActivityIndicator, Alert, FlatList, Image, Platform, Pressable, ScrollView, Switch, Text, TextInput, View} from 'react-native';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
@@ -910,11 +910,35 @@ export function NotificationsScreen() {
 export function NotificationSettingsScreen() {
   const {palette} = useTheme();
   const [push, setPush] = useState(true);
+  const iosPushComingSoon = Platform.OS === 'ios';
   return (
     <SopChrome title="Notification settings">
-      <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+      {iosPushComingSoon ? (
+        <View
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: palette.border,
+            backgroundColor: `${palette.primary}0D`,
+          }}>
+          <Text style={{color: palette.foreground, fontWeight: '700', marginBottom: 6}}>Coming soon on iOS</Text>
+          <Text style={{color: palette.foregroundMuted, fontSize: 13, lineHeight: 20}}>
+            Push notifications, opening https share links from Safari, and ringing when the app is in the background need an Apple Developer Program membership (not available on a free Personal Team). In-app calls work when both people have the app open.
+          </Text>
+        </View>
+      ) : null}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          opacity: iosPushComingSoon ? 0.45 : 1,
+        }}
+        pointerEvents={iosPushComingSoon ? 'none' : 'auto'}>
         <Text style={{color: palette.foreground}}>Push notifications</Text>
-        <Switch value={push} onValueChange={setPush} />
+        <Switch value={push} onValueChange={setPush} disabled={iosPushComingSoon} />
       </View>
     </SopChrome>
   );

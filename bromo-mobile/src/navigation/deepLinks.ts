@@ -1,39 +1,29 @@
-import {Linking} from 'react-native';
+import {Linking, Platform} from 'react-native';
 import type {LinkingOptions} from '@react-navigation/native';
 import type {BootstrapParamList} from './bootstrapParamList';
 import {navigationRef} from './rootNavigation';
 import {prefetchDeepLinkContent} from '../lib/deepLinkPrefetch';
+import {universalLinkHost} from '../config/settings';
 
-export const linking: LinkingOptions<BootstrapParamList> = {
-  prefixes: ['bromo://', 'https://bromo.darkunde.in'],
-  async getInitialURL() {
-    const url = await Linking.getInitialURL();
-    if (url) void prefetchDeepLinkContent(url);
-    return url;
-  },
-  subscribe(listener) {
-    const sub = Linking.addEventListener('url', ({url}) => {
-      void prefetchDeepLinkContent(url);
-      listener(url);
-    });
-    return () => sub.remove();
-  },
-  config: {
-    screens: {
-      App: {
-        screens: {
-          Main: {
-            screens: {
-              Reels: 'r/:initialPostId',
-            },
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const linkingConfig: LinkingOptions<BootstrapParamList>['config'] = {
+  screens: {
+    App: {
+      screens: {
+        Main: {
+          screens: {
+            Reels: 'r/:initialPostId',
           },
-          PostDetail: 'p/:postId',
-          OtherUserProfile: 'u/:username',
-          StoryView: 's/:storyId',
-          MessagesFlow: {
-            screens: {
-              ChatThread: 'chat/:peerId',
-            },
+        },
+        PostDetail: 'p/:postId',
+        OtherUserProfile: 'u/:username',
+        StoryView: 's/:storyId',
+        MessagesFlow: {
+          screens: {
+            ChatThread: 'chat/:peerId',
           },
         },
       },
@@ -41,7 +31,33 @@ export const linking: LinkingOptions<BootstrapParamList> = {
   },
 };
 
+export function createDeepLinkingOptions(): LinkingOptions<BootstrapParamList> {
+  const httpsPrefix = `https://${universalLinkHost}`;
+  /** iOS Personal Team: no Associated Domains — only custom scheme until you have a paid account. */
+  const prefixes = Platform.OS === 'ios' ? ['bromo://'] : ['bromo://', httpsPrefix];
+  return {
+    prefixes,
+    config: linkingConfig,
+    async getInitialURL() {
+      const url = await Linking.getInitialURL();
+      if (url) void prefetchDeepLinkContent(url);
+      return url;
+    },
+    subscribe(listener) {
+      const sub = Linking.addEventListener('url', ({url}) => {
+        void prefetchDeepLinkContent(url);
+        listener(url);
+      });
+      return () => sub.remove();
+    },
+  };
+}
+
+/** Single instance; host is read from `bromo-config.json` at bundle load. */
+export const linking = createDeepLinkingOptions();
+
 function normalizePath(url: string): string {
+  const hostPattern = new RegExp(`^https?://${escapeRegex(universalLinkHost)}/?`, 'i');
   try {
     const parsed = new URL(url);
     if (parsed.protocol === 'bromo:') {
@@ -49,7 +65,7 @@ function normalizePath(url: string): string {
     }
     return parsed.pathname.replace(/^\/+/, '');
   } catch {
-    return url.replace(/^bromo:\/\//, '').replace(/^https?:\/\/bromo\.darkunde\.in\/?/, '');
+    return url.replace(/^bromo:\/\//, '').replace(hostPattern, '');
   }
 }
 

@@ -1,15 +1,25 @@
 import React, {useEffect, useRef} from 'react';
+import {AppState} from 'react-native';
 import {navigationRef} from '../navigation/rootNavigation';
 import {useAuth} from '../context/AuthContext';
 import {socketService, type CallSocketIncoming} from '../services/socketService';
-import {displayNativeIncomingCall, setupNativeCallBridge} from './nativeCallBridge';
 
 /**
- * Listens for incoming WebRTC call invites and navigates to VoiceCall / VideoCall on the app stack.
+ * In-app calls only (both users online, socket connected). Incoming `call:incoming` navigates
+ * to Voice/Video when the app is in the foreground. Background / CallKit / push wake — coming later
+ * (requires Apple Developer Program on iOS for push + associated domains).
  */
 export function CallProvider({children}: {children: React.ReactNode}) {
   const {dbUser} = useAuth();
   const seenRef = useRef<string | null>(null);
+  const appActiveRef = useRef(AppState.currentState === 'active');
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', next => {
+      appActiveRef.current = next === 'active';
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (!dbUser?._id) return;
@@ -44,15 +54,10 @@ export function CallProvider({children}: {children: React.ReactNode}) {
       }
     };
 
-    const offNative = setupNativeCallBridge({
-      onAnswer: navigateToCall,
-      onEnd: payload => socketService.emitCallReject({callId: payload.callId}),
-    });
-
     void socketService.connect().then(() => {
       if (cancelled) return;
       offIncoming = socketService.on('call:incoming', payload => {
-        displayNativeIncomingCall(payload);
+        if (!appActiveRef.current) return;
         navigateToCall(payload);
       });
     });
@@ -60,7 +65,6 @@ export function CallProvider({children}: {children: React.ReactNode}) {
     return () => {
       cancelled = true;
       offIncoming?.();
-      offNative();
     };
   }, [dbUser?._id]);
 

@@ -1,4 +1,4 @@
-package bromo.platform
+package com.bromo.platform
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

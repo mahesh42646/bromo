@@ -2,15 +2,17 @@ import messaging from '@react-native-firebase/messaging';
 import {Platform} from 'react-native';
 import {registerDeviceToken, removeDeviceToken} from '../api/authApi';
 import {openBromoDeepLink} from '../navigation/deepLinks';
-import {registerVoipPushToken} from '../calls/voipRegistration';
 import {navigationRef} from '../navigation/rootNavigation';
-import {displayNativeIncomingCall} from '../calls/nativeCallBridge';
-import type {CallSocketIncoming} from './socketService';
 
 let lastToken: string | null = null;
 let unsubscribeRefresh: (() => void) | null = null;
 
+/**
+ * iOS (Personal Team): push, VoIP, and universal links need a paid Apple Developer Program account.
+ * FCM device registration is skipped on iOS so Xcode can sign the app. Android unchanged.
+ */
 export async function registerPushDevice(): Promise<void> {
+  if (Platform.OS === 'ios') return;
   try {
     const status = await messaging().requestPermission();
     const enabled =
@@ -31,10 +33,6 @@ export async function registerPushDevice(): Promise<void> {
         registerDeviceToken(next).catch(() => null);
       });
     }
-
-    if (Platform.OS === 'ios') {
-      registerVoipPushToken().catch(() => null);
-    }
   } catch {
     // Push registration must never block login.
   }
@@ -47,13 +45,6 @@ function navigateIncomingCallFromPush(data: Record<string, string | object | und
   const callType = typeof data.callType === 'string' ? data.callType : 'audio';
   const callerName = typeof data.callerName === 'string' ? data.callerName : '';
   if (!callId || !fromUserId) return true;
-  const nativePayload: CallSocketIncoming = {
-    callId,
-    fromUserId,
-    callType: callType === 'video' ? 'video' : 'audio',
-    callerName: callerName || undefined,
-  };
-  displayNativeIncomingCall(nativePayload);
   const routeName = callType === 'video' ? 'VideoCall' : 'VoiceCall';
   const go = () => {
     if (!navigationRef.isReady()) return false;
@@ -73,8 +64,12 @@ function navigateIncomingCallFromPush(data: Record<string, string | object | und
   return true;
 }
 
-/** Wire notification tap → deep link (chat, posts, calls). Call once from App mount. */
+/** Notification open handlers — Android only until iOS push is enabled (paid Apple account). */
 export function setupPushNavigationHandlers(): () => void {
+  if (Platform.OS === 'ios') {
+    return () => {};
+  }
+
   const handleOpen = (remoteMessage: {data?: Record<string, string | object | undefined>} | null) => {
     if (!remoteMessage) return;
     const data = remoteMessage.data as Record<string, string | object | undefined> | undefined;
@@ -89,7 +84,6 @@ export function setupPushNavigationHandlers(): () => void {
   };
 
   const unsubOpened = messaging().onNotificationOpenedApp(handleOpen);
-  /** Foreground: only wake call UI — do not auto-navigate on every data message (chat spam). */
   const unsubForeground = messaging().onMessage(message => {
     const data = message.data as Record<string, string | object | undefined> | undefined;
     if (data?.type === 'incoming_call') {
@@ -109,6 +103,10 @@ export function setupPushNavigationHandlers(): () => void {
 }
 
 export async function unregisterPushDevice(): Promise<void> {
+  if (Platform.OS === 'ios') {
+    lastToken = null;
+    return;
+  }
   try {
     if (unsubscribeRefresh) {
       unsubscribeRefresh();

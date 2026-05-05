@@ -1,19 +1,48 @@
 import bromoConfig from '../../bromo-config.json';
 
-const apiBaseUrl = String(bromoConfig.apiBaseUrl ?? '')
+const apiBaseUrlRaw = String(bromoConfig.apiBaseUrl ?? '')
   .trim()
   .replace(/\/+$/, '');
 
-/** CloudFront (or S3 website) for `/uploads/*` — empty = use apiBaseUrl. */
+/** CloudFront (or S3 website) for `/uploads/*` — empty = use api base. */
 const cdnBaseUrlStatic = String((bromoConfig as {cdnBaseUrl?: string}).cdnBaseUrl ?? '')
   .trim()
   .replace(/\/+$/, '');
-const shareHostStatic = String((bromoConfig as {shareHost?: string}).shareHost ?? apiBaseUrl)
+const shareHostStatic = String((bromoConfig as {shareHost?: string}).shareHost ?? apiBaseUrlRaw)
   .trim()
   .replace(/\/+$/, '');
 
+/** Hostname only (no scheme) for universal links / intent-filters. Override when shareHost URL and link host differ. */
+function parseUniversalLinkHost(): string {
+  const raw = String((bromoConfig as {universalLinkHost?: string}).universalLinkHost ?? '').trim();
+  if (raw) {
+    const noProto = raw.replace(/^https?:\/\//i, '');
+    return noProto.split('/')[0] ?? noProto;
+  }
+  const src = shareHostStatic || apiBaseUrlRaw;
+  if (!src) return 'localhost';
+  try {
+    const u = new URL(src.startsWith('http') ? src : `https://${src}`);
+    return u.hostname;
+  } catch {
+    return 'localhost';
+  }
+}
+
+export const universalLinkHost = parseUniversalLinkHost();
+
+function resolveApiBaseUrl(): string {
+  if (apiBaseUrlRaw) return apiBaseUrlRaw;
+  if (universalLinkHost && universalLinkHost !== 'localhost') {
+    return `https://${universalLinkHost}`;
+  }
+  return 'http://127.0.0.1:4000';
+}
+
+const apiBaseUrlResolved = resolveApiBaseUrl();
+
 export function mediaBaseUrl(): string {
-  return cdnBaseUrlStatic || apiBaseUrl;
+  return cdnBaseUrlStatic || apiBaseUrlResolved;
 }
 
 export const appBranding = {
@@ -25,8 +54,8 @@ export const appBranding = {
 } as const;
 
 export const settings = {
-  apiBaseUrl,
-  shareHost: shareHostStatic || apiBaseUrl,
+  apiBaseUrl: apiBaseUrlResolved,
+  shareHost: shareHostStatic || apiBaseUrlResolved,
   get cdnBaseUrl(): string {
     return mediaBaseUrl();
   },

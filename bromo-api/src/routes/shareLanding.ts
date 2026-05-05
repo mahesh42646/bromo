@@ -9,7 +9,7 @@ export const shareLandingRouter = Router();
 const SHARE_HOST = process.env.PUBLIC_SHARE_HOST || "https://bromo.darkunde.in";
 const PLAY_STORE_URL = process.env.PLAY_STORE_URL || SHARE_HOST;
 const APP_STORE_URL = process.env.APP_STORE_URL || SHARE_HOST;
-const ANDROID_PACKAGE = process.env.ANDROID_PACKAGE_NAME || "bromo.platform";
+const ANDROID_PACKAGE = process.env.ANDROID_PACKAGE_NAME || "com.bromo.platform";
 
 function esc(value: unknown): string {
   return String(value ?? "")

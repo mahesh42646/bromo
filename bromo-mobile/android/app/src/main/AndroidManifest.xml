@@ -52,11 +52,11 @@
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="https" android:host="bromo.darkunde.in" android:pathPrefix="/r" />
-            <data android:scheme="https" android:host="bromo.darkunde.in" android:pathPrefix="/p" />
-            <data android:scheme="https" android:host="bromo.darkunde.in" android:pathPrefix="/u" />
-            <data android:scheme="https" android:host="bromo.darkunde.in" android:pathPrefix="/s" />
-            <data android:scheme="https" android:host="bromo.darkunde.in" android:pathPrefix="/chat" />
+            <data android:scheme="https" android:host="${bromoLinkHost}" android:pathPrefix="/r" />
+            <data android:scheme="https" android:host="${bromoLinkHost}" android:pathPrefix="/p" />
+            <data android:scheme="https" android:host="${bromoLinkHost}" android:pathPrefix="/u" />
+            <data android:scheme="https" android:host="${bromoLinkHost}" android:pathPrefix="/s" />
+            <data android:scheme="https" android:host="${bromoLinkHost}" android:pathPrefix="/chat" />
         </intent-filter>
         <intent-filter>
             <action android:name="android.intent.action.VIEW" />

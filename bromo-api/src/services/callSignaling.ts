@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import type { Server as SocketIOServer, Socket } from "socket.io";
-import { sendCallInviteDataPush } from "./pushService.js";
+import { sendCallInviteDataPush, sendVoipCallInvitePush } from "./pushService.js";
 
 /** In-memory WebRTC call sessions (replace with Redis for multi-instance). */
 export type PendingCall = {
@@ -61,12 +61,16 @@ export function attachCallSignalingHandlers(io: SocketIOServer, socket: Socket, 
         callerName: callerName || undefined,
       });
 
-      void sendCallInviteDataPush(toUserId, {
+      const invitePayload = {
         callId,
         fromUserId: String(mongoId),
         callType,
         callerName,
-      });
+      };
+      void Promise.all([
+        sendCallInviteDataPush(toUserId, invitePayload),
+        sendVoipCallInvitePush(toUserId, invitePayload),
+      ]);
     },
   );
 

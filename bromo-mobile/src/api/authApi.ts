@@ -3,9 +3,7 @@ import {settings} from '../config/settings';
 import {navigationRef, resetToAuth} from '../navigation/rootNavigation';
 
 export function apiBase(): string {
-  const base = settings.apiBaseUrl?.trim().replace(/\/+$/, '');
-  if (base) return base;
-  return 'https://bromo.darkunde.in';
+  return settings.apiBaseUrl.trim().replace(/\/+$/, '');
 }
 
 /**

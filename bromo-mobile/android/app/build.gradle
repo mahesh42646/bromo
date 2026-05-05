@@ -97,19 +97,41 @@ def loadDotEnv(File envFile) {
 def env = loadDotEnv(rootProject.file("../.env"))
 def googleMapsApiKey = (env["GOOGLE_MAPS_API_KEY_ANDROID"] ?: "").toString()
 
+def bromoLinkHost = "bromo.darkunde.in"
+def bromoConfigFile = rootProject.file("../bromo-config.json")
+if (bromoConfigFile.exists()) {
+    try {
+        def json = new groovy.json.JsonSlurper().parse(bromoConfigFile)
+        def explicit = (json.universalLinkHost ?: "").toString().trim()
+        if (explicit) {
+            bromoLinkHost = explicit.replaceFirst("^https?://", "").split("/")[0]
+        } else {
+            def share = (json.shareHost ?: json.apiBaseUrl ?: "").toString().trim()
+            if (share) {
+                def url = share.startsWith("http") ? share : "https://" + share
+                bromoLinkHost = new URL(url).host
+            }
+        }
+    } catch (Throwable ignored) {
+    }
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "bromo.platform"
+    namespace "com.bromo.platform"
     defaultConfig {
-        applicationId "bromo.platform"
+        applicationId "com.bromo.platform"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-        manifestPlaceholders = [GOOGLE_MAPS_API_KEY: googleMapsApiKey]
+        manifestPlaceholders = [
+            GOOGLE_MAPS_API_KEY: googleMapsApiKey,
+            bromoLinkHost: bromoLinkHost,
+        ]
     }
     signingConfigs {
         debug {

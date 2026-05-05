@@ -39,8 +39,7 @@ export function perfMeasure(name: string, fromMark: string): number | null {
 }
 
 function apiBase(): string {
-  const base = settings.apiBaseUrl?.trim().replace(/\/+$/, '');
-  return base || 'https://bromo.darkunde.in';
+  return settings.apiBaseUrl.trim().replace(/\/+$/, '');
 }
 
 export function trackPerfEvent(event: PerfEventName, data: Record<string, unknown> = {}): void {
