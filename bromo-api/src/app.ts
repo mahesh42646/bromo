@@ -151,6 +151,9 @@ export function createApp() {
 
   app.use("/auth", authRouter);
   app.use("/user-auth", userAuthRouter);
+  // Legacy compatibility for older clients configured with /iams/api/v1 prefix.
+  app.use("/iams/api/v1/user-auth", userAuthRouter);
+  app.use("/iams/api/v1/auth", authRouter);
   app.use("/admin", adminUsersRouter);
   app.use("/posts", postsRouter);
   app.use("/users", followRouter);

@@ -184,10 +184,10 @@ const userSchema = new Schema<UserDoc>(
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point",
       },
       coordinates: { type: [Number], default: undefined },
       updatedAt: { type: Date },
+      default: undefined,
     },
     connectedStore: {
       enabled: { type: Boolean, default: false },

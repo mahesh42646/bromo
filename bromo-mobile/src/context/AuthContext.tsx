@@ -206,18 +206,21 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     const user = auth().currentUser;
     if (!user) return false;
     await user.reload();
+    // Force refreshed ID token so backend sees latest email_verified claim.
+    await user.getIdToken(true);
     setFirebaseUser({...user} as FirebaseAuthTypes.User);
     if (user.emailVerified) {
-      if (dbUser && !dbUser.emailVerified) {
-        try {
-          const result = await getMe({force: true});
-          if ('user' in result) setDbUser(result.user);
-        } catch {}
-      }
+      try {
+        const result = await getMe({force: true});
+        if ('user' in result) {
+          primeMeSession({user: result.user});
+          setDbUser(result.user);
+        }
+      } catch {}
       return true;
     }
     return false;
-  }, [dbUser]);
+  }, []);
 
   const forgotPassword = useCallback(async (email: string) => {
     await auth().sendPasswordResetEmail(email);

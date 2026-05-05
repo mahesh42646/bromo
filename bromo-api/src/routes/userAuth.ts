@@ -5,6 +5,7 @@ import {
   requireVerifiedUser,
   type FirebaseAuthedRequest,
 } from "../middleware/firebaseAuth.js";
+import { invalidateCachedUid } from "../middleware/firebaseAuth.js";
 import { User } from "../models/User.js";
 import {
   validateUsername,
@@ -44,6 +45,7 @@ userAuthRouter.post(
         isVerified: false,
         verificationStatus: "none",
       });
+      invalidateCachedUid(fb.uid);
 
       return res.status(201).json({ user, created: true });
     } catch (err: unknown) {
@@ -84,6 +86,7 @@ userAuthRouter.post(
         isVerified: false,
         verificationStatus: "none",
       });
+      invalidateCachedUid(fb.uid);
 
       return res.status(201).json({ user, created: true });
     } catch (err: unknown) {
@@ -106,6 +109,20 @@ userAuthRouter.post("/forgot-password", async (req, res) => {
     return res.json({ message: "Password reset email sent" });
   } catch (err: unknown) {
     // Don't leak whether the email exists
+    return res.json({ message: "If the account exists, a reset link was sent" });
+  }
+});
+
+// Legacy compatibility: GET /forgot-password/sendOtp?email=...
+userAuthRouter.get("/forgot-password/sendOtp", async (req, res) => {
+  try {
+    const email = String(req.query.email ?? "").trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+    await getAuth().generatePasswordResetLink(email);
+    return res.json({ message: "Password reset email sent" });
+  } catch {
     return res.json({ message: "If the account exists, a reset link was sent" });
   }
 });
@@ -223,6 +240,7 @@ userAuthRouter.post(
       user.username = raw;
       user.onboardingComplete = true;
       await user.save();
+      invalidateCachedUid(String(user.firebaseUid));
 
       return res.json({ user });
     } catch (err: unknown) {
